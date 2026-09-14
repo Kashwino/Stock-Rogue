@@ -78,6 +78,7 @@ godot --headless --path . res://tests/settings_test.tscn -- read
 godot --headless --path . res://tests/smoke.tscn
 mkdir -p build/web
 godot --headless --path . --export-release Web build/web/index.html
+python web/prepare_web.py
 npm install --no-save --package-lock=false playwright@1.51.1
 npx playwright install --with-deps chromium
 node tests/browser.mjs
@@ -92,3 +93,5 @@ The optional ?qa=1 URL enables a read-only state snapshot; it does not accept co
 or modify gameplay. Automated mobile Chromium is not a substitute for testing on
 physical Android and iPhone hardware. The Web export is single-threaded to avoid
 cross-origin-isolation requirements and improve mobile compatibility.
+
+The Web packaging step compresses the engine to reduce mobile download size. It requires a browser with DecompressionStream support (current Safari, Chrome, Firefox and Edge). The same packaged files are exercised by browser CI before publication.

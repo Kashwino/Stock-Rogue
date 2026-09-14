@@ -117,7 +117,8 @@ func _show_heist_choice(step: RunMap.Step) -> void:
 
 func _make_heist_card(node: MapNode, index: int) -> Control:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(170, 220)
+	card.custom_minimum_size = Vector2(220, 260)
+	card.set_meta("qa_label", "HEIST OPTION %d" % (index + 1))
 
 	var is_mystery := (node.type == MapNode.Type.MYSTERY and not node.revealed \
 		and not RunState.has_perk(&"recon"))   # Recon perk reveals ? nodes
@@ -133,6 +134,7 @@ func _make_heist_card(node: MapNode, index: int) -> Control:
 	card.add_theme_stylebox_override("panel", sb)
 
 	var vb := VBoxContainer.new()
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_theme_constant_override("separation", 10)
 	card.add_child(vb)
 

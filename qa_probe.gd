@@ -36,9 +36,9 @@ func _process(delta: float) -> void:
 		data["all_enemies"] = scene.director.enemies.size()
 	JavaScriptBridge.eval("window.stockRogueQA = " + JSON.stringify(data), true)
 func _collect(node: Node, out: Array) -> void:
-	if node is Control and node.is_visible_in_tree() and (node is BaseButton or node is HSlider):
+	if node is Control and node.is_visible_in_tree() and (node is BaseButton or node is HSlider or node.has_meta("qa_label")):
 		var rect: Rect2 = get_viewport().get_final_transform() * node.get_global_rect()
-		out.append({"text": node.text if node is Button else node.name, "type": node.get_class(),
+		out.append({"text": node.text if node is Button else node.get_meta("qa_label", node.name), "type": node.get_class(),
 			"rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y]})
 	for child in node.get_children():
 		_collect(child, out)

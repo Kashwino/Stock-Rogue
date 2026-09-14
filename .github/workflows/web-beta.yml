@@ -47,6 +47,8 @@ jobs:
           if grep -E 'SCRIPT ERROR|Parse Error|Export failed|Failed to load script' "$RUNNER_TEMP/godot/export.log"; then exit 1; fi
           test -s build/web/index.wasm
           test -s build/web/index.pck
+      - name: Compress engine for mobile delivery
+        run: python web/prepare_web.py
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -85,5 +87,6 @@ jobs:
             layouts
             audio
             tests
+            web
             .github/workflows
           if-no-files-found: error

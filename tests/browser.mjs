@@ -35,6 +35,14 @@ async function tap(text) {
   await page.touchscreen.tap(p.x, p.y);
   await page.waitForTimeout(250);
 }
+async function tapCard() {
+  const s = await state();
+  const c = s.controls.find(c => c.type === 'Button' && c.text === '');
+  assert(c, 'selectable card is visible');
+  const p = await point(c.rect[0] + c.rect[2] / 2, c.rect[1] + c.rect[3] / 2);
+  await page.touchscreen.tap(p.x, p.y);
+  await page.waitForTimeout(350);
+}
 async function shot(name) { const bytes = await page.screenshot({ path: 'artifacts/' + name + '.png' }); if (name === 'phone-infiltration' || name === 'failure') console.log('SCREENSHOT ' + name + ' ' + bytes.toString('base64')); }
 async function slider(index, fraction) {
   const s = await state();
@@ -106,7 +114,16 @@ try {
   await tap('PLAY');
   await wait(() => window.stockRogueQA?.scene.endsWith('character_select.tscn'));
   await shot('phone-case-files');
-  await writeFile('artifacts/browser-report.json', JSON.stringify({ passed: true, settings: saved, tests: ['mobile menu', 'touch settings', 'reload persistence', 'audio application', 'distance sleeping', 'simultaneous movement and firing', 'touch release', 'pause heat/time/movement', 'resume', 'case-file screen'] }, null, 2));
+  await tapCard();
+  await wait(() => window.stockRogueQA?.controls.some(c => c.text === '← Case files'));
+  await shot('phone-crew');
+  await tapCard();
+  await wait(() => window.stockRogueQA?.scene.endsWith('map_ui_screen.tscn'));
+  await shot('phone-map');
+  await tap('HEIST OPTION 1');
+  await wait(() => window.stockRogueQA?.scene.endsWith('heist_floor.tscn'));
+  assert.deepEqual(errors, [], 'no browser runtime errors');
+  await writeFile('artifacts/browser-report.json', JSON.stringify({ passed: true, settings: saved, tests: ['mobile menu', 'touch settings', 'reload persistence', 'audio application', 'distance sleeping', 'simultaneous movement and firing', 'touch release', 'pause heat/time/movement', 'resume', 'case-file screen', 'crew recruitment', 'map selection', 'normal heist launch', 'compressed engine loading'] }, null, 2));
   assert.deepEqual(errors, [], 'no browser runtime errors');
   console.log('BROWSER TEST SUITE COMPLETE');
 } catch (e) {
