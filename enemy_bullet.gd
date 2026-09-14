@@ -26,11 +26,15 @@ func _ready() -> void:
 	monitoring = true
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
-	await get_tree().create_timer(lifetime, false).timeout
-	if is_instance_valid(self):
-		queue_free()
 
 func _physics_process(delta: float) -> void:
+	if _spent:
+		return
+	lifetime -= delta
+	if lifetime <= 0.0:
+		_spent = true
+		queue_free()
+		return
 	var step := _dir * speed * delta
 	var target := global_position + step
 

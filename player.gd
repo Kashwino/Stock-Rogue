@@ -29,6 +29,7 @@ var _dodge_timer: float = 0.0
 var _dodge_cd_timer: float = 0.0
 var _dodge_dir: Vector2 = Vector2.ZERO
 var _invulnerable: bool = false
+var _mercy_timer := 0.0
 var _dead: bool = false
 
 # --- Grade-relevant run stats (read by the grader at level end) ---
@@ -70,6 +71,7 @@ func _ready() -> void:
 	health_changed.emit(health, max_health)
 
 func _physics_process(delta: float) -> void:
+	_mercy_timer = maxf(_mercy_timer - delta, 0.0)
 	_fire_timer = maxf(_fire_timer - delta, 0.0)
 	_dodge_cd_timer = maxf(_dodge_cd_timer - delta, 0.0)
 
@@ -189,7 +191,7 @@ func _process_dodge(delta: float) -> void:
 func take_damage(amount: int = 1) -> void:
 	# Once dead, nothing lands. Bullets already in flight would otherwise keep
 	# hitting the corpse, driving health negative and re-crashing the stock.
-	if _dead or _invulnerable:
+	if _dead or _invulnerable or _mercy_timer > 0.0:
 		return
 	health = maxi(health - amount, 0)
 	hits_taken += amount
@@ -206,10 +208,7 @@ func take_damage(amount: int = 1) -> void:
 
 func _brief_iframes() -> void:
 	# Short mercy invulnerability after a hit so you don't get chain-melted.
-	_invulnerable = true
-	await get_tree().create_timer(0.6, false).timeout
-	if health > 0 and not _dead:
-		_invulnerable = false
+	_mercy_timer = 0.6
 
 func _die() -> void:
 	if _dead:

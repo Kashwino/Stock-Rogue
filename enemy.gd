@@ -152,6 +152,7 @@ var health: int
 var _player: Node2D = null
 var _fire_timer: float = 0.0
 var _dead: bool = false
+var _flash_tween: Tween
 var sleeping := false
 var wake_until_msec: int = 0
 var _director: EnemyDirector = null
@@ -549,12 +550,12 @@ func take_damage(amount: int = 1) -> void:
 		_die()
 
 func _flash() -> void:
-	# Quick white flash to telegraph the hit.
 	if sprite is CanvasItem and not Settings.values["low_effects"]:
-		sprite.modulate = Color(3, 3, 3)     # over-bright
-		await get_tree().create_timer(0.06, false).timeout
-		if is_instance_valid(sprite):
-			sprite.modulate = ARCHETYPES[kind]["colour"]
+		if _flash_tween and _flash_tween.is_valid():
+			_flash_tween.kill()
+		sprite.modulate = Color(3, 3, 3)
+		_flash_tween = create_tween()
+		_flash_tween.tween_property(sprite, "modulate", ARCHETYPES[kind]["colour"], 0.06)
 
 func _die() -> void:
 	if _dead:
