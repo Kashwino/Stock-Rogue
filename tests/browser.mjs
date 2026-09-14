@@ -19,7 +19,7 @@ const context = await browser.newContext({ viewport: { width: 844, height: 390 }
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
-page.on('console', m => { if (/SCRIPT ERROR|ERROR:/.test(m.text())) errors.push(m.text()); });
+page.on('console', m => { console.log('ENGINE', m.text()); if (/SCRIPT ERROR|ERROR:/.test(m.text())) errors.push(m.text()); });
 const state = () => page.evaluate(() => window.stockRogueQA);
 const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 120000 });
 async function point(x, y) {
@@ -35,7 +35,7 @@ async function tap(text) {
   await page.touchscreen.tap(p.x, p.y);
   await page.waitForTimeout(250);
 }
-async function shot(name) { await page.screenshot({ path: 'artifacts/' + name + '.png' }); }
+async function shot(name) { const bytes = await page.screenshot({ path: 'artifacts/' + name + '.png' }); if (name === 'phone-heist' || name === 'failure') console.log('SCREENSHOT ' + name + ' ' + bytes.toString('base64')); }
 async function slider(index, fraction) {
   const s = await state();
   const c = s.controls.filter(c => c.type === 'HSlider')[index];

@@ -27,21 +27,21 @@ jobs:
       - name: Import and check every script
         run: |
           godot --headless --editor --path . --import 2>&1 | tee "$RUNNER_TEMP/godot/import.log"
-          ! grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' "$RUNNER_TEMP/godot/import.log"
+          if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' "$RUNNER_TEMP/godot/import.log"; then exit 1; fi
       - name: Verify settings across fresh processes and run gameplay regression tests
         run: |
           timeout 30s godot --headless --path . res://tests/settings_test.tscn -- write 2>&1 | tee "$RUNNER_TEMP/godot/settings-write.log"
-          ! grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-write.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-write.log"; then exit 1; fi
           timeout 30s godot --headless --path . res://tests/settings_test.tscn -- read 2>&1 | tee "$RUNNER_TEMP/godot/settings-read.log"
-          ! grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-read.log"
-          timeout 90s godot --headless --path . res://tests/smoke.tscn 2>&1 | tee "$RUNNER_TEMP/godot/smoke.log"
-          ! grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/smoke.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-read.log"; then exit 1; fi
+          timeout 90s godot --verbose --headless --path . res://tests/smoke.tscn 2>&1 | tee "$RUNNER_TEMP/godot/smoke.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/smoke.log"; then exit 1; fi
           grep -q 'TEST SUITE COMPLETE' "$RUNNER_TEMP/godot/smoke.log"
       - name: Export single-threaded browser build
         run: |
           mkdir -p build/web
           godot --headless --path . --export-release Web build/web/index.html 2>&1 | tee "$RUNNER_TEMP/godot/export.log"
-          ! grep -E 'SCRIPT ERROR|Parse Error|Export failed|Failed to load script' "$RUNNER_TEMP/godot/export.log"
+          if grep -E 'SCRIPT ERROR|Parse Error|Export failed|Failed to load script' "$RUNNER_TEMP/godot/export.log"; then exit 1; fi
           test -s build/web/index.wasm
           test -s build/web/index.pck
       - uses: actions/setup-node@v4

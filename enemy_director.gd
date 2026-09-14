@@ -48,10 +48,11 @@ func refresh() -> void:
 			buckets[cell] = []
 		buckets[cell].append(enemy)
 
-func neighbours(position: Vector2) -> Array:
+func neighbours(position: Vector2, radius: float = CELL_SIZE) -> Array:
 	var cell := Vector2i((position / CELL_SIZE).floor())
 	var out: Array = []
-	for x in range(-1, 2):
-		for y in range(-1, 2):
+	var extent := ceili(radius / CELL_SIZE)
+	for x in range(-extent, extent + 1):
+		for y in range(-extent, extent + 1):
 			out.append_array(buckets.get(cell + Vector2i(x, y), []))
 	return out

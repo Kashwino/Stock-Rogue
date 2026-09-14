@@ -482,7 +482,7 @@ func _do_medic(delta: float, to_player: Vector2, dist: float) -> void:
 func _find_hurt_ally() -> Node:
 	var best: Node = null
 	var best_d := 360.0
-	for other in get_tree().get_nodes_in_group("enemies"):
+	for other in (_director.neighbours(global_position, 360.0) if _director else []):
 		if other == self or not is_instance_valid(other):
 			continue
 		if "health" not in other or "max_health" not in other:

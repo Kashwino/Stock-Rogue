@@ -115,6 +115,7 @@ func _run() -> void:
 	check(boss.phase == 2 and boss.attack == AuditorBoss.Attack.DECLARE_CHARGE, "margin-call phase declares charge")
 	boss.take_damage(9999)
 	check(floor_scene.marked, "boss death marks heist and triggers reward")
+	await get_tree().create_timer(0.2).timeout
 	floor_scene.queue_free()
 	await get_tree().process_frame
 	get_tree().paused = false
@@ -130,5 +131,8 @@ func _run() -> void:
 		check(is_instance_valid(scene), "screen ready " + path)
 		scene.queue_free()
 		await get_tree().process_frame
+	RunState.end_run(false)
+	await get_tree().process_frame
+	await get_tree().create_timer(2.0).timeout
 	print("TEST SUITE COMPLETE")
 	get_tree().quit(0)
