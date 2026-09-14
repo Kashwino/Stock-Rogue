@@ -1,0 +1,28 @@
+name: Inspect source archive
+on:
+  push:
+    branches: [codex/mobile-web-beta]
+    paths: [.github/workflows/inspect-archive.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect project structure and required scenes
+        shell: python
+        run: |
+          import zipfile, pathlib
+          with zipfile.ZipFile("stock_rogue_everything.zip") as archive:
+              names = [n for n in archive.namelist() if not n.endswith("/") and not any(p in {".godot", "__MACOSX", ".git"} for p in pathlib.PurePosixPath(n).parts)]
+              print("ARCHIVE FILES", len(names))
+              for n in names:
+                  print(n)
+              for n in names:
+                  p = pathlib.PurePosixPath(n)
+                  if p.name in {"AGENTS.md", "project.godot", "export_presets.cfg", "player.tscn", "enemy.tscn", "bullet.tscn", "enemy_bullet.tscn", "hud.tscn", "map_ui_screen.tscn", "heist_floor.tscn", "default_bus_layout.tres"}:
+                      print("\nFILE START", n)
+                      print(archive.read(n).decode("utf-8"))
+                      print("FILE END", n)
