@@ -48,7 +48,7 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 		move_and_slide()
 		return
-	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var dir := TouchInput.movement()
 	velocity = dir * move_speed
 	if dir.length() > 0.1 and sprite:
 		sprite.rotation = dir.angle()

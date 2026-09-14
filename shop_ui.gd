@@ -50,7 +50,7 @@ func _ready() -> void:
 	if _root:
 		_root.process_mode = Node.PROCESS_MODE_ALWAYS
 		_root.hide()
-	print("[ShopUI] ready OK (purged old scene children)")
+	pass # Debug logging removed.
 
 func _build_ui() -> void:
 	_root = Control.new()
@@ -160,8 +160,7 @@ func open_shop() -> void:
 	if self is CanvasLayer:
 		show()               # the CanvasLayer itself, in case it was hidden
 	_root.show()
-	print("[ShopUI] open_shop: ", ops, " ops + ", ups, " upgrades, visible=",
-		_root.visible)
+	pass # Debug logging removed.
 
 func _render() -> void:
 	_update_gold()
@@ -363,7 +362,7 @@ func _update_gold() -> void:
 	_gold_label.text = "⦿ " + str(econ.gold if econ else 0)
 
 func _on_leave() -> void:
-	print("[ShopUI] leave pressed")
+	pass # Debug logging removed.
 	if self is CanvasLayer:
 		hide()
 	_root.hide()

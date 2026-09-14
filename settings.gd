@@ -1,0 +1,84 @@
+extends Node
+## One source of truth for menu and mid-heist settings.
+signal changed
+signal save_failed(message: String)
+const PATH := "user://settings.cfg"
+const WEB_KEY := "stock-rogue-settings-v1"
+const DEFAULTS := {"master": 0.8, "sfx": 0.8, "fullscreen": false, "low_effects": false, "frame_cap": 60, "touch_mode": 0}
+var values: Dictionary = DEFAULTS.duplicate()
+var last_save_error: int = OK
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	load_settings()
+	apply()
+	if not OS.has_feature("web"):
+		apply_display_from_gesture()
+
+func load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(PATH) == OK:
+		for key: String in DEFAULTS:
+			values[key] = cfg.get_value("audio" if key in ["master", "sfx"] else "video", key, DEFAULTS[key])
+	if OS.has_feature("web"):
+		var saved = JavaScriptBridge.eval("(()=>{try{return localStorage.getItem('" + WEB_KEY + "')}catch(e){return null}})()", true)
+		if saved is String:
+			var data = JSON.parse_string(saved)
+			if data is Dictionary:
+				for key: String in DEFAULTS:
+					values[key] = data.get(key, values[key])
+	_sanitize()
+
+func _sanitize() -> void:
+	for key: String in ["master", "sfx"]:
+		if not (values[key] is float or values[key] is int) or not is_finite(float(values[key])):
+			values[key] = DEFAULTS[key]
+		values[key] = clampf(float(values[key]), 0.0, 1.0)
+	for key: String in ["fullscreen", "low_effects"]:
+		if not values[key] is bool:
+			values[key] = DEFAULTS[key]
+	if values["frame_cap"] not in [30, 60]:
+		values["frame_cap"] = 60
+	if values["touch_mode"] not in [0, 1, 2]:
+		values["touch_mode"] = 0
+
+func set_setting(key: String, value: Variant) -> void:
+	if not DEFAULTS.has(key):
+		return
+	values[key] = value
+	_sanitize()
+	apply()
+	save()
+	changed.emit()
+
+func apply() -> void:
+	if AudioServer.get_bus_index("SFX") < 0:
+		AudioServer.add_bus()
+		AudioServer.set_bus_name(AudioServer.bus_count - 1, "SFX")
+		AudioServer.set_bus_send(AudioServer.bus_count - 1, "Master")
+	for key: String in ["master", "sfx"]:
+		var index := AudioServer.get_bus_index("Master" if key == "master" else "SFX")
+		var value: float = values[key]
+		AudioServer.set_bus_mute(index, value <= 0.0)
+		AudioServer.set_bus_volume_db(index, linear_to_db(maxf(value, 0.0001)))
+	Engine.max_fps = int(values["frame_cap"])
+
+func apply_display_from_gesture() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if values["fullscreen"] else DisplayServer.WINDOW_MODE_WINDOWED)
+
+func save() -> bool:
+	var cfg := ConfigFile.new()
+	for key: String in DEFAULTS:
+		cfg.set_value("audio" if key in ["master", "sfx"] else "video", key, values[key])
+	last_save_error = cfg.save(PATH)
+	if OS.has_feature("web"):
+		# Synchronous same-origin fallback also survives closing a browser tab
+		# immediately after moving a slider, before IndexedDB's async flush.
+		var ok = JavaScriptBridge.eval("(()=>{try{localStorage.setItem('" + WEB_KEY + "'," + JSON.stringify(JSON.stringify(values)) + ");return true}catch(e){return false}})()", true)
+		if ok == true:
+			last_save_error = OK
+	if last_save_error != OK:
+		save_failed.emit("Settings could not be saved on this device.")
+	return last_save_error == OK

@@ -19,6 +19,7 @@ var market: CriminalMarket = null
 
 ## Run perks (bought in the shop): &"recon", &"inside_trader", ...
 var perks: Array = []
+var hedge_charges: int = 0
 
 var max_health: int = 3
 var health: int = 3
@@ -34,8 +35,11 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	max_health = profile.base_health if profile else 3
 	health = max_health
 	stat_mods.clear()
+	hedge_charges = 0
 
 	# Fresh loadout with the starter Sidearm.
+	if is_instance_valid(loadout):
+		loadout.queue_free()
 	loadout = Loadout.new()
 	add_child(loadout)
 	loadout.equip(ItemPool.weapons()[0])
@@ -160,6 +164,7 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"loadout": _serialize_loadout(),
 		"profile_path": character_profile.resource_path if character_profile else "",
 		"perks": perks.duplicate(),
+		"hedge_charges": hedge_charges,
 		"market": _serialize_market(),
 	}
 
@@ -222,6 +227,8 @@ func deserialize(data: Dictionary) -> void:
 	perks.clear()
 	for pk in data.get("perks", []):
 		perks.append(StringName(pk))
+
+	hedge_charges = clampi(int(data.get("hedge_charges", 0)), 0, 3)
 
 	# Market: rebuild the roster, then overwrite prices with the saved ones.
 	if market and is_instance_valid(market):

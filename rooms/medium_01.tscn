@@ -1,0 +1,116 @@
+[gd_scene load_steps=13 format=3]
+[ext_resource type="Script" path="res://building_room.gd" id="1"]
+[ext_resource type="PackedScene" path="res://enemy.tscn" id="2"]
+[sub_resource type="RectangleShape2D" id="wall1"]
+size = Vector2(252, 24)
+[sub_resource type="RectangleShape2D" id="wall2"]
+size = Vector2(504, 24)
+[sub_resource type="RectangleShape2D" id="wall3"]
+size = Vector2(252, 24)
+[sub_resource type="RectangleShape2D" id="wall4"]
+size = Vector2(252, 24)
+[sub_resource type="RectangleShape2D" id="wall5"]
+size = Vector2(504, 24)
+[sub_resource type="RectangleShape2D" id="wall6"]
+size = Vector2(252, 24)
+[sub_resource type="RectangleShape2D" id="wall7"]
+size = Vector2(24, 177)
+[sub_resource type="RectangleShape2D" id="wall8"]
+size = Vector2(24, 177)
+[sub_resource type="RectangleShape2D" id="wall9"]
+size = Vector2(24, 177)
+[sub_resource type="RectangleShape2D" id="wall10"]
+size = Vector2(24, 177)
+[node name="Room" type="Node2D"]
+script = ExtResource("1")
+room_size = Vector2(1200, 450)
+spawn_count = 5
+enemy_scene = ExtResource("2")
+[node name="Floor" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(0, 0, 1200, 0, 1200, 450, 0, 450)
+color = Color(0.11, 0.105, 0.14, 1)
+z_index = -10
+[node name="Walls" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+[node name="Shape1" type="CollisionShape2D" parent="Walls"]
+position = Vector2(126, 12)
+shape = SubResource("wall1")
+[node name="Wall1" type="Polygon2D" parent="Walls"]
+position = Vector2(126, 12)
+polygon = PackedVector2Array(-126, -12, 126, -12, 126, 12, -126, 12)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape2" type="CollisionShape2D" parent="Walls"]
+position = Vector2(600, 12)
+shape = SubResource("wall2")
+[node name="Wall2" type="Polygon2D" parent="Walls"]
+position = Vector2(600, 12)
+polygon = PackedVector2Array(-252, -12, 252, -12, 252, 12, -252, 12)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape3" type="CollisionShape2D" parent="Walls"]
+position = Vector2(1074, 12)
+shape = SubResource("wall3")
+[node name="Wall3" type="Polygon2D" parent="Walls"]
+position = Vector2(1074, 12)
+polygon = PackedVector2Array(-126, -12, 126, -12, 126, 12, -126, 12)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape4" type="CollisionShape2D" parent="Walls"]
+position = Vector2(126, 438)
+shape = SubResource("wall4")
+[node name="Wall4" type="Polygon2D" parent="Walls"]
+position = Vector2(126, 438)
+polygon = PackedVector2Array(-126, -12, 126, -12, 126, 12, -126, 12)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape5" type="CollisionShape2D" parent="Walls"]
+position = Vector2(600, 438)
+shape = SubResource("wall5")
+[node name="Wall5" type="Polygon2D" parent="Walls"]
+position = Vector2(600, 438)
+polygon = PackedVector2Array(-252, -12, 252, -12, 252, 12, -252, 12)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape6" type="CollisionShape2D" parent="Walls"]
+position = Vector2(1074, 438)
+shape = SubResource("wall6")
+[node name="Wall6" type="Polygon2D" parent="Walls"]
+position = Vector2(1074, 438)
+polygon = PackedVector2Array(-126, -12, 126, -12, 126, 12, -126, 12)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape7" type="CollisionShape2D" parent="Walls"]
+position = Vector2(1188, 88.5)
+shape = SubResource("wall7")
+[node name="Wall7" type="Polygon2D" parent="Walls"]
+position = Vector2(1188, 88.5)
+polygon = PackedVector2Array(-12, -88.5, 12, -88.5, 12, 88.5, -12, 88.5)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape8" type="CollisionShape2D" parent="Walls"]
+position = Vector2(1188, 361.5)
+shape = SubResource("wall8")
+[node name="Wall8" type="Polygon2D" parent="Walls"]
+position = Vector2(1188, 361.5)
+polygon = PackedVector2Array(-12, -88.5, 12, -88.5, 12, 88.5, -12, 88.5)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape9" type="CollisionShape2D" parent="Walls"]
+position = Vector2(12, 88.5)
+shape = SubResource("wall9")
+[node name="Wall9" type="Polygon2D" parent="Walls"]
+position = Vector2(12, 88.5)
+polygon = PackedVector2Array(-12, -88.5, 12, -88.5, 12, 88.5, -12, 88.5)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="Shape10" type="CollisionShape2D" parent="Walls"]
+position = Vector2(12, 361.5)
+shape = SubResource("wall10")
+[node name="Wall10" type="Polygon2D" parent="Walls"]
+position = Vector2(12, 361.5)
+polygon = PackedVector2Array(-12, -88.5, 12, -88.5, 12, 88.5, -12, 88.5)
+color = Color(0.27, 0.31, 0.38, 1)
+[node name="SpawnPoints" type="Node2D" parent="."]
+[node name="M1" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(120, 120)
+[node name="M2" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1080, 330)
+[node name="M3" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(120, 330)
+[node name="M4" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1080, 120)
+[node name="M5" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(600, 120)

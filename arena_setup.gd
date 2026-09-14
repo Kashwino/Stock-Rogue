@@ -117,7 +117,7 @@ func _on_room_changed(index: int, total: int, is_miniboss: bool) -> void:
 	RunFlow.on_room_entered(index)
 	_cum_enemies += _room.enemy_total()
 	if is_miniboss:
-		print("MINIBOSS ROOM ", index + 1, "/", total)
+		pass # Debug logging removed.
 
 func _on_heist_complete() -> void:
 	var elapsed := (Time.get_ticks_msec() / 1000.0) - _heist_start
@@ -147,14 +147,13 @@ func _on_results_continued() -> void:
 func on_item_claimed(item) -> void:
 	if item is WeaponItem:
 		_loadout.equip(item)
-		print("Equipped weapon: ", item.display_name)
+		pass # Debug logging removed.
 	elif item is UpgradeItem:
 		item.apply_to(_player)
-		print("Applied upgrade: ", item.display_name)
+		pass # Debug logging removed.
 
 func _on_price_updated(price: float, delta: float, direction: int) -> void:
 	# Placeholder: print live stock moves so you can see it working.
 	# Replace with a real ticker label update later.
 	var arrow := "up" if direction > 0 else "down"
-	print("STOCK ", venue_asset_id, ": ", "%.2f" % price,
-		"  (", arrow, " ", "%.2f" % delta, ")")
+	pass # Debug logging removed.

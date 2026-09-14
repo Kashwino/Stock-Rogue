@@ -85,7 +85,7 @@ func go_to_map() -> void:
 		push_error("RunFlow: " + MAP_SCENE + " does not exist — cannot return "
 			+ "to heist selection.")
 		return
-	print("[RunFlow] returning to map: ", MAP_SCENE)
+	pass # Debug logging removed.
 	var err := get_tree().change_scene_to_file(MAP_SCENE)
 	if err != OK:
 		push_error("RunFlow: failed to load " + MAP_SCENE + " (error " + str(err) + ")")
@@ -100,7 +100,7 @@ func launch_heist(node: MapNode) -> void:
 			+ "New Scene > Node2D root > attach heist_floor.gd > add a Camera2D "
 			+ "child > save as res://heist_floor.tscn")
 		return
-	print("[RunFlow] launching heist scene: ", ARENA_SCENE)
+	pass # Debug logging removed.
 	get_tree().change_scene_to_file(ARENA_SCENE)
 
 ## Called by the arena when the player enters a new room (boundary save).
@@ -118,7 +118,7 @@ func on_heist_finished() -> void:
 	if RunState.run_map:
 		var next = RunState.run_map.advance_step()
 		if next == null:
-			print("[RunFlow] final stage cleared — run won")
+			pass # Debug logging removed.
 			end_run(true)
 			return
 	go_to_map()
@@ -170,3 +170,25 @@ func _show_end_screen(victory: bool, summary: Dictionary) -> void:
 		screen.show_victory(summary)
 	else:
 		screen.show_death(summary)
+
+## A separate fourth save slot keeps the beta shortcut away from real case files.
+func start_quick_test() -> void:
+	Settings.apply_display_from_gesture()
+	RunSave.slot = RunSave.SLOT_COUNT
+	run_seed = 4817
+	heists_completed = 0
+	total_kills = 0
+	stage = 0
+	step = 0
+	room_index = 0
+	RunState.start_run(load("res://main_character.tres"), run_seed)
+	RunState.add_max_health(3)
+	RunEconomy.add_bonus(350)
+	for weapon: WeaponItem in ItemPool.weapons():
+		if weapon.id in [&"ricochet", &"breacher"]:
+			RunState.loadout.equip(weapon)
+	pending_heist = MapNode.new()
+	pending_heist.venue_id = &"bank_job"
+	pending_heist.room_rarity = 1
+	save()
+	get_tree().change_scene_to_file(ARENA_SCENE)

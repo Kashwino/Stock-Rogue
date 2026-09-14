@@ -1,0 +1,42 @@
+name: Web beta
+on:
+  push:
+    branches: [codex/mobile-web-beta, main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-and-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: 4.6.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Godot and Web templates
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot" "$HOME/.local/share/godot/export_templates"
+          curl --fail --location --retry 3 "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o "$RUNNER_TEMP/godot/editor.zip"
+          unzip -q "$RUNNER_TEMP/godot/editor.zip" -d "$RUNNER_TEMP/godot"
+          mv "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+          curl --fail --location --retry 3 "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o "$RUNNER_TEMP/godot/templates.tpz"
+          unzip -q "$RUNNER_TEMP/godot/templates.tpz" -d "$RUNNER_TEMP/godot"
+          mv "$RUNNER_TEMP/godot/templates" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+      - name: Import and check every script
+        run: |
+          godot --headless --editor --path . --import 2>&1 | tee "$RUNNER_TEMP/godot/import.log"
+          ! grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' "$RUNNER_TEMP/godot/import.log"
+      - name: Export single-threaded browser build
+        run: |
+          mkdir -p build/web
+          godot --headless --path . --export-release Web build/web/index.html 2>&1 | tee "$RUNNER_TEMP/godot/export.log"
+          ! grep -E 'SCRIPT ERROR|Parse Error|Export failed|Failed to load script' "$RUNNER_TEMP/godot/export.log"
+          test -s build/web/index.wasm
+          test -s build/web/index.pck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stock-rogue-web
+          path: build/web
+          if-no-files-found: error

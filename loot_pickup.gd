@@ -74,6 +74,8 @@ func _build_visual() -> void:
 	_visual.add_child(lbl)
 
 func _process(delta: float) -> void:
+	if Settings.values["low_effects"]:
+		return
 	# Gentle bob + spin so pickups catch the eye.
 	_bob_time += delta
 	if _visual:

@@ -55,10 +55,16 @@ var car: GetawayCar = null
 var _kills: int = 0
 var _enemies_total: int = 0
 var _heist_start: float = 0.0
+var active_elapsed: float = 0.0
+var director: EnemyDirector
+var _kill_streak := 0
 var _rarity: int = 0
 var _venue: StringName = &""
 
 func _ready() -> void:
+	director = EnemyDirector.new()
+	add_child(director)
+	add_child(PauseMenu.new())
 	camera = get_node_or_null("Camera2D")
 	if camera == null:
 		camera = Camera2D.new()
@@ -89,16 +95,22 @@ func _build_floor() -> void:
 
 	generator = FloorGenerator.new()
 	add_child(generator)
-	generator.generate(
-		hash(str(RunFlow.run_seed) + "_floor_" + str(heist_index)),
-		room_count, exit_count)
+	if (stage == 0 and heist_index == 0) or _venue == &"bank_job":
+		generator.generate_authored()
+	else:
+		generator.generate(
+			hash(str(RunFlow.run_seed) + "_floor_" + str(heist_index)),
+			room_count, exit_count)
 	if generator.rooms.is_empty():
 		push_error("HeistFloor: no rooms generated")
 		return
 
 	# Difficulty from heist rarity: denser crews in rarer heists.
 	for room in generator.rooms:
-		if room.get_meta("chest_kind", "") == "":
+		if room.has_meta("is_boss"):
+			room.spawn_count = 1
+			room.enemy_scene = load("res://auditor_boss.tscn")
+		elif room.get_meta("chest_kind", "") == "":
 			var base: int = room.get("spawn_count")
 			room.set("spawn_count", base + int(_rarity * 0.75))
 			if not room.has_meta("is_boss"):
@@ -126,6 +138,10 @@ func _build_floor() -> void:
 	_ensure_prompt()
 	_spawn_car()
 	_assign_guard_roles()
+	director.refresh()
+	var terminal := MarketTerminal.new()
+	terminal.position = generator.start_room.position + Vector2(430, 270)
+	add_child(terminal)
 
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
@@ -235,6 +251,9 @@ func _assign_guard_roles() -> void:
 
 		var room_rect := Rect2(room.global_position, room.get("room_size"))
 		for c in guards:
+			if c is AuditorBoss:
+				c.set_guard_room(room_rect)
+				continue
 			# Archetype first: rarity raises the odds of the nastier kinds.
 			c.apply_archetype(_pick_archetype(room, guards_loot))
 			c.set_guard_room(room_rect)
@@ -358,6 +377,10 @@ func _hook_room_enemies(room) -> void:
 
 func _on_enemy_died(e) -> void:
 	_kills += 1
+	_kill_streak += 1
+	if RunState.has_perk(&"blood_dividend") and _kill_streak % 8 == 0 and player.health > 0:
+		player.health = mini(player.health + 1, player.max_health)
+		player.health_changed.emit(player.health, player.max_health)
 	RunFlow.total_kills += 1
 	heat += 1.5
 	if live:
@@ -383,7 +406,7 @@ func _become_marked() -> void:
 	RunEconomy.add_bonus(_rng.randi_range(250, 400))
 	if live:
 		live.report_shock(1.30, &"boss")
-	print("MARKED — they know your face. Exits are closing. Main door stays open.")
+	pass # Debug logging removed.
 
 # ------------------------------------------------- heat & reinforcements ----
 func _process(delta: float) -> void:
@@ -399,14 +422,15 @@ func _process(delta: float) -> void:
 		car.arm()
 		# The clock starts when you go in, not while you're casing the street.
 		_heist_start = Time.get_ticks_msec() / 1000.0
-		print("Inside. The car is running — come back when you've got the take.")
+		pass # Debug logging removed.
 
 	# Nothing escalates while you're still on the street casing the place.
 	if car and not car.armed:
 		return
 
-	# Heat climbs with time; faster when marked.
-	heat += delta * (0.35 if not marked else 0.9)
+	active_elapsed += delta
+	# Cool Head changes escalation without changing reinforcement identity.
+	heat += delta * (0.35 if not marked else 0.9) * (0.75 if RunState.has_perk(&"cool_head") else 1.0)
 
 	# Reinforcement waves at the entrance + exits.
 	_heat_timer -= delta
@@ -445,6 +469,13 @@ func _player_is_inside() -> bool:
 ## know exactly what just walked in and can fight it as its own moment,
 ## instead of getting buried under an ever-larger wave as heat climbs.
 func _spawn_reinforcements() -> void:
+	# Cap pursuing reinforcements; sleeping guards are managed separately.
+	var pursuers := 0
+	for guard in get_tree().get_nodes_in_group("enemies"):
+		if guard.hunting:
+			pursuers += 1
+	if pursuers >= 12:
+		return
 	var scene = load(ENEMY_SCENE_PATH)
 	if scene == null:
 		return
@@ -472,7 +503,7 @@ func _spawn_reinforcements() -> void:
 	van.approach_from = wall_world + outward * 900.0
 	van.squad_deployed.connect(_on_squad_deployed)
 	add_child(van)
-	print("Van inbound: 2 minibosses (heat ", int(heat), ")")
+	pass # Debug logging removed.
 
 ## Two toughened specialists, escalating with heat. Always exactly 2 kinds —
 ## the point is a readable duo, not a growing roster.
@@ -496,7 +527,7 @@ func _close_next_exit() -> void:
 	for g: Dictionary in generator.exits:
 		if g.get("open", false):
 			generator.close_exit(g)
-			print("An emergency exit just welded shut.")
+			pass # Debug logging removed.
 			return
 
 # ---------------------------------------------------------- extraction ------
@@ -538,7 +569,7 @@ func _check_extraction() -> void:
 	var remaining: float = maxf(fire_exit_hold - _fire_hold, 0.0)
 	_prompt.text = "SLIPPING OUT THE FIRE EXIT…  %.1f" % remaining
 	if _fire_hold >= fire_exit_hold:
-		print("Escaped clean through a fire exit.")
+		pass # Debug logging removed.
 		_extract()
 
 ## Nearest OPEN fire exit within reach, or {}.
@@ -553,7 +584,7 @@ func _extract() -> void:
 	if _extracting:
 		return
 	_extracting = true
-	var elapsed: float = (Time.get_ticks_msec() / 1000.0) - _heist_start
+	var elapsed: float = active_elapsed
 	var stats := {
 		"hits_taken": player.hits_taken,
 		"shots_fired": player.shots_fired,
@@ -591,11 +622,11 @@ func _on_player_died() -> void:
 	if _extracting:
 		return
 	_extracting = true
-	print("BUSTED. The run is over.")
+	pass # Debug logging removed.
 	if _prompt:
 		_prompt.hide()
 	RunState.sync_from_player(player)
-	await get_tree().create_timer(1.2).timeout
+	await get_tree().create_timer(1.2, false).timeout
 	RunFlow.end_run(false)
 
 # --------------------------------------------------------------- loot -------
@@ -650,7 +681,8 @@ func _loot_slot(size: Vector2, placed: Array) -> Vector2:
 	return candidate
 
 func _on_loot_collected(value: int) -> void:
-	RunEconomy.add_bonus(value)
+	RunEconomy.add_bonus(roundi(value * (1.25 if RunState.has_perk(&"scavenger") else 1.0)))
+	Sfx.play_sound("pickup")
 	if hud and hud.has_method("flash_gold"):
 		hud.flash_gold()
 
@@ -675,6 +707,9 @@ func _on_item_claimed(item) -> void:
 	elif item is UpgradeItem:
 		var add: float = item.amount if item.mode == UpgradeItem.ApplyMode.ADD else 0.0
 		var mult: float = item.amount if item.mode == UpgradeItem.ApplyMode.MULTIPLY else 1.0
-		RunState.add_stat_mod(item.stat, add, mult)
+		if item.stat == &"max_health":
+			RunState.add_max_health(int(add))
+		else:
+			RunState.add_stat_mod(item.stat, add, mult)
 		if player:
 			item.apply_to(player)

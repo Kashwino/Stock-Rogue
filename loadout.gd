@@ -15,6 +15,7 @@ signal reload_finished()
 
 ## True while a reload is in progress; firing is blocked.
 var reloading: bool = false
+var _reload_token := 0
 
 const BIG_SLOTS := 2
 const SMALL_SLOTS := 1
@@ -36,6 +37,7 @@ func _ready() -> void:
 ## Equip a weapon into the correct slot type. Returns the slot it went to,
 ## or empty array if no free slot (caller can prompt a swap/drop).
 func equip(weapon: WeaponItem) -> Array:
+	cancel_reload()
 	if weapon.slot == WeaponItem.Slot.BIG:
 		return _equip_into("big", big, BIG_SLOTS, weapon)
 	else:
@@ -80,6 +82,7 @@ func _init_ammo(tag: String, idx: int, weapon: WeaponItem) -> void:
 
 ## Set the active weapon by slot.
 func set_active(tag: String, idx: int) -> void:
+	cancel_reload()
 	active_slot = [tag, idx]
 	var w := get_active()
 	var a := _active_ammo()
@@ -153,8 +156,19 @@ func reload() -> void:
 		return
 
 	reloading = true
-	reload_started.emit(w.reload_time)
-	await get_tree().create_timer(w.reload_time).timeout
+	_reload_token += 1
+	var token := _reload_token
+	var modifier := 1.0
+	var player := get_tree().get_first_node_in_group("player")
+	if player is Player:
+		modifier = player.reload_multiplier
+	if RunState.has_perk(&"fast_hands"):
+		modifier *= 0.75
+	var duration := maxf(w.reload_time * modifier, 0.1)
+	reload_started.emit(duration)
+	await get_tree().create_timer(duration, false).timeout
+	if token != _reload_token:
+		return
 	reloading = false
 
 	var needed: int = w.mag_size - a["mag"]
@@ -193,3 +207,10 @@ func active_ammo_readout() -> String:
 	if a["reserve"] < 0:
 		return str(a["mag"]) + " / ∞"      # finite mag, infinite reserve
 	return str(a["mag"]) + " / " + str(a["reserve"])
+
+func cancel_reload() -> void:
+	if not reloading:
+		return
+	_reload_token += 1
+	reloading = false
+	reload_finished.emit()
