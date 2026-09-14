@@ -12,6 +12,7 @@ class_name EnemyBullet
 
 var _dir: Vector2 = Vector2.RIGHT
 var _shooter: Node = null
+var _spent := false
 
 func setup(direction: Vector2, shooter: Node) -> void:
 	_dir = direction.normalized()
@@ -25,11 +26,15 @@ func _ready() -> void:
 	monitoring = true
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
-	await get_tree().create_timer(lifetime).timeout
-	if is_instance_valid(self):
-		queue_free()
 
 func _physics_process(delta: float) -> void:
+	if _spent:
+		return
+	lifetime -= delta
+	if lifetime <= 0.0:
+		_spent = true
+		queue_free()
+		return
 	var step := _dir * speed * delta
 	var target := global_position + step
 
@@ -40,7 +45,7 @@ func _physics_process(delta: float) -> void:
 	query.collide_with_bodies = true
 	# Exclude the shooter, and skip characters — only static cover stops a
 	# bullet. CharacterBody2D/RigidBody2D are handled by the Area2D overlap.
-	if _shooter and _shooter is CollisionObject2D:
+	if is_instance_valid(_shooter) and _shooter is CollisionObject2D:
 		query.exclude = [_shooter.get_rid()]
 	var hit := space.intersect_ray(query)
 	if hit and not (hit["collider"] is CharacterBody2D):
@@ -57,8 +62,9 @@ func _on_area_entered(area: Node) -> void:
 	_try_hit(area)
 
 func _try_hit(target: Node) -> void:
-	if target == _shooter:
+	if _spent or target == _shooter:
 		return
 	if target.is_in_group("player") and target.has_method("take_damage"):
+		_spent = true
 		target.take_damage(damage)
 		queue_free()

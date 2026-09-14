@@ -19,6 +19,11 @@ enum Slot { BIG, SMALL }
 @export var spread: float = 0.0              # radians of random spread per shot
 @export var pellets: int = 1                 # >1 for shotguns
 
+@export var pierce: int = 0
+@export var ricochets: int = 0
+@export var knockback: float = 0.0
+@export var noise_radius: float = 900.0
+
 # --- Ammo / scavenging ---
 @export var uses_ammo: bool = true           # false = infinite (e.g. starter pistol)
 @export var reload_time: float = 0.9         # seconds; ALL weapons reload (even infinite)

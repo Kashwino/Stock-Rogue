@@ -1,0 +1,42 @@
+; Stock Rogue — Godot 4.6.1
+config_version=5
+
+[application]
+config/name="Stock Rogue"
+run/main_scene="res://home_screen.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+config/version="0.2.0"
+
+[autoload]
+Settings="*res://settings.gd"
+RunEconomy="*res://run_economy.gd"
+RunSave="*res://run_save.gd"
+Meta="*res://meta.gd"
+RunState="*res://run_state.gd"
+RunFlow="*res://run_flow.gd"
+Noise="*res://noise.gd"
+TouchInput="*res://touch_input.gd"
+Sfx="*res://sfx.gd"
+Controls="*res://mobile_controls.gd"
+QAProbe="*res://qa_probe.gd"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.035, 0.045, 0.065, 1)
+
+[input_devices]
+pointing/emulate_mouse_from_touch=true
+
+[gui]
+theme/custom="res://beta_theme.tres"

@@ -85,8 +85,8 @@ func go_to_map() -> void:
 		push_error("RunFlow: " + MAP_SCENE + " does not exist — cannot return "
 			+ "to heist selection.")
 		return
-	print("[RunFlow] returning to map: ", MAP_SCENE)
-	var err := get_tree().change_scene_to_file(MAP_SCENE)
+	pass # Debug logging removed.
+	var err := RunFlow.queue_scene(MAP_SCENE)
 	if err != OK:
 		push_error("RunFlow: failed to load " + MAP_SCENE + " (error " + str(err) + ")")
 
@@ -100,8 +100,8 @@ func launch_heist(node: MapNode) -> void:
 			+ "New Scene > Node2D root > attach heist_floor.gd > add a Camera2D "
 			+ "child > save as res://heist_floor.tscn")
 		return
-	print("[RunFlow] launching heist scene: ", ARENA_SCENE)
-	get_tree().change_scene_to_file(ARENA_SCENE)
+	pass # Debug logging removed.
+	RunFlow.queue_scene(ARENA_SCENE)
 
 ## Called by the arena when the player enters a new room (boundary save).
 func on_room_entered(index: int) -> void:
@@ -118,7 +118,7 @@ func on_heist_finished() -> void:
 	if RunState.run_map:
 		var next = RunState.run_map.advance_step()
 		if next == null:
-			print("[RunFlow] final stage cleared — run won")
+			pass # Debug logging removed.
 			end_run(true)
 			return
 	go_to_map()
@@ -155,7 +155,7 @@ func _show_end_screen(victory: bool, summary: Dictionary) -> void:
 		push_error("RunFlow: res://death_screen.tscn missing — create it "
 			+ "(CanvasLayer root + death_screen.gd). Returning to menu.")
 		get_tree().paused = false
-		get_tree().change_scene_to_file("res://home_screen.tscn")
+		RunFlow.queue_scene("res://home_screen.tscn")
 		return
 	var scene = load("res://death_screen.tscn")
 	var screen = scene.instantiate()
@@ -170,3 +170,38 @@ func _show_end_screen(victory: bool, summary: Dictionary) -> void:
 		screen.show_victory(summary)
 	else:
 		screen.show_death(summary)
+
+## A separate fourth save slot keeps the beta shortcut away from real case files.
+func start_quick_test() -> void:
+	Settings.apply_display_from_gesture()
+	RunSave.slot = RunSave.SLOT_COUNT
+	run_seed = 4817
+	heists_completed = 0
+	total_kills = 0
+	stage = 0
+	step = 0
+	room_index = 0
+	RunState.start_run(load("res://main_character.tres"), run_seed)
+	RunState.add_max_health(3)
+	RunEconomy.add_bonus(350)
+	for weapon: WeaponItem in ItemPool.weapons():
+		if weapon.id in [&"ricochet", &"breacher"]:
+			RunState.loadout.equip(weapon)
+	pending_heist = MapNode.new()
+	pending_heist.venue_id = &"bank_job"
+	pending_heist.room_rarity = 1
+	save()
+	RunFlow.queue_scene(ARENA_SCENE)
+
+## Defer scene removal until touch/mouse button dispatch has finished.
+func queue_scene(path: String) -> Error:
+	if not ResourceLoader.exists(path):
+		return ERR_FILE_NOT_FOUND
+	_commit_scene.call_deferred(path)
+	return OK
+
+func _commit_scene(path: String) -> void:
+	Controls.release_all()
+	var error := get_tree().change_scene_to_file(path)
+	if error != OK:
+		push_error("Cannot open scene: " + path + " (" + str(error) + ")")

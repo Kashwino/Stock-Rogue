@@ -1,75 +1,86 @@
 extends Area2D
 class_name Bullet
-
-## Player projectile. Call setup(direction, shooter) right after instantiating.
-## Damages anything in the "enemies" group that has take_damage().
-##
-## WALLS: bullets are swept with a raycast each frame instead of relying on
-## Area2D overlap. At 600+ px/s a bullet moves ~10px per frame, and walls are
-## only 24px thick — overlap detection misses them at high speeds or shallow
-## angles ("tunnelling"). The raycast catches every wall crossing, and it hits
-## ANY body on the collision layer rather than requiring a "walls" group.
-
-@export var speed: float = 600.0
-@export var damage: int = 1
-@export var lifetime: float = 2.0            # seconds before auto-despawn
-## Physics layers treated as solid cover. Layer 1 = room walls.
-@export_flags_2d_physics var wall_mask: int = 1
-
-var _dir: Vector2 = Vector2.RIGHT
+@export var speed := 600.0
+@export var damage := 1
+@export var lifetime := 2.0
+@export_flags_2d_physics var wall_mask := 1
+var pierce := 0
+var ricochets := 0
+var knockback := 0.0
+var _dir := Vector2.RIGHT
 var _shooter: Node = null
+var _spent := false
+var _hit_ids: Array[int] = []
+var _excluded: Array[RID] = []
 
 func setup(direction: Vector2, shooter: Node) -> void:
 	_dir = direction.normalized()
 	_shooter = shooter
 	rotation = _dir.angle()
+	if is_instance_valid(shooter) and shooter is CollisionObject2D:
+		_excluded.append(shooter.get_rid())
 
 func _ready() -> void:
-	# The bullet is an Area2D: body_entered only fires for bodies whose layer is
-	# in this mask. Enemies live on layer 2, walls on layer 1 — include both, or
-	# hits silently never register.
-	collision_mask = wall_mask | 2      # walls + enemies
-	monitoring = true
-	body_entered.connect(_on_body_entered)
-	area_entered.connect(_on_area_entered)
-	await get_tree().create_timer(lifetime).timeout
-	if is_instance_valid(self):
-		queue_free()
+	collision_layer = 0
+	collision_mask = wall_mask | 2
+	body_entered.connect(_try_hit)
 
 func _physics_process(delta: float) -> void:
-	var step := _dir * speed * delta
-	var target := global_position + step
-
-	# Sweep for walls between here and the next position.
-	var space := get_world_2d().direct_space_state
-	var query := PhysicsRayQueryParameters2D.create(global_position, target)
-	query.collision_mask = wall_mask
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	# Exclude the shooter, and skip characters — only static cover stops a
-	# bullet. CharacterBody2D/RigidBody2D are handled by the Area2D overlap.
-	if _shooter and _shooter is CollisionObject2D:
-		query.exclude = [_shooter.get_rid()]
-	var hit := space.intersect_ray(query)
-	if hit and not (hit["collider"] is CharacterBody2D):
-		# Stop at the wall surface so the impact reads correctly.
-		global_position = hit["position"]
-		queue_free()
+	if _spent:
 		return
-
-	global_position = target
-
-func _on_body_entered(body: Node) -> void:
-	_try_hit(body)
-
-func _on_area_entered(area: Node) -> void:
-	_try_hit(area)
+	lifetime -= delta
+	if lifetime <= 0.0:
+		_finish()
+		return
+	var remaining := speed * delta
+	# Resolve multiple contacts within this step: fast piercing rounds cannot
+	# tunnel through a second guard or a wall behind their first hit.
+	for step in 8:
+		if remaining <= 0.01 or _spent:
+			break
+		var target := global_position + _dir * remaining
+		var query := PhysicsRayQueryParameters2D.create(global_position, target, wall_mask | 2, _excluded)
+		var hit := get_world_2d().direct_space_state.intersect_ray(query)
+		if hit.is_empty():
+			global_position = target
+			break
+		remaining -= global_position.distance_to(hit["position"])
+		global_position = hit["position"]
+		var body: Node = hit["collider"]
+		if body.is_in_group("enemies"):
+			_try_hit(body)
+			global_position += _dir * 0.5
+			remaining -= 0.5
+		elif ricochets > 0:
+			ricochets -= 1
+			_dir = _dir.bounce(hit["normal"]).normalized()
+			rotation = _dir.angle()
+			global_position += hit["normal"] * 1.0
+			remaining -= 1.0
+		else:
+			_finish()
 
 func _try_hit(target: Node) -> void:
-	if target == _shooter:
+	if _spent or not is_instance_valid(target) or target == _shooter:
 		return
-	if target.is_in_group("enemies") and target.has_method("take_damage"):
-		target.take_damage(damage)
-		if _shooter and _shooter.has_method("register_hit_landed"):
-			_shooter.register_hit_landed()
-		queue_free()
+	if not target.is_in_group("enemies") or not target.has_method("take_damage"):
+		return
+	if target.get_instance_id() in _hit_ids:
+		return
+	_hit_ids.append(target.get_instance_id())
+	if target is CollisionObject2D:
+		_excluded.append(target.get_rid())
+	target.take_damage(damage)
+	if knockback > 0.0 and target is CharacterBody2D and not target is AuditorBoss:
+		target.velocity += _dir * knockback
+		target.move_and_slide()
+	if is_instance_valid(_shooter) and _shooter.has_method("register_hit_landed"):
+		_shooter.register_hit_landed()
+	if pierce > 0:
+		pierce -= 1
+	else:
+		_finish()
+
+func _finish() -> void:
+	_spent = true
+	queue_free()

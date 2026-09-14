@@ -12,6 +12,9 @@ signal hit_taken(remaining: int)
 @export var max_health: int = 6
 @export var fire_rate: float = 0.34          # seconds between shots (fallback)
 @export var bullet_scene: PackedScene        # assign Bullet.tscn in Inspector
+@export var damage_bonus: int = 0
+@export var spread_multiplier: float = 1.0
+@export var reload_multiplier: float = 1.0
 @export var dodge_speed: float = 520.0
 @export var dodge_time: float = 0.25
 @export var dodge_cooldown: float = 0.6
@@ -26,6 +29,7 @@ var _dodge_timer: float = 0.0
 var _dodge_cd_timer: float = 0.0
 var _dodge_dir: Vector2 = Vector2.ZERO
 var _invulnerable: bool = false
+var _mercy_timer := 0.0
 var _dead: bool = false
 
 # --- Grade-relevant run stats (read by the grader at level end) ---
@@ -49,7 +53,7 @@ func attach_loadout(l: Loadout) -> void:
 func _on_reload_started(duration: float) -> void:
 	# Placeholder reload animation: the sprite squashes, then pops back with a
 	# spin — reads clearly as "hands off the trigger" until real art exists.
-	if sprite == null:
+	if sprite == null or Settings.values["low_effects"]:
 		return
 	var tw := create_tween()
 	tw.tween_property(sprite, "scale", Vector2(0.65, 0.65), duration * 0.35)
@@ -67,6 +71,7 @@ func _ready() -> void:
 	health_changed.emit(health, max_health)
 
 func _physics_process(delta: float) -> void:
+	_mercy_timer = maxf(_mercy_timer - delta, 0.0)
 	_fire_timer = maxf(_fire_timer - delta, 0.0)
 	_dodge_cd_timer = maxf(_dodge_cd_timer - delta, 0.0)
 
@@ -81,26 +86,33 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 func _process_move() -> void:
-	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var dir := TouchInput.movement()
 	velocity = dir * move_speed
 
+func aim_direction() -> Vector2:
+	if TouchInput.touch_active and Settings.values["touch_mode"] != 2:
+		return TouchInput.aim
+	var direction := get_global_mouse_position() - global_position
+	return direction.normalized() if direction.length() > 1.0 else Vector2.RIGHT
+
+func effective_fire_interval(weapon: WeaponItem) -> float:
+	return maxf((weapon.fire_rate if weapon else 0.34) * fire_rate / 0.34, 0.035)
+
 func _process_aim() -> void:
-	# Aim the sprite/muzzle toward the mouse (twin-stick with mouse as second stick).
-	var to_mouse := get_global_mouse_position() - global_position
-	if to_mouse.length() > 1.0:
-		sprite.rotation = to_mouse.angle()
+	sprite.rotation = aim_direction().angle()
+	muzzle.position = aim_direction() * 28.0
 
 func _try_fire() -> void:
-	if _fire_timer > 0.0:
-		return
 	# Swap weapon (Q) and reload (R) if a loadout exists.
 	if loadout:
 		if Input.is_action_just_pressed("swap_weapon"):
 			loadout.cycle()
 		if Input.is_action_just_pressed("reload"):
 			loadout.reload()
-
-	if not Input.is_action_pressed("fire") or bullet_scene == null:
+	if _fire_timer > 0.0:
+		return
+	var firing := TouchInput.firing if TouchInput.touch_active and Settings.values["touch_mode"] != 2 else Input.is_action_pressed("fire")
+	if not firing or bullet_scene == null:
 		return
 
 	# Hands are busy: no firing mid-reload.
@@ -110,7 +122,7 @@ func _try_fire() -> void:
 	var weapon: WeaponItem = loadout.get_active() if loadout else null
 
 	# Determine fire rate from weapon (or fallback).
-	var rate := weapon.fire_rate if weapon else fire_rate
+	var rate := effective_fire_interval(weapon)
 	_fire_timer = rate
 
 	# Ammo check + consume.
@@ -123,10 +135,10 @@ func _try_fire() -> void:
 	_spawn_bullet(weapon)
 
 func _spawn_bullet(weapon: WeaponItem = null) -> void:
-	var aim := (get_global_mouse_position() - global_position).normalized()
+	var aim := aim_direction()
 	var pellets := weapon.pellets if weapon else 1
-	var spread := weapon.spread if weapon else 0.0
-	var dmg := weapon.damage if weapon else 1
+	var spread := (weapon.spread if weapon else 0.0) * spread_multiplier
+	var dmg := (weapon.damage if weapon else 1) + damage_bonus
 	var bspeed := weapon.bullet_speed if weapon else 600.0
 
 	for i in pellets:
@@ -137,29 +149,34 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 		if spread > 0.0:
 			dir = aim.rotated(randf_range(-spread, spread))
 		b.setup(dir, self)
+		if weapon:
+			b.pierce = weapon.pierce
+			b.ricochets = weapon.ricochets
+			b.knockback = weapon.knockback
 		# Apply weapon stats to the bullet if it supports them.
 		if "damage" in b:
 			b.damage = dmg
 		if "speed" in b:
 			b.speed = bspeed
-	shots_fired += 1
+	shots_fired += pellets
+	Sfx.play_sound("shot")
 	# Every shot is heard across the floor.
 	if has_node("/root/Noise"):
-		get_node("/root/Noise").gunshot(global_position)
+		get_node("/root/Noise").emit_noise(global_position, &"gunshot", weapon.noise_radius if weapon else 900.0)
 
 func _try_dodge() -> void:
 	if _dodge_cd_timer > 0.0:
 		return
 	if Input.is_action_just_pressed("dodge"):
-		var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+		var dir := TouchInput.movement()
 		if dir == Vector2.ZERO:
-			dir = (get_global_mouse_position() - global_position).normalized()
+			dir = aim_direction()
 		_dodging = true
 		_invulnerable = true
 		_dodge_timer = dodge_time
 		_dodge_dir = dir
 		# Diving across a room is audible, but only close by.
-		if has_node("/root/Noise"):
+		if has_node("/root/Noise") and not RunState.has_perk(&"quiet_shoes"):
 			get_node("/root/Noise").sprint(global_position)
 
 func _process_dodge(delta: float) -> void:
@@ -174,10 +191,11 @@ func _process_dodge(delta: float) -> void:
 func take_damage(amount: int = 1) -> void:
 	# Once dead, nothing lands. Bullets already in flight would otherwise keep
 	# hitting the corpse, driving health negative and re-crashing the stock.
-	if _dead or _invulnerable:
+	if _dead or _invulnerable or _mercy_timer > 0.0:
 		return
 	health = maxi(health - amount, 0)
 	hits_taken += amount
+	Sfx.play_sound("hit")
 	RunEconomy.on_player_hit(amount)      # currency drops on every hit
 	if live_stock:
 		live_stock.report_damage_taken(amount)   # stock crashes (bigger at low HP)
@@ -190,10 +208,7 @@ func take_damage(amount: int = 1) -> void:
 
 func _brief_iframes() -> void:
 	# Short mercy invulnerability after a hit so you don't get chain-melted.
-	_invulnerable = true
-	await get_tree().create_timer(0.6).timeout
-	if health > 0 and not _dead:
-		_invulnerable = false
+	_mercy_timer = 0.6
 
 func _die() -> void:
 	if _dead:
@@ -219,4 +234,4 @@ func register_hit_landed() -> void:
 		live_stock.report_hit_landed()       # stock ticks up per bullet landed
 
 func accuracy() -> float:
-	return 0.0 if shots_fired == 0 else float(shots_hit) / float(shots_fired)
+	return 0.0 if shots_fired == 0 else minf(float(shots_hit) / float(shots_fired), 1.0)

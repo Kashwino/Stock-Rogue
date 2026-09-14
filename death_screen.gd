@@ -151,5 +151,5 @@ func _on_pressed() -> void:
 	# sit on top of the menu forever. Free it explicitly.
 	get_tree().paused = false
 	dismissed.emit()
-	get_tree().change_scene_to_file("res://home_screen.tscn")
+	RunFlow.queue_scene("res://home_screen.tscn")
 	queue_free()

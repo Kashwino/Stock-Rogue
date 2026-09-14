@@ -40,6 +40,37 @@ static func weapons() -> Array:
 	out.append(_wpn(&"squadlmg", "Squad LMG", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
 		2, 0.14, 750.0, 0.06, 1, true, 40, 800, &"heavy"))    # sustained fire vs the Hand Cannon's heavy single hits
 
+
+	var ricochet := _wpn(&"ricochet", "Ricochet Bond", Rarity.Tier.RESTRICTED, WeaponItem.Slot.SMALL,
+		2, 0.46, 680.0, 0.015, 1, true, 8, 160, &"light")
+	ricochet.ricochets = 2
+	out.append(ricochet)
+	var breacher := _wpn(&"breacher", "Breach Hammer", Rarity.Tier.CLASSIFIED, WeaponItem.Slot.BIG,
+		2, 1.15, 470.0, 0.32, 9, true, 4, 80, &"shell")
+	breacher.knockback = 120.0
+	breacher.reload_time = 1.25
+	out.append(breacher)
+	var rail := _wpn(&"rail_dividend", "Rail Dividend", Rarity.Tier.COVERT, WeaponItem.Slot.BIG,
+		5, 1.0, 1200.0, 0.0, 1, true, 5, 80, &"heavy")
+	rail.pierce = 3
+	rail.reload_time = 1.4
+	out.append(rail)
+	var ghost := _wpn(&"ghost_wire", "Ghost Wire", Rarity.Tier.CLASSIFIED, WeaponItem.Slot.BIG,
+		1, 0.12, 750.0, 0.035, 1, true, 24, 360, &"light")
+	ghost.noise_radius = 190.0
+	out.append(ghost)
+	var nail := _wpn(&"nailgun", "Debt Collector", Rarity.Tier.RESTRICTED, WeaponItem.Slot.BIG,
+		2, 0.24, 850.0, 0.025, 1, true, 16, 240, &"light")
+	nail.pierce = 1
+	out.append(nail)
+	var scatter := _wpn(&"scatter_note", "Scatter Note", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		2, 0.65, 620.0, 0.20, 5, true, 8, 160, &"shell")
+	scatter.ricochets = 1
+	out.append(scatter)
+	for weapon: WeaponItem in out:
+		if weapon.id == &"silenced9mm":
+			weapon.noise_radius = 230.0
+
 	return out
 
 ## Same pool, minus the starter pistol -- every player already has it equipped,
@@ -71,6 +102,15 @@ static func upgrades() -> Array:
 	out.append(_upg(&"juggernaut", "Juggernaut Plating", "+3 max health",
 		Rarity.Tier.TOP_SECRET, &"max_health", UpgradeItem.ApplyMode.ADD, 3.0))
 
+
+	out.append(_upg(&"hot_load", "Hot Load", "+1 projectile damage",
+		Rarity.Tier.COVERT, &"damage_bonus", UpgradeItem.ApplyMode.ADD, 1.0))
+	out.append(_upg(&"stabilizer", "Stabilizer", "-25% weapon spread",
+		Rarity.Tier.RESTRICTED, &"spread_multiplier", UpgradeItem.ApplyMode.MULTIPLY, 0.75))
+	out.append(_upg(&"speed_loader", "Speed Loader", "-20% reload time",
+		Rarity.Tier.CLASSIFIED, &"reload_multiplier", UpgradeItem.ApplyMode.MULTIPLY, 0.8))
+	out.append(_upg(&"long_slide", "Long Slide", "+20% dodge distance",
+		Rarity.Tier.STANDARD, &"dodge_speed", UpgradeItem.ApplyMode.MULTIPLY, 1.2))
 	return out
 
 static func _wpn(id: StringName, name: String, rarity: int, slot: int,

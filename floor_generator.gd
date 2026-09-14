@@ -52,8 +52,7 @@ func generate(run_seed: int, room_count: int = 12, exit_count: int = 1) -> void:
 	_clear()
 	_load_templates()
 
-	print("[FloorGen] templates — small:", _templates_small.size(),
-		" medium:", _templates_medium.size(), " large:", _templates_large.size())
+	pass # Debug logging removed.
 
 	if _templates_small.is_empty():
 		push_error("FloorGenerator: no room templates in " + ROOMS_DIR
@@ -89,8 +88,7 @@ func generate(run_seed: int, room_count: int = 12, exit_count: int = 1) -> void:
 			tpl = _pick_from(_templates_medium)
 		_grow_with(tpl)
 
-	print("[FloorGen] placed ", rooms.size(), "/", room_count, " rooms (",
-		large_placed, " large) after ", attempts, " attempts")
+	pass # Debug logging removed.
 	if rooms.size() < 2:
 		push_error("FloorGenerator: only " + str(rooms.size())
 			+ " room placed. Room scenes are probably missing room_size — "
@@ -146,7 +144,7 @@ func _place_boss_room() -> void:
 		if placed != null:
 			boss_room = placed
 			placed.set("rarity", 6)
-			placed.set("spawn_count", 10)
+			placed.set("spawn_count", 1)
 			placed.set_meta("is_boss", true)
 			return
 
@@ -425,3 +423,31 @@ func _rect_points(size: Vector2) -> PackedVector2Array:
 	var hy := size.y * 0.5
 	return PackedVector2Array([
 		Vector2(-hx, -hy), Vector2(hx, -hy), Vector2(hx, hy), Vector2(-hx, hy)])
+
+## This authored scene fixes rooms, cover, approach, loops and loot branches.
+## Seed affects combat/loot only; it never changes this building's geometry.
+func generate_authored() -> void:
+	_clear()
+	var layout := preload("res://layouts/marlowe_exchange.tscn").instantiate()
+	add_child(layout)
+	for child in layout.get_children():
+		if child is BuildingRoom:
+			rooms.append(child)
+			var cell := Vector2i(child.position / MODULE)
+			child.set_meta("cell", cell)
+			for occupied: Vector2i in _cells_for(child, cell):
+				_occupied[occupied] = child
+	start_room = layout.get_node("Lobby")
+	start_room.is_start_room = true
+	boss_room = layout.get_node("Auditor")
+	boss_room.set_meta("is_boss", true)
+	boss_room.rarity = 6
+	boss_room.spawn_count = 1
+	weapon_chest_room = layout.get_node("Records")
+	upgrade_chest_room = layout.get_node("Vault")
+	for room in [weapon_chest_room, upgrade_chest_room]:
+		room.spawn_count = 0
+		room.rarity = 5
+		room.set_meta("chest_kind", "weapon" if room == weapon_chest_room else "upgrade")
+	_process_gaps(2)
+	floor_built.emit(rooms, start_room)

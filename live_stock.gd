@@ -119,6 +119,11 @@ func report_kill() -> void:
 ## Player took damage (crash, amplified at low health).
 func report_damage_taken(amount: int) -> void:
 	var base := (_profile.crash_per_damage if _profile else 0.04) * amount
+	if RunState.has_perk(&"golden_parachute"):
+		base *= 0.7
+	if RunState.hedge_charges > 0:
+		RunState.hedge_charges -= 1
+		base *= 0.5
 	_apply(-base)
 	market_event.emit(&"damage", base)
 

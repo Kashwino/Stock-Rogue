@@ -152,6 +152,27 @@ var health: int
 var _player: Node2D = null
 var _fire_timer: float = 0.0
 var _dead: bool = false
+var _flash_tween: Tween
+var sleeping := false
+var wake_until_msec: int = 0
+var _director: EnemyDirector = null
+
+func set_sleeping(value: bool) -> void:
+	if _dead:
+		return
+	sleeping = value
+	set_physics_process(not value)
+	if value:
+		velocity = Vector2.ZERO
+
+func wake_for(seconds: float = 2.0) -> void:
+	wake_until_msec = Time.get_ticks_msec() + int(seconds * 1000.0)
+	set_sleeping(false)
+
+func _exit_tree() -> void:
+	if is_instance_valid(_director):
+		_director.unregister(self)
+
 
 var _alert: int = Alert.IDLE
 var _post: Vector2 = Vector2.ZERO         # where this guard belongs
@@ -191,6 +212,9 @@ func _ready() -> void:
 		_lose_timer = LOSE_INTEREST_TIME
 		_provoked = true
 	_acquire_player()
+	_director = get_tree().get_first_node_in_group("enemy_director") as EnemyDirector
+	if _director:
+		_director.register(self)
 	# Listen for gunshots, deaths, footsteps.
 	if has_node("/root/Noise"):
 		get_node("/root/Noise").heard.connect(_on_noise)
@@ -202,9 +226,12 @@ func _acquire_player() -> void:
 
 # --------------------------------------------------------------- hearing ----
 func _on_noise(pos: Vector2, radius: float, kind: StringName) -> void:
-	if _dead or _alert == Alert.HUNTING:
+	if _dead:
 		return
 	if global_position.distance_to(pos) > radius * hearing_multiplier:
+		return
+	wake_for()
+	if _alert == Alert.HUNTING:
 		return
 	# A sound in earshot rouses the guard — now sight will make it hunt.
 	if kind == &"gunshot" or kind == &"death":
@@ -280,7 +307,7 @@ func _physics_process(delta: float) -> void:
 ## Sum of small pushes away from nearby enemies (boids-style separation).
 func _separation() -> Vector2:
 	var push := Vector2.ZERO
-	for other in get_tree().get_nodes_in_group("enemies"):
+	for other in (_director.neighbours(global_position) if _director else []):
 		if other == self or not is_instance_valid(other):
 			continue
 		var away: Vector2 = global_position - other.global_position
@@ -456,7 +483,7 @@ func _do_medic(delta: float, to_player: Vector2, dist: float) -> void:
 func _find_hurt_ally() -> Node:
 	var best: Node = null
 	var best_d := 360.0
-	for other in get_tree().get_nodes_in_group("enemies"):
+	for other in (_director.neighbours(global_position, 360.0) if _director else []):
 		if other == self or not is_instance_valid(other):
 			continue
 		if "health" not in other or "max_health" not in other:
@@ -482,7 +509,7 @@ func _shoot(dir: Vector2) -> void:
 			offset = randf_range(-spread, spread)
 		var b := enemy_bullet_scene.instantiate()
 		get_tree().current_scene.add_child(b)
-		b.global_position = muzzle.global_position
+		b.global_position = global_position + dir * 28.0
 		b.setup(dir.rotated(offset), self)
 		if "damage" in b:
 			b.damage = bullet_damage
@@ -512,6 +539,7 @@ func take_damage(amount: int = 1) -> void:
 	# bullets landing on the same frame would each count as a separate kill.
 	if _dead:
 		return
+	wake_for(3.0)
 	health -= amount
 	# Being shot: you know where it came from and you're now hostile.
 	_provoked = true
@@ -522,12 +550,12 @@ func take_damage(amount: int = 1) -> void:
 		_die()
 
 func _flash() -> void:
-	# Quick white flash to telegraph the hit.
-	if sprite is CanvasItem:
-		sprite.modulate = Color(3, 3, 3)     # over-bright
-		await get_tree().create_timer(0.06).timeout
-		if is_instance_valid(sprite):
-			sprite.modulate = Color.WHITE
+	if sprite is CanvasItem and not Settings.values["low_effects"]:
+		if _flash_tween and _flash_tween.is_valid():
+			_flash_tween.kill()
+		sprite.modulate = Color(3, 3, 3)
+		_flash_tween = create_tween()
+		_flash_tween.tween_property(sprite, "modulate", ARCHETYPES[kind]["colour"], 0.06)
 
 func _die() -> void:
 	if _dead:

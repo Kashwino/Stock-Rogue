@@ -57,7 +57,7 @@ func _ensure_control_root() -> void:
 		# every click before it reaches the buttons — never let them.
 		if c is ColorRect or c is TextureRect or c is Panel:
 			c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	print("[MapUI] inserted UIRoot Control — map buttons can now receive clicks")
+	pass # Debug logging removed.
 
 # Per-stage accent colors (theme hook — reskin locations later).
 const STAGE_COLORS := {
@@ -117,7 +117,8 @@ func _show_heist_choice(step: RunMap.Step) -> void:
 
 func _make_heist_card(node: MapNode, index: int) -> Control:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(170, 220)
+	card.custom_minimum_size = Vector2(220, 260)
+	card.set_meta("qa_label", "HEIST OPTION %d" % (index + 1))
 
 	var is_mystery := (node.type == MapNode.Type.MYSTERY and not node.revealed \
 		and not RunState.has_perk(&"recon"))   # Recon perk reveals ? nodes
@@ -133,6 +134,7 @@ func _make_heist_card(node: MapNode, index: int) -> Control:
 	card.add_theme_stylebox_override("panel", sb)
 
 	var vb := VBoxContainer.new()
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_theme_constant_override("separation", 10)
 	card.add_child(vb)
 
@@ -183,7 +185,7 @@ func _show_shop(step: RunMap.Step) -> void:
 	var enter := Button.new()
 	enter.text = "Enter Shop"
 	enter.pressed.connect(func():
-		print("[MapUI] Enter Shop pressed")
+		pass # Debug logging removed.
 		hide()
 		shop_opened.emit())
 	action_row.add_child(enter)

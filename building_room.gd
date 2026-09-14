@@ -56,8 +56,8 @@ func activate() -> void:
 		if enemy_scene == null:
 			break
 		var e := enemy_scene.instantiate()
+		e.position = room_size * 0.5 if has_meta("is_boss") else _spawn_slot(i, markers, used)
 		add_child(e)
-		e.position = _spawn_slot(i, markers, used)
 		used.append(e.position)
 		if e.has_signal("died"):
 			e.died.connect(_on_enemy_died)

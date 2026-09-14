@@ -113,7 +113,7 @@ func _on_door_entered(door: Door) -> void:
 		_player.global_position = target.door_entry_position(door.opposite_side())
 
 	_enter_room(target, door)
-	await get_tree().create_timer(pan_time).timeout
+	await get_tree().create_timer(pan_time, false).timeout
 	_transitioning = false
 
 func _pan_camera_to(pos: Vector2) -> void:

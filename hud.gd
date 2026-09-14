@@ -114,18 +114,10 @@ func _update_ammo_readout(text: String) -> void:
 	ammo_label.text = text
 
 func _update_health(current: int, maxv: int) -> void:
-	# Filled + empty pips. Clamped so a negative value can never produce a
-	# broken row (for-loops over a negative int simply draw nothing).
-	var cur := clampi(current, 0, maxv)
-	var hearts := ""
-	for i in cur:
-		hearts += "♥ "
-	for i in (maxv - cur):
-		hearts += "♡ "
-	health_label.text = "HP  " + hearts.strip_edges()
+	health_label.text = "HP  %d / %d" % [clampi(current, 0, maxv), maxv]
 
 func _update_gold(amount: int) -> void:
-	currency_label.text = "⦿ " + str(amount)   # gold coins
+	currency_label.text = "GOLD  " + str(amount)   # gold coins
 	currency_label.modulate = Color(1.0, 0.84, 0.0)   # gold color
 
 ## Quick pop on the gold counter when a floor pickup is grabbed.

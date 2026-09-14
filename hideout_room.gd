@@ -46,7 +46,7 @@ func _ready() -> void:
 	_build_stations()
 	_build_door()
 	_build_hud_hint()
-	print("[HideoutRoom] ready -- 3 stations + door built")
+	pass # Debug logging removed.
 
 ## If these actions aren't in the project's Input Map, movement/interaction
 ## fail completely but silently -- no crash, no error, the room just looks
@@ -268,7 +268,7 @@ func _leave_hideout() -> void:
 	if RunState.run_map:
 		RunState.run_map.advance_step()
 	RunFlow.save()
-	get_tree().change_scene_to_file("res://map_ui_screen.tscn")
+	RunFlow.queue_scene("res://map_ui_screen.tscn")
 
 # --------------------------------------------------------------- overlay ---
 func _build_hud_hint() -> void:
@@ -868,6 +868,18 @@ func _fence_offer_generator() -> Array:
 	if not RunState.has_perk(&"inside_trader"):
 		pool.append({"name": "Inside Trader", "desc": "+25% on positive stock swings from heist grades.",
 			"price": 300, "accent": Color(0.55, 0.75, 1.0), "cb": _buy_perk.bind(&"inside_trader")})
+	var perks := [
+		[&"fast_hands", "Fast Hands", "-25% reload time on every weapon.", 220],
+		[&"blood_dividend", "Blood Dividend", "Heal 1 for each 8 kills within a heist.", 320],
+		[&"quiet_shoes", "Quiet Shoes", "Dodge rolls make no noise.", 180],
+		[&"cool_head", "Cool Head", "Heat builds 25% slower over time.", 240],
+		[&"scavenger", "Scavenger", "+25% gold from floor valuables.", 260],
+		[&"golden_parachute", "Golden Parachute", "30% less stock loss when you take damage.", 280]
+	]
+	for perk: Array in perks:
+		if not RunState.has_perk(perk[0]):
+			pool.append({"name": perk[1], "desc": perk[2], "price": perk[3],
+				"accent": Color(0.35, 0.8, 0.72), "cb": _buy_perk.bind(perk[0])})
 	return _sample_pool(pool, 3)
 
 func _buy_perk(id: StringName) -> void:
@@ -951,9 +963,8 @@ func _buy_patch_kit() -> void:
 
 func _buy_ammo_crate() -> void:
 	if not RunState.loadout: return
-	var w: WeaponItem = RunState.loadout.get_active()
-	if w:
-		RunState.loadout.scavenge(w.ammo_type, 120)
+	for ammo: StringName in [&"light", &"heavy", &"shell"]:
+		RunState.loadout.scavenge(ammo, 9999)
 
 func _buy_kevlar() -> void:
 	RunState.add_max_health(1)
