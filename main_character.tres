@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="CharacterProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://character_profile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+id = &"main"
+display_name = "The Operator"
+base_health = 3
+volatility_at_full = 1.0
+volatility_at_low = 2.5
+volatility_curve = 1.5
+gain_per_hit = 0.0008
+gain_per_kill = 0.004
+crash_per_damage = 0.055

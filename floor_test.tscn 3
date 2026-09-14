@@ -1,0 +1,179 @@
+[gd_scene format=3 uid="uid://duhsobr2q6r7o"]
+
+[ext_resource type="Script" uid="uid://b1rfqc487570s" path="res://room_manager.gd" id="1_rm"]
+[ext_resource type="Script" uid="uid://dm3t8to06fl72" path="res://building_room.gd" id="2_br"]
+[ext_resource type="PackedScene" uid="uid://c7ryeg8xe1nlt" path="res://player.tscn" id="2_vch50"]
+[ext_resource type="PackedScene" uid="uid://cwk78tesdu2fe" path="res://enemy.tscn" id="3_dhxh4"]
+[ext_resource type="Script" uid="uid://4auaub3ewnbl" path="res://door.gd" id="3_door"]
+
+[sub_resource type="RectangleShape2D" id="wall_h"]
+size = Vector2(820, 24)
+
+[sub_resource type="RectangleShape2D" id="wall_v"]
+size = Vector2(24, 620)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ik31s"]
+size = Vector2(24, 252)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ticvn"]
+size = Vector2(24, 252)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_r4kde"]
+size = Vector2(24, 96)
+
+[node name="FloorTest" type="Node2D" unique_id=639917983]
+script = ExtResource("1_rm")
+player_path = NodePath("Player")
+camera_path = NodePath("Camera2D")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=855875270]
+position = Vector2(400, 300)
+
+[node name="RoomA" type="Node2D" parent="." unique_id=1269571827]
+script = ExtResource("2_br")
+id = &"room_a"
+is_start_room = true
+enemy_scene = ExtResource("3_dhxh4")
+spawn_count = 3
+
+[node name="Floor" type="ColorRect" parent="RoomA" unique_id=1310128877]
+offset_right = 800.0
+offset_bottom = 600.0
+color = Color(0.15, 0.16, 0.2, 1)
+
+[node name="Walls" type="StaticBody2D" parent="RoomA" unique_id=1365144955]
+
+[node name="WallTop" type="CollisionShape2D" parent="RoomA/Walls" unique_id=1201070805]
+position = Vector2(400, 12)
+shape = SubResource("wall_h")
+
+[node name="WallBottom" type="CollisionShape2D" parent="RoomA/Walls" unique_id=579693909]
+position = Vector2(400, 588)
+shape = SubResource("wall_h")
+
+[node name="WallLeft" type="CollisionShape2D" parent="RoomA/Walls" unique_id=1368976335]
+position = Vector2(12, 300)
+shape = SubResource("wall_v")
+
+[node name="WallRightTop" type="CollisionShape2D" parent="RoomA/Walls" unique_id=1560660374]
+position = Vector2(788, 126)
+shape = SubResource("RectangleShape2D_ik31s")
+
+[node name="WallRightBottom" type="CollisionShape2D" parent="RoomA/Walls" unique_id=446862378]
+position = Vector2(788, 474)
+shape = SubResource("RectangleShape2D_ticvn")
+
+[node name="SpawnPoints" type="Node2D" parent="RoomA" unique_id=967284609]
+
+[node name="M1" type="Marker2D" parent="RoomA/SpawnPoints" unique_id=431227312]
+position = Vector2(200, 200)
+
+[node name="M2" type="Marker2D" parent="RoomA/SpawnPoints" unique_id=658541807]
+position = Vector2(400, 400)
+
+[node name="M3" type="Marker2D" parent="RoomA/SpawnPoints" unique_id=817060081]
+position = Vector2(600, 200)
+
+[node name="DoorEntries" type="Node2D" parent="RoomA" unique_id=963512988]
+
+[node name="West" type="Marker2D" parent="RoomA/DoorEntries" unique_id=1910236630]
+position = Vector2(60, 300)
+
+[node name="East" type="Marker2D" parent="RoomA/DoorEntries" unique_id=1979523151]
+position = Vector2(740, 300)
+
+[node name="DoorEast" type="Area2D" parent="RoomA" unique_id=864277936]
+position = Vector2(790, 300)
+script = ExtResource("3_door")
+side = 2
+to_room_id = &"room_b"
+
+[node name="DoorShape" type="CollisionShape2D" parent="RoomA/DoorEast" unique_id=1489350633]
+shape = SubResource("wall_v")
+
+[node name="Sprite" type="ColorRect" parent="RoomA/DoorEast" unique_id=1624029399]
+offset_left = -12.0
+offset_top = -48.0
+offset_right = 12.0
+offset_bottom = 48.0
+color = Color(0.6, 0.3, 0.3, 1)
+
+[node name="Block" type="StaticBody2D" parent="RoomA/DoorEast" unique_id=185036899]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RoomA/DoorEast/Block" unique_id=1067960149]
+shape = SubResource("RectangleShape2D_r4kde")
+
+[node name="RoomB" type="Node2D" parent="." unique_id=371779383]
+position = Vector2(900, 0)
+script = ExtResource("2_br")
+id = &"room_b"
+enemy_scene = ExtResource("3_dhxh4")
+spawn_count = 3
+
+[node name="Floor" type="ColorRect" parent="RoomB" unique_id=407028203]
+offset_right = 800.0
+offset_bottom = 600.0
+color = Color(0.18, 0.15, 0.2, 1)
+
+[node name="Walls" type="StaticBody2D" parent="RoomB" unique_id=830988656]
+
+[node name="WallTop" type="CollisionShape2D" parent="RoomB/Walls" unique_id=516045829]
+position = Vector2(400, 12)
+shape = SubResource("wall_h")
+
+[node name="WallBottom" type="CollisionShape2D" parent="RoomB/Walls" unique_id=448768963]
+position = Vector2(400, 588)
+shape = SubResource("wall_h")
+
+[node name="WallRight" type="CollisionShape2D" parent="RoomB/Walls" unique_id=1207073331]
+position = Vector2(788, 300)
+shape = SubResource("wall_v")
+
+[node name="WallLeftTop" type="CollisionShape2D" parent="RoomB/Walls" unique_id=430567411]
+position = Vector2(12, 126)
+shape = SubResource("RectangleShape2D_ik31s")
+
+[node name="WallLeftBottom" type="CollisionShape2D" parent="RoomB/Walls" unique_id=1205818445]
+position = Vector2(12, 474)
+shape = SubResource("RectangleShape2D_ticvn")
+
+[node name="SpawnPoints" type="Node2D" parent="RoomB" unique_id=916545469]
+
+[node name="M1" type="Marker2D" parent="RoomB/SpawnPoints" unique_id=453569545]
+position = Vector2(200, 200)
+
+[node name="M2" type="Marker2D" parent="RoomB/SpawnPoints" unique_id=1765745274]
+position = Vector2(400, 400)
+
+[node name="M3" type="Marker2D" parent="RoomB/SpawnPoints" unique_id=483347412]
+position = Vector2(600, 200)
+
+[node name="DoorEntries" type="Node2D" parent="RoomB" unique_id=690076618]
+
+[node name="West" type="Marker2D" parent="RoomB/DoorEntries" unique_id=519918742]
+position = Vector2(60, 300)
+
+[node name="DoorWest" type="Area2D" parent="RoomB" unique_id=912839018]
+position = Vector2(10, 300)
+script = ExtResource("3_door")
+side = 3
+to_room_id = &"room_a"
+
+[node name="DoorShape" type="CollisionShape2D" parent="RoomB/DoorWest" unique_id=892768294]
+shape = SubResource("wall_v")
+
+[node name="Sprite" type="ColorRect" parent="RoomB/DoorWest" unique_id=1086692405]
+offset_left = -12.0
+offset_top = -48.0
+offset_right = 12.0
+offset_bottom = 48.0
+color = Color(0.6, 0.3, 0.3, 1)
+
+[node name="Block" type="StaticBody2D" parent="RoomB/DoorWest" unique_id=1093920348]
+position = Vector2(-119, 0)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RoomB/DoorWest/Block" unique_id=1146917362]
+shape = SubResource("RectangleShape2D_r4kde")
+
+[node name="Player" parent="." unique_id=910853313 instance=ExtResource("2_vch50")]
+position = Vector2(400, 300)
