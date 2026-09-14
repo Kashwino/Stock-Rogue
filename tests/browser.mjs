@@ -1,0 +1,115 @@
+import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { resolve, extname, sep } from 'node:path';
+import assert from 'node:assert/strict';
+
+const root = resolve('build/web');
+const mime = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.pck': 'application/octet-stream', '.png': 'image/png', '.json': 'application/json' };
+const server = createServer(async (req, res) => {
+  const path = resolve(root, '.' + decodeURIComponent(new URL(req.url, 'http://localhost').pathname).replace(/\/$/, '/index.html'));
+  if (!path.startsWith(root + sep)) { res.writeHead(403).end(); return; }
+  try { res.setHeader('Content-Type', mime[extname(path)] || 'application/octet-stream'); res.end(await readFile(path)); }
+  catch { res.writeHead(404).end(); }
+});
+await new Promise(r => server.listen(8123, '127.0.0.1', r));
+await mkdir('artifacts', { recursive: true });
+const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const context = await browser.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+const page = await context.newPage();
+const errors = [];
+page.on('pageerror', e => errors.push(String(e)));
+page.on('console', m => { if (/SCRIPT ERROR|ERROR:/.test(m.text())) errors.push(m.text()); });
+const state = () => page.evaluate(() => window.stockRogueQA);
+const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 120000 });
+async function point(x, y) {
+  const s = await state();
+  const r = await page.locator('#canvas').boundingBox();
+  return { x: r.x + x * r.width / s.viewport[0], y: r.y + y * r.height / s.viewport[1] };
+}
+async function tap(text) {
+  await wait(t => window.stockRogueQA?.controls.some(c => c.text === t), text);
+  const s = await state();
+  const c = s.controls.find(c => c.text === text);
+  const p = await point(c.rect[0] + c.rect[2] / 2, c.rect[1] + c.rect[3] / 2);
+  await page.touchscreen.tap(p.x, p.y);
+  await page.waitForTimeout(250);
+}
+async function shot(name) { await page.screenshot({ path: 'artifacts/' + name + '.png' }); }
+async function slider(index, fraction) {
+  const s = await state();
+  const c = s.controls.filter(c => c.type === 'HSlider')[index];
+  assert(c, 'volume slider exists');
+  const p = await point(c.rect[0] + c.rect[2] * fraction, c.rect[1] + c.rect[3] / 2);
+  await page.touchscreen.tap(p.x, p.y);
+  await page.waitForTimeout(300);
+}
+try {
+  await page.goto('http://127.0.0.1:8123/?qa=1');
+  await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
+  await shot('phone-menu');
+  await tap('SETTINGS');
+  await slider(0, 0.37);
+  await slider(1, 0.62);
+  await tap('Low effects');
+  let saved = (await state()).settings;
+  assert(saved.low_effects);
+  assert(saved.master > 0.25 && saved.master < 0.48, 'master changed by touch');
+  assert(saved.sfx > 0.50 && saved.sfx < 0.72, 'effects changed by touch');
+  await shot('phone-settings');
+  await page.reload();
+  await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
+  assert.deepEqual((await state()).settings, saved, 'audio/video settings survive browser reload');
+  assert(Math.abs((await state()).master_db - 20 * Math.log10(saved.master)) < 0.02, 'saved volume applied to audio bus');
+  await tap('QUICK HEIST');
+  await wait(() => window.stockRogueQA?.scene.endsWith('heist_floor.tscn') && window.stockRogueQA.touch_visible);
+  await page.waitForTimeout(500);
+  await shot('phone-heist');
+  let s = await state();
+  assert(s.active_enemies < s.all_enemies, 'distance sleeping is active');
+  const before = [...s.position], shotsBefore = s.shots;
+  const cd = await context.newCDPSession(page);
+  const l = await point(...s.left), r = await point(...s.right);
+  // Move diagonally away from the car while aiming/firing: two independent fingers.
+  await cd.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...l }, { id: 2, ...r }] });
+  await cd.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: l.x + 24, y: l.y - 24 }, { id: 2, x: r.x, y: r.y - 30 }] });
+  await page.waitForTimeout(850);
+  s = await state();
+  assert(Math.hypot(s.position[0] - before[0], s.position[1] - before[1]) > 50, 'left touch moves player');
+  assert(s.shots > shotsBefore, 'right touch fires while left moves');
+  await cd.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(300);
+  s = await state();
+  assert(!s.firing && s.move.every(v => v === 0), 'finger release clears both sticks');
+  await tap('PAUSE');
+  assert((await state()).paused, 'pause button works with touch');
+  const paused = await state();
+  await page.waitForTimeout(750);
+  s = await state();
+  assert.equal(s.elapsed, paused.elapsed, 'browser pause freezes clock');
+  assert.equal(s.heat, paused.heat, 'browser pause freezes heat');
+  assert.deepEqual(s.position, paused.position, 'browser pause freezes movement');
+  await shot('phone-paused');
+  await tap('SETTINGS');
+  await slider(0, 0.45);
+  await tap('BACK');
+  await tap('RESUME');
+  assert(!(await state()).paused, 'resume works');
+  await tap('PAUSE');
+  await tap('MENU - LAST CHECKPOINT');
+  await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
+  await tap('PLAY');
+  await wait(() => window.stockRogueQA?.scene.endsWith('character_select.tscn'));
+  await shot('phone-case-files');
+  await writeFile('artifacts/browser-report.json', JSON.stringify({ passed: true, settings: saved, tests: ['mobile menu', 'touch settings', 'reload persistence', 'audio application', 'distance sleeping', 'simultaneous movement and firing', 'touch release', 'pause heat/time/movement', 'resume', 'case-file screen'] }, null, 2));
+  assert.deepEqual(errors, [], 'no browser runtime errors');
+  console.log('BROWSER TEST SUITE COMPLETE');
+} catch (e) {
+  await shot('failure');
+  console.log('BROWSER STATE', JSON.stringify(await state()));
+  console.log('BROWSER ERRORS', JSON.stringify(errors));
+  throw e;
+} finally {
+  await browser.close();
+  server.close();
+}
