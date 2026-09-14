@@ -35,7 +35,7 @@ async function tap(text) {
   await page.touchscreen.tap(p.x, p.y);
   await page.waitForTimeout(250);
 }
-async function shot(name) { const bytes = await page.screenshot({ path: 'artifacts/' + name + '.png' }); if (name === 'phone-heist' || name === 'failure') console.log('SCREENSHOT ' + name + ' ' + bytes.toString('base64')); }
+async function shot(name) { const bytes = await page.screenshot({ path: 'artifacts/' + name + '.png' }); if (name === 'phone-infiltration' || name === 'failure') console.log('SCREENSHOT ' + name + ' ' + bytes.toString('base64')); }
 async function slider(index, fraction) {
   const s = await state();
   const c = s.controls.filter(c => c.type === 'HSlider')[index];
@@ -70,13 +70,18 @@ try {
   const before = [...s.position], shotsBefore = s.shots;
   const cd = await context.newCDPSession(page);
   const l = await point(...s.left), r = await point(...s.right);
+  const toward = [s.entrance[0] - s.position[0], s.entrance[1] - s.position[1]];
+  const length = Math.hypot(...toward);
+  const move = { x: l.x + toward[0] / length * 30, y: l.y + toward[1] / length * 30 };
   // Move diagonally away from the car while aiming/firing: two independent fingers.
   await cd.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...l }, { id: 2, ...r }] });
-  await cd.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: l.x + 24, y: l.y - 24 }, { id: 2, x: r.x, y: r.y - 30 }] });
-  await page.waitForTimeout(850);
+  await cd.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, ...move }, { id: 2, x: r.x, y: r.y - 30 }] });
+  await page.waitForTimeout(1400);
   s = await state();
   assert(Math.hypot(s.position[0] - before[0], s.position[1] - before[1]) > 50, 'left touch moves player');
   assert(s.shots > shotsBefore, 'right touch fires while left moves');
+  assert(s.entered && s.elapsed > 0.0, 'touch movement enters the building and starts the heist');
+  await shot('phone-infiltration');
   await cd.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(300);
   s = await state();

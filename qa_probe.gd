@@ -30,6 +30,8 @@ func _process(delta: float) -> void:
 		data["shots"] = scene.player.shots_fired
 		data["elapsed"] = scene.active_elapsed
 		data["heat"] = scene.heat
+		data["entrance"] = [scene.generator.entrance["inside_pos"].x, scene.generator.entrance["inside_pos"].y]
+		data["entered"] = scene.car.armed
 		data["active_enemies"] = scene.director.active_count
 		data["all_enemies"] = scene.director.enemies.size()
 	JavaScriptBridge.eval("window.stockRogueQA = " + JSON.stringify(data), true)

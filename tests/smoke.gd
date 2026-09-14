@@ -27,6 +27,8 @@ func _run() -> void:
 	get_tree().current_scene = floor_scene
 	await get_tree().process_frame
 	check(floor_scene.generator.rooms.size() == 8, "fixed eight-room Marlowe Exchange")
+	await get_tree().physics_frame
+	_test_doors()
 	check(floor_scene.generator.start_room.name == &"Lobby", "authored lobby entrance")
 	check(not floor_scene.generator.entrance.is_empty(), "accessible main door")
 	var bosses := get_tree().get_nodes_in_group("boss")
@@ -99,6 +101,15 @@ func _run() -> void:
 	RunState.add_perk(&"fast_hands")
 	var saved := RunState.serialize(4817, 0, 0, 0)
 	check(saved["hedge_charges"] == 2 and "fast_hands" in saved["perks"], "perk and hedge serialization")
+	var terminal := get_tree().get_first_node_in_group("market_terminal") as MarketTerminal
+	terminal.open_terminal()
+	check(get_tree().paused and terminal.opened, "market terminal pauses gameplay")
+	terminal._trade("pump")
+	var gold_after_trade := RunEconomy.gold
+	terminal._trade("pump")
+	check(terminal.used and RunEconomy.gold == gold_after_trade, "terminal accepts only one trade per heist")
+	terminal.close_terminal()
+	check(not get_tree().paused, "terminal returns to active heist")
 	# Boss telegraphs, a second phase, projectile identity and death hookup.
 	player.global_position = boss.global_position + Vector2(180, 80)
 	boss.set_sleeping(false)
@@ -119,6 +130,7 @@ func _run() -> void:
 	floor_scene.queue_free()
 	await get_tree().process_frame
 	get_tree().paused = false
+	await _test_projectiles()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
@@ -136,3 +148,77 @@ func _run() -> void:
 	await get_tree().create_timer(2.0).timeout
 	print("TEST SUITE COMPLETE")
 	get_tree().quit(0)
+
+func _test_doors() -> void:
+	var gen := floor_scene.generator
+	var visited: Dictionary = {}
+	var queue: Array = [gen.start_room.get_meta("cell")]
+	while not queue.is_empty():
+		var cell: Vector2i = queue.pop_front()
+		if visited.has(cell):
+			continue
+		visited[cell] = true
+		for delta: Vector2i in gen.SIDE_DELTA.values():
+			var other := cell + delta
+			if gen._occupied.has(other) and not visited.has(other):
+				queue.append(other)
+				if gen._occupied[cell] != gen._occupied[other]:
+					var center := (Vector2(cell) + Vector2(0.5, 0.5)) * gen.MODULE
+					var midpoint := center + Vector2(delta) * gen.MODULE * 0.5
+					var direction := Vector2(delta)
+					var query := PhysicsRayQueryParameters2D.create(midpoint - direction * 36.0, midpoint + direction * 36.0, 1)
+					check(floor_scene.get_world_2d().direct_space_state.intersect_ray(query).is_empty(), "authored doorway is physically open")
+	check(visited.size() == gen._occupied.size(), "all authored room cells reachable")
+
+func _test_projectiles() -> void:
+	var arena := Node2D.new()
+	get_tree().root.add_child(arena)
+	get_tree().current_scene = arena
+	var shooter: Player = load("res://player.tscn").instantiate()
+	shooter.position = Vector2(9000, 9000)
+	arena.add_child(shooter)
+	shooter.set_physics_process(false)
+	var targets: Array[Enemy] = []
+	for x in [10050, 10120, 10190]:
+		var enemy: Enemy = load("res://enemy.tscn").instantiate()
+		enemy.position = Vector2(x, 10000)
+		arena.add_child(enemy)
+		enemy.set_physics_process(false)
+		enemy.health = 10
+		targets.append(enemy)
+	await get_tree().physics_frame
+	var round: Bullet = load("res://bullet.tscn").instantiate()
+	round.position = Vector2(10000, 10000)
+	round.speed = 2400
+	round.damage = 2
+	round.pierce = 1
+	arena.add_child(round)
+	round.setup(Vector2.RIGHT, shooter)
+	await get_tree().create_timer(0.25).timeout
+	check(targets[0].health == 8 and targets[1].health == 8 and targets[2].health == 10, "fast piercing round hits exactly two guards once each")
+	var wall := StaticBody2D.new()
+	wall.position = Vector2(10150, 10200)
+	var shape := CollisionShape2D.new()
+	var rectangle := RectangleShape2D.new()
+	rectangle.size = Vector2(12, 100)
+	shape.shape = rectangle
+	wall.add_child(shape)
+	arena.add_child(wall)
+	var behind: Enemy = load("res://enemy.tscn").instantiate()
+	behind.position = Vector2(10020, 10200)
+	arena.add_child(behind)
+	behind.set_physics_process(false)
+	behind.health = 10
+	await get_tree().physics_frame
+	var bounce: Bullet = load("res://bullet.tscn").instantiate()
+	bounce.position = Vector2(10080, 10200)
+	bounce.speed = 1200
+	bounce.damage = 3
+	bounce.ricochets = 1
+	arena.add_child(bounce)
+	bounce.setup(Vector2.RIGHT, shooter)
+	await get_tree().create_timer(0.3).timeout
+	check(behind.health == 7, "ricochet round reflects off solid cover")
+	await get_tree().create_timer(0.1).timeout
+	arena.queue_free()
+	await get_tree().process_frame
