@@ -11,16 +11,11 @@ const PANEL := Color(0.10, 0.10, 0.13)
 const PANEL_EDGE := Color(0.24, 0.24, 0.3)
 const INK_SOFT := Color(0.62, 0.62, 0.7)
 
-const SETTINGS_PATH := "user://settings.cfg"
 
 var _root: Control
 var _main_menu: Control
 var _settings_panel: Control
 
-var _master_slider: HSlider
-var _sfx_slider: HSlider
-var _fullscreen_check: CheckButton
-var _seed_input: LineEdit
 
 func _ready() -> void:
 	get_tree().paused = false
@@ -85,7 +80,7 @@ func _build_main_menu() -> Control:
 	wrap.add_child(center)
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 26)
+	col.add_theme_constant_override("separation", 18)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	center.add_child(col)
 

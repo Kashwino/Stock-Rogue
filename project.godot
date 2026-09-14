@@ -18,6 +18,7 @@ Noise="*res://noise.gd"
 TouchInput="*res://touch_input.gd"
 Sfx="*res://sfx.gd"
 Controls="*res://mobile_controls.gd"
+QAProbe="*res://qa_probe.gd"
 
 [display]
 window/size/viewport_width=1280
