@@ -4,6 +4,9 @@ on:
     branches: [codex/mobile-web-beta, main]
   pull_request:
   workflow_dispatch:
+defaults:
+  run:
+    shell: bash
 permissions:
   contents: read
 jobs:
@@ -64,4 +67,23 @@ jobs:
         with:
           name: stock-rogue-web
           path: build/web
+          if-no-files-found: error
+      - name: Upload editable project
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-rogue-source
+          include-hidden-files: true
+          path: |
+            *.gd
+            *.tscn
+            *.tres
+            project.godot
+            export_presets.cfg
+            .gitignore
+            BETA_NOTES.md
+            rooms
+            layouts
+            audio
+            tests
+            .github/workflows
           if-no-files-found: error

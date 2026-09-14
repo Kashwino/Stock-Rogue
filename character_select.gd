@@ -111,7 +111,7 @@ func _title_block(parent: Control, kicker: String, title: String) -> VBoxContain
 
 	var k := Label.new()
 	k.text = kicker
-	k.add_theme_font_size_override("font_size", 13)
+	k.add_theme_font_size_override("font_size", 18)
 	k.add_theme_color_override("font_color", GOLD_DIM)
 	col.add_child(k)
 
@@ -131,8 +131,8 @@ func _title_block(parent: Control, kicker: String, title: String) -> VBoxContain
 func _back_button(parent: Control, text: String, action: Callable) -> void:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(180, 38)
-	b.add_theme_font_size_override("font_size", 13)
+	b.custom_minimum_size = Vector2(220, 74)
+	b.add_theme_font_size_override("font_size", 18)
 	b.pressed.connect(action)
 	parent.add_child(b)
 
@@ -160,7 +160,7 @@ func _show_case_files() -> void:
 	foot.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(foot)
 	_back_button(foot, "← Back to the street", func():
-		get_tree().change_scene_to_file("res://home_screen.tscn"))
+		RunFlow.queue_scene("res://home_screen.tscn"))
 
 func _make_file_card(i: int) -> Control:
 	var data := RunSave.peek(i)
@@ -192,7 +192,7 @@ func _make_file_card(i: int) -> Control:
 	tab.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var tab_l := Label.new()
 	tab_l.text = "CASE FILE %02d" % (i + 1)
-	tab_l.add_theme_font_size_override("font_size", 12)
+	tab_l.add_theme_font_size_override("font_size", 18)
 	tab_l.add_theme_color_override("font_color", INK)
 	tab.add_child(tab_l)
 	inner.add_child(tab)
@@ -202,7 +202,7 @@ func _make_file_card(i: int) -> Control:
 	inner.add_child(status)
 
 	var detail := Label.new()
-	detail.add_theme_font_size_override("font_size", 12)
+	detail.add_theme_font_size_override("font_size", 18)
 	detail.add_theme_color_override("font_color", Color(0.62, 0.62, 0.7))
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -219,7 +219,7 @@ func _make_file_card(i: int) -> Control:
 		# Burn button for an active file.
 		var burn := Button.new()
 		burn.text = "🔥 Burn file"
-		burn.add_theme_font_size_override("font_size", 11)
+		burn.add_theme_font_size_override("font_size", 18)
 		burn.custom_minimum_size = Vector2(0, 30)
 		burn.pressed.connect(func():
 			RunSave.delete_slot(i)
@@ -317,7 +317,7 @@ func _make_crew_card(c: Dictionary) -> Control:
 	var role_l := Label.new()
 	role_l.text = "— %s —" % c["role"]
 	role_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	role_l.add_theme_font_size_override("font_size", 11)
+	role_l.add_theme_font_size_override("font_size", 18)
 	role_l.add_theme_color_override("font_color", GOLD_DIM)
 	inner.add_child(role_l)
 
@@ -325,7 +325,7 @@ func _make_crew_card(c: Dictionary) -> Control:
 	var hearts_l := Label.new()
 	hearts_l.text = c["hearts"]
 	hearts_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hearts_l.add_theme_font_size_override("font_size", 14)
+	hearts_l.add_theme_font_size_override("font_size", 18)
 	hearts_l.add_theme_color_override("font_color",
 		Color(0.9, 0.45, 0.45) if unlocked else Color(0.45, 0.38, 0.4))
 	inner.add_child(hearts_l)
@@ -334,7 +334,7 @@ func _make_crew_card(c: Dictionary) -> Control:
 	trait_l.text = c["trait"]
 	trait_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	trait_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	trait_l.add_theme_font_size_override("font_size", 11)
+	trait_l.add_theme_font_size_override("font_size", 18)
 	trait_l.add_theme_color_override("font_color",
 		Color(0.85, 0.6, 0.6) if unlocked else Color(0.42, 0.42, 0.48))
 	inner.add_child(trait_l)
@@ -343,7 +343,7 @@ func _make_crew_card(c: Dictionary) -> Control:
 	blurb.text = c["blurb"]
 	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	blurb.add_theme_font_size_override("font_size", 11)
+	blurb.add_theme_font_size_override("font_size", 18)
 	blurb.add_theme_color_override("font_color",
 		Color(0.6, 0.6, 0.68) if unlocked else Color(0.36, 0.36, 0.42))
 	blurb.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -353,7 +353,7 @@ func _make_crew_card(c: Dictionary) -> Control:
 		var hire := Label.new()
 		hire.text = "▸ TAKE THE JOB"
 		hire.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		hire.add_theme_font_size_override("font_size", 13)
+		hire.add_theme_font_size_override("font_size", 18)
 		hire.add_theme_color_override("font_color", GOLD)
 		inner.add_child(hire)
 	else:
@@ -370,7 +370,7 @@ func _make_crew_card(c: Dictionary) -> Control:
 		how.text = c.get("unlock", "")
 		how.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		how.add_theme_font_size_override("font_size", 10)
+		how.add_theme_font_size_override("font_size", 18)
 		how.add_theme_color_override("font_color", Color(0.55, 0.4, 0.4))
 		inner.add_child(how)
 

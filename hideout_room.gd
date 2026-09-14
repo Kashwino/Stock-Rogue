@@ -268,7 +268,7 @@ func _leave_hideout() -> void:
 	if RunState.run_map:
 		RunState.run_map.advance_step()
 	RunFlow.save()
-	get_tree().change_scene_to_file("res://map_ui_screen.tscn")
+	RunFlow.queue_scene("res://map_ui_screen.tscn")
 
 # --------------------------------------------------------------- overlay ---
 func _build_hud_hint() -> void:

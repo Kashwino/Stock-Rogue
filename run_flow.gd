@@ -86,7 +86,7 @@ func go_to_map() -> void:
 			+ "to heist selection.")
 		return
 	pass # Debug logging removed.
-	var err := get_tree().change_scene_to_file(MAP_SCENE)
+	var err := RunFlow.queue_scene(MAP_SCENE)
 	if err != OK:
 		push_error("RunFlow: failed to load " + MAP_SCENE + " (error " + str(err) + ")")
 
@@ -101,7 +101,7 @@ func launch_heist(node: MapNode) -> void:
 			+ "child > save as res://heist_floor.tscn")
 		return
 	pass # Debug logging removed.
-	get_tree().change_scene_to_file(ARENA_SCENE)
+	RunFlow.queue_scene(ARENA_SCENE)
 
 ## Called by the arena when the player enters a new room (boundary save).
 func on_room_entered(index: int) -> void:
@@ -155,7 +155,7 @@ func _show_end_screen(victory: bool, summary: Dictionary) -> void:
 		push_error("RunFlow: res://death_screen.tscn missing — create it "
 			+ "(CanvasLayer root + death_screen.gd). Returning to menu.")
 		get_tree().paused = false
-		get_tree().change_scene_to_file("res://home_screen.tscn")
+		RunFlow.queue_scene("res://home_screen.tscn")
 		return
 	var scene = load("res://death_screen.tscn")
 	var screen = scene.instantiate()
@@ -191,4 +191,17 @@ func start_quick_test() -> void:
 	pending_heist.venue_id = &"bank_job"
 	pending_heist.room_rarity = 1
 	save()
-	get_tree().change_scene_to_file(ARENA_SCENE)
+	RunFlow.queue_scene(ARENA_SCENE)
+
+## Defer scene removal until touch/mouse button dispatch has finished.
+func queue_scene(path: String) -> Error:
+	if not ResourceLoader.exists(path):
+		return ERR_FILE_NOT_FOUND
+	_commit_scene.call_deferred(path)
+	return OK
+
+func _commit_scene(path: String) -> void:
+	Controls.release_all()
+	var error := get_tree().change_scene_to_file(path)
+	if error != OK:
+		push_error("Cannot open scene: " + path + " (" + str(error) + ")")

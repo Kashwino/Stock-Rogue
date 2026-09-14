@@ -133,8 +133,8 @@ func _build_main_menu() -> Control:
 func _menu_button(text: String, primary: bool, action: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(320, 78 if primary else 68)
-	b.add_theme_font_size_override("font_size", 20 if primary else 15)
+	b.custom_minimum_size = Vector2(320, 78 if primary else 74)
+	b.add_theme_font_size_override("font_size", 26 if primary else 24)
 	b.pressed.connect(action)
 
 	var edge := GOLD if primary else PANEL_EDGE
@@ -166,10 +166,10 @@ func _show_main_menu() -> void:
 
 func _on_play() -> void:
 	Settings.apply_display_from_gesture()
-	get_tree().change_scene_to_file("res://character_select.tscn")
+	RunFlow.queue_scene("res://character_select.tscn")
 
 func _on_continue() -> void:
-	get_tree().change_scene_to_file("res://character_select.tscn")
+	RunFlow.queue_scene("res://character_select.tscn")
 
 func _on_open_settings() -> void:
 	_main_menu.hide()

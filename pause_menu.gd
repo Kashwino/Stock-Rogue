@@ -16,6 +16,7 @@ func _ready() -> void:
 	add_child(root)
 	var pause := Button.new()
 	pause.text = "PAUSE"
+	pause.add_theme_font_size_override("font_size", 24)
 	pause.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	pause.position = Vector2(-146, 18)
 	pause.size = Vector2(120, 74)
@@ -56,7 +57,7 @@ func _ready() -> void:
 		settings_panel.show())
 	_button("MENU - LAST CHECKPOINT", func():
 		close_pause()
-		get_tree().change_scene_to_file("res://home_screen.tscn"))
+		RunFlow.queue_scene("res://home_screen.tscn"))
 	settings_panel = SettingsPanel.new()
 	settings_panel.closed.connect(func():
 		settings_panel.hide()
@@ -69,6 +70,7 @@ func _ready() -> void:
 func _button(text: String, callback: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
+	button.add_theme_font_size_override("font_size", 24)
 	button.custom_minimum_size.y = 74
 	button.pressed.connect(callback)
 	menu.add_child(button)
