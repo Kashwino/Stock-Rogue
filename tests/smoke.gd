@@ -149,6 +149,15 @@ func _run() -> void:
 	boss.take_damage(9999)
 	check(floor_scene.marked, "boss death marks heist and triggers reward")
 	await get_tree().create_timer(0.2).timeout
+	check(MarketOps.execute("short", &"bank_job")["ok"], "open final extraction contract")
+	asset.current_price = float(RunState.short_position["entry"]) * 0.9
+	var extraction_gold := RunEconomy.gold
+	floor_scene._extract()
+	check(get_tree().paused and floor_scene.results._shown, "extraction presents results while paused")
+	check(RunEconomy.gold == extraction_gold + 105 and RunState.short_position.is_empty(), "real extraction pays short before grade movement")
+	check(Meta.intel == 8, "real extraction banks sabotage and boss Intel")
+	floor_scene._extract()
+	check(RunEconomy.gold == extraction_gold + 105 and Meta.intel == 8, "duplicate extraction cannot duplicate gold or Intel")
 	floor_scene.queue_free()
 	await get_tree().process_frame
 	get_tree().paused = false

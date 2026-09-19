@@ -6,7 +6,7 @@ var message := ""
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(980, 620)
-	_rebuild()
+	_rebuild.call_deferred()
 
 func _rebuild() -> void:
 	if body:
@@ -64,4 +64,5 @@ func _choose(id: StringName) -> void:
 		message = "Starting perk saved." if Meta.equip_starting_perk(&"" if Meta.starting_perk == id else id) else "Could not save on this device."
 	else:
 		message = Meta.purchase(id)
-	_rebuild()
+	# The pressed button must remain in the tree until touch dispatch completes.
+	_rebuild.call_deferred()

@@ -46,6 +46,10 @@ func _process(delta: float) -> void:
 		data["terminal_position"] = [scene.generator.start_room.position.x + 430, scene.generator.start_room.position.y + 270]
 	JavaScriptBridge.eval("window.stockRogueQA = " + JSON.stringify(data), true)
 func _collect(node: Node, out: Array) -> void:
+	if node is TouchScreenButton and node.is_visible_in_tree():
+		var rect: Rect2 = get_viewport().get_final_transform() * node.global_transform * Rect2(-46, -46, 92, 92)
+		var labels := {"interact": "USE", "swap_weapon": "SWAP", "reload": "RELOAD", "dodge": "DODGE"}
+		out.append({"text": labels.get(String(node.action), String(node.action)), "type": "TouchScreenButton", "rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y]})
 	if node is Control and node.is_visible_in_tree() and (node is BaseButton or node is HSlider or node.has_meta("qa_label")):
 		var rect: Rect2 = get_viewport().get_final_transform() * node.get_global_rect()
 		out.append({"text": node.text if node is Button else node.get_meta("qa_label", node.name), "type": node.get_class(),

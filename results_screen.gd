@@ -107,7 +107,7 @@ func _build() -> void:
 
 	_continue_button = Button.new()
 	_continue_button.text = "Back to the map"
-	_continue_button.custom_minimum_size = Vector2(0, 42)
+	_continue_button.custom_minimum_size = Vector2(0, 74)
 	_continue_button.focus_mode = Control.FOCUS_ALL
 	_continue_button.process_mode = Node.PROCESS_MODE_ALWAYS
 	_continue_button.pressed.connect(_on_continue)

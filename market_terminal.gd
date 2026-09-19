@@ -65,6 +65,8 @@ func open_terminal() -> void:
 		index += 1
 	col.add_child(_target)
 	_status = Label.new()
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status.custom_minimum_size.y = 58
 	_status.text = "Gold: %d   |   Heat: %.0f" % [RunEconomy.gold, scene.heat]
 	_status.add_theme_font_size_override("font_size", 22)
 	col.add_child(_status)

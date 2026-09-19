@@ -119,7 +119,9 @@ func _build_floor() -> void:
 
 	# Difficulty from heist rarity: denser crews in rarer heists.
 	for room in generator.rooms:
-		if room.has_meta("is_boss"):
+		if room == generator.start_room:
+			room.spawn_count = 0
+		elif room.has_meta("is_boss"):
 			room.spawn_count = 1
 			room.enemy_scene = load("res://auditor_boss.tscn")
 		elif room.get_meta("chest_kind", "") == "":
@@ -226,7 +228,7 @@ func _decorate_exits() -> void:
 		_exit_label(generator.entrance["inside_pos"], "MAIN DOOR — the car is out here",
 			Color(0.95, 0.8, 0.3))
 	for g: Dictionary in generator.exits:
-		_exit_label(g["inside_pos"], "LOCKDOWN — EXIT SEALED" if modifier == &"lockdown" else "FIRE EXIT — quiet escape", Color(0.35, 0.85, 0.5))
+		_exit_label(g["inside_pos"], "LOCKDOWN — EXIT SEALED" if modifier == &"lockdown" else "FIRE EXIT — quiet escape", Color(1.0, 0.35, 0.3) if modifier == &"lockdown" else Color(0.35, 0.85, 0.5))
 
 ## A point OUTSIDE the main door, on the street side of the entrance wall.
 func _outside_position() -> Vector2:
@@ -405,6 +407,8 @@ func _on_enemy_died(e) -> void:
 		live.report_kill()
 
 func _on_room_cleared(room) -> void:
+	if room.get("spawn_count") <= 0:
+		return
 	# Gold on wiping a room's crew (chance + amount by rarity). Movement is
 	# never gated — this is purely the payday.
 	var rarity: int = room.get("rarity")

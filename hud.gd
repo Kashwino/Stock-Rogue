@@ -134,7 +134,7 @@ func _draw_gold(value: float) -> void:
 
 ## Quick pop on the gold counter when a floor pickup is grabbed.
 func flash_gold() -> void:
-	if currency_label == null:
+	if currency_label == null or Settings.values["low_effects"]:
 		return
 	currency_label.scale = Vector2(1.3, 1.3)
 	currency_label.pivot_offset = currency_label.size * 0.5
