@@ -192,14 +192,16 @@ func _load_templates() -> void:
 	dir.list_dir_begin()
 	var f := dir.get_next()
 	while f != "":
-		if f.ends_with(".tscn"):
-			var scene = load(ROOMS_DIR + "/" + f)
+		# Exported PCKs expose .tscn.remap entries; load their logical paths.
+		var resource_name := f.trim_suffix(".remap")
+		if resource_name.ends_with(".tscn"):
+			var scene = load(ROOMS_DIR + "/" + resource_name)
 			if scene:
-				if f.begins_with("small"):
+				if resource_name.begins_with("small"):
 					_templates_small.append(scene)
-				elif f.begins_with("medium"):
+				elif resource_name.begins_with("medium"):
 					_templates_medium.append(scene)
-				elif f.begins_with("large"):
+				elif resource_name.begins_with("large"):
 					_templates_large.append(scene)
 		f = dir.get_next()
 	dir.list_dir_end()
