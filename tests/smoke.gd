@@ -16,7 +16,10 @@ func _run() -> void:
 	RunState.add_max_health(20)
 	RunFlow.pending_heist = MapNode.new()
 	RunFlow.pending_heist.venue_id = &"bank_job"
-	check(ItemPool.weapons().size() == 17, "17 weapons")
+	check(ItemPool.weapons().size() == 20, "20 weapons in catalog")
+	check(ItemPool.rewardable_weapons().size() == 16, "three career weapons gated from rewards")
+	_test_progression()
+	_test_modifiers()
 	check(ItemPool.upgrades().size() >= 9, "expanded upgrade pool")
 	var weapon_ids: Dictionary = {}
 	for weapon: WeaponItem in ItemPool.weapons():
@@ -93,9 +96,23 @@ func _run() -> void:
 	check(is_equal_approx(asset.current_price, before * 1.15) and RunEconomy.gold == 440, "pump cost and price")
 	before = asset.current_price
 	check(MarketOps.execute("short", &"bank_job")["ok"], "short executes")
-	check(is_equal_approx(asset.current_price, before * 0.8) and RunEconomy.gold == 475, "short payout and price")
+	check(is_equal_approx(asset.current_price, before) and RunEconomy.gold == 365, "short escrows 75 without moving price or instant profit")
+	check(not MarketOps.execute("short", &"bank_job")["ok"] and RunEconomy.gold == 365, "cannot double open a short")
+	floor_scene.live.report_kill()
+	check(asset.current_price < before and ShortBook.quote()["profit"] > 0, "kills make the active short profitable")
+	before = asset.current_price
+	floor_scene.live.report_damage_taken(1)
+	check(asset.current_price > before, "taking damage hurts the short")
+	var open_save := RunState.serialize(4817, 0, 0, 0)
+	check(open_save["short_position"]["venue"] == "bank_job", "short position serializes")
+	asset.current_price = float(RunState.short_position["entry"]) * 0.5
+	var covered := ShortBook.settle(true)
+	check(covered["payout"] == 225 and RunEconomy.gold == 590, "escape settles capped short proceeds")
+	check(ShortBook.settle(true).is_empty() and RunEconomy.gold == 590, "short settles exactly once")
 	check(MarketOps.execute("hedge", &"bank_job")["ok"] and RunState.hedge_charges == 3, "three-hit circuit breaker")
-	check(not MarketOps.execute("hedge", &"bank_job")["ok"] and RunEconomy.gold == 375, "cannot double-buy active hedge")
+	check(not MarketOps.execute("hedge", &"bank_job")["ok"] and RunEconomy.gold == 490, "cannot double-buy active hedge")
+	RunState.short_position = open_save["short_position"].duplicate(true)
+	check(ShortBook.settle(false)["payout"] == 0 and RunEconomy.gold == 490, "death forfeits short collateral")
 	floor_scene.live.report_damage_taken(1)
 	check(RunState.hedge_charges == 2, "damage consumes hedge")
 	RunState.add_perk(&"fast_hands")
@@ -110,6 +127,11 @@ func _run() -> void:
 	check(terminal.used and RunEconomy.gold == gold_after_trade, "terminal accepts only one trade per heist")
 	terminal.close_terminal()
 	check(not get_tree().paused, "terminal returns to active heist")
+	await _test_security()
+	floor_scene.fx.last_kill()
+	check(Engine.time_scale < 1.0, "room finish slows action")
+	await get_tree().create_timer(0.35, true, false, true).timeout
+	check(Engine.time_scale == 1.0, "room finish restores normal speed")
 	# Boss telegraphs, a second phase, projectile identity and death hookup.
 	player.global_position = boss.global_position + Vector2(180, 80)
 	boss.set_sleeping(false)
@@ -130,6 +152,8 @@ func _run() -> void:
 	floor_scene.queue_free()
 	await get_tree().process_frame
 	get_tree().paused = false
+	check(Engine.time_scale == 1.0, "scene exit restores time scale")
+	await _test_lockdown()
 	await _test_projectiles()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
@@ -148,6 +172,91 @@ func _run() -> void:
 	await get_tree().create_timer(2.0).timeout
 	print("TEST SUITE COMPLETE")
 	get_tree().quit(0)
+
+func _test_progression() -> void:
+	check(Meta.award_extraction("empty-fixture", 0, 0, false) == 0, "empty extraction earns no Intel")
+	check(Meta.award_extraction("earned-fixture", 12, 4, true) == 14, "extraction awards capped combat and sabotage Intel")
+	check(Meta.award_extraction("earned-fixture", 12, 4, true) == 0 and Meta.intel == 14, "checkpoint replay cannot duplicate Intel")
+	check(Meta.purchase(&"circuit_smg") == "Unlocked permanently." and Meta.intel == 2, "weapon unlock spends Intel")
+	check(ItemPool.rewardable_weapons().size() == 17, "purchased weapon enters reward pool")
+	Meta.purchase(&"circuit_smg")
+	check(Meta.intel == 2, "duplicate unlock does not spend")
+	Meta.purchase(&"cool_head")
+	check(Meta.intel == 2 and &"cool_head" not in Meta.unlocked_assets, "unaffordable unlock is atomic")
+	Meta.reset()
+
+func _test_modifiers() -> void:
+	var a := RunMap.new()
+	var b := RunMap.new()
+	a.generate(9182)
+	b.generate(9182)
+	var tags: Dictionary = {}
+	for s in a.stages.size():
+		for h in a.stages[s].size():
+			for i in a.stages[s][h].options.size():
+				var node: MapNode = a.stages[s][h].options[i]
+				tags[node.modifier] = true
+				check(node.modifier == b.stages[s][h].options[i].modifier, "map modifier deterministic")
+	check(tags.size() == 3, "all three map modifiers appear")
+
+func _test_security() -> void:
+	var devices := get_tree().get_nodes_in_group("security")
+	check(devices.size() == 14, "seven rooms have cameras and alarm panels")
+	var panel: SecurityDevice
+	for device: SecurityDevice in devices:
+		if device.kind == SecurityDevice.Kind.ALARM:
+			panel = device
+			break
+	var start_heat := floor_scene.heat
+	floor_scene.security_alert(panel.room, "Test radio", 10.0)
+	check(panel.armed and floor_scene.heat > start_heat, "witness report arms local alarm and adds heat")
+	panel.disable()
+	var count := floor_scene.security_disabled
+	check(count == 2 and not panel.armed, "disabling panel also disables room camera")
+	panel.take_damage(999)
+	check(floor_scene.security_disabled == count, "disabled security cannot be farmed")
+	for device: SecurityDevice in devices:
+		device.disable()
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		enemy.radio_carrier = false
+	floor_scene.heat = 0.0
+	await get_tree().create_timer(0.7).timeout
+	check(floor_scene.heat == 0.0, "no passive heat after security is disabled")
+	var guard: Enemy = load("res://enemy.tscn").instantiate()
+	floor_scene.add_child(guard)
+	guard.set_physics_process(false)
+	guard.radio_carrier = true
+	guard._provoked = true
+	guard.health = 20
+	guard._radio_step(1.0, true)
+	check(guard.radio_progress > 0.0, "radio has interruptible windup")
+	guard.take_damage(1)
+	check(guard.radio_progress == 0.0 and guard.radio_cooldown > 0.0, "damage interrupts a radio call")
+	guard.radio_cooldown = 0.0
+	guard._radio_step(2.0, true)
+	check(floor_scene.heat > 0.0, "completed guard radio call creates heat")
+	guard.queue_free()
+	floor_scene.modifier = &"heavy_police"
+	check(floor_scene.loot_multiplier() == 2 and floor_scene.dispatch_threshold() == 8.0, "heavy police doubles loot and responds sooner")
+	var gold := RunEconomy.gold
+	floor_scene._on_loot_collected(10)
+	check(RunEconomy.gold == gold + 20, "heavy modifier doubles actual pickup payout")
+	floor_scene.modifier = &""
+
+func _test_lockdown() -> void:
+	RunFlow.pending_heist.modifier = &"lockdown"
+	var lockdown: HeistFloor = load("res://heist_floor.tscn").instantiate()
+	get_tree().root.add_child(lockdown)
+	get_tree().current_scene = lockdown
+	await get_tree().physics_frame
+	check(not lockdown.generator.exits.is_empty(), "lockdown has emergency exits to seal")
+	for gap: Dictionary in lockdown.generator.exits:
+		check(not gap.get("open", true), "lockdown seals fire exits at build time")
+	check(lockdown.generator.entrance.get("open", true), "lockdown preserves main escape")
+	lockdown.tactical_map.full_reveal = true
+	check(lockdown.tactical_map.full_reveal, "Insider can reveal the tactical layout")
+	lockdown.queue_free()
+	await get_tree().process_frame
 
 func _test_doors() -> void:
 	var gen := floor_scene.generator

@@ -108,4 +108,10 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, 125.0, safe_angle - 0.5, safe_angle + 0.5, 12, Color(0.35, 1.0, 0.6), 6.0)
 
 func _flash() -> void:
+	if not Settings.values["low_effects"]:
+		if _flash_tween and _flash_tween.is_valid():
+			_flash_tween.kill()
+		sprite.modulate = Color(3, 3, 3)
+		_flash_tween = create_tween()
+		_flash_tween.tween_property(sprite, "modulate", Color.WHITE, 0.08)
 	queue_redraw()

@@ -25,6 +25,10 @@ func _process(delta: float) -> void:
 		"left": [left.x, left.y],
 		"right": [right.x, right.y],
 		"move": [TouchInput.move.x, TouchInput.move.y], "firing": TouchInput.firing}
+	data["intel"] = Meta.intel
+	data["unlocks"] = Meta.unlocked_assets
+	data["starting_perk"] = String(Meta.starting_perk)
+	data["perks"] = RunState.perks
 	if scene is HeistFloor and is_instance_valid(scene.player):
 		data["position"] = [scene.player.global_position.x, scene.player.global_position.y]
 		data["shots"] = scene.player.shots_fired
@@ -34,6 +38,12 @@ func _process(delta: float) -> void:
 		data["entered"] = scene.car.armed
 		data["active_enemies"] = scene.director.active_count
 		data["all_enemies"] = scene.director.enemies.size()
+		data["modifier"] = String(scene.modifier)
+		data["security_count"] = get_tree().get_nodes_in_group("security").size()
+		data["map_visible"] = scene.tactical_map.visible
+		data["map_revealed"] = scene.tactical_map.full_reveal
+		data["short"] = ShortBook.quote()
+		data["terminal_position"] = [scene.generator.start_room.position.x + 430, scene.generator.start_room.position.y + 270]
 	JavaScriptBridge.eval("window.stockRogueQA = " + JSON.stringify(data), true)
 func _collect(node: Node, out: Array) -> void:
 	if node is Control and node.is_visible_in_tree() and (node is BaseButton or node is HSlider or node.has_meta("qa_label")):

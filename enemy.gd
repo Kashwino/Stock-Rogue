@@ -156,6 +156,10 @@ var _flash_tween: Tween
 var sleeping := false
 var wake_until_msec: int = 0
 var _director: EnemyDirector = null
+var radio_carrier := false
+var radio_progress := 0.0
+var radio_cooldown := 0.0
+var radio_label: Label
 
 func set_sleeping(value: bool) -> void:
 	if _dead:
@@ -196,6 +200,15 @@ var _provoked: bool = false
 const LOSE_INTEREST_TIME := 4.0
 
 func _ready() -> void:
+	radio_label = Label.new()
+	radio_label.position = Vector2(-100, -76)
+	radio_label.size = Vector2(200, 50)
+	radio_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	radio_label.add_theme_font_size_override("font_size", 18)
+	radio_label.add_theme_color_override("font_color", Color(1, 0.7, 0.15))
+	radio_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	radio_label.hide()
+	add_child(radio_label)
 	add_to_group("enemies")                  # ensures bullets can find us
 	# Set collision in code so a mis-set enemy.tscn can't let guards walk
 	# through walls. Layer 2 = enemies; mask 1 (walls) + 2 (other enemies) so
@@ -293,6 +306,9 @@ func _physics_process(delta: float) -> void:
 	# Being seen while in the player's room counts as provocation on its own.
 	if sees and not _provoked and _player_in_my_room():
 		_provoked = true
+	if _radio_step(delta, sees):
+		velocity = Vector2.ZERO
+		return
 
 	match _alert:
 		Alert.HUNTING:      _do_hunt(delta, sees)
@@ -499,6 +515,9 @@ func _find_hurt_ally() -> Node:
 func _shoot(dir: Vector2) -> void:
 	if enemy_bullet_scene == null:
 		return
+	var host := get_tree().current_scene
+	if host is HeistFloor:
+		host.fx.muzzle(global_position + dir * 28.0, dir)
 	for i in maxi(pellets, 1):
 		var offset := 0.0
 		if pellets > 1:
@@ -540,6 +559,10 @@ func take_damage(amount: int = 1) -> void:
 	if _dead:
 		return
 	wake_for(3.0)
+	radio_progress = 0.0
+	radio_cooldown = maxf(radio_cooldown, 2.0)
+	if radio_label:
+		radio_label.hide()
 	health -= amount
 	# Being shot: you know where it came from and you're now hostile.
 	_provoked = true
@@ -570,3 +593,24 @@ func _die() -> void:
 		get_node("/root/Noise").death(global_position)
 	died.emit(self)
 	queue_free()
+
+func _radio_step(delta: float, sees: bool) -> bool:
+	if not radio_carrier or hunting:
+		return false
+	radio_cooldown = maxf(0.0, radio_cooldown - delta)
+	if not sees or not _provoked or radio_cooldown > 0.0:
+		radio_progress = 0.0
+		radio_label.visible = sees and radio_cooldown <= 0.0
+		radio_label.text = "RADIO GUARD"
+		return false
+	radio_progress += delta
+	radio_label.show()
+	radio_label.text = "RADIO CALL  %d%%\nHIT TO INTERRUPT" % int(minf(1.0, radio_progress / 1.8) * 100)
+	if radio_progress >= 1.8:
+		radio_progress = 0.0
+		radio_cooldown = 12.0
+		radio_label.hide()
+		var host := get_tree().current_scene
+		if host is HeistFloor:
+			host.security_alert(get_parent(), "Guard radio call", 10.0)
+	return true

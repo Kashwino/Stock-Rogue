@@ -1,4 +1,36 @@
-# Stock Rogue 0.2 — mobile Web beta
+# Stock Rogue 0.3 — criminal network update
+
+## New in 0.3
+
+- Map contracts carry visible modifiers: **Heavy Police Response** doubles pickup,
+  room-clear and boss gold, halves the police heat threshold (8 vs 16), and halves
+  the dispatch interval (12 vs 24 seconds). **Lockdown** seals fire exits from entry;
+  the main door and getaway car remain available. **Insider** reveals all rooms,
+  chests, the boss and exits in the touch-accessible MAP overlay. Other contracts
+  reveal rooms as you explore. Quick Heist uses Insider.
+- Heat comes from camera sightings, completed guard radio calls, active alarm panels,
+  market manipulation and the Auditor's distress beacon. It never rises merely
+  because time passes. After four seconds without reports, heat falls by 1/second.
+  Cameras show detection cones and a windup; guards show an interruptible radio call.
+  Shoot cameras or USE/shoot a panel to disable its room's security. Each disabled
+  device reduces heat by 4 and the venue price by 3.5% before character volatility.
+- **Short This Heist** replaces the instant Short & Leak payout. It escrows 75 gold
+  against 300 gold notional exposure to the current venue. In this hostile position,
+  hits and kills push its stock down, while taking damage pushes it up. Sabotage
+  always lowers the venue's value. Escape settles collateral plus profit, capped
+  between 0 and 225 gold. Death forfeits the stake; settlement cannot happen twice.
+  Settlement uses the combat price before the extraction grade. Shorting sacrifices
+  venue growth, so it competes with the empire Index needed at quota gates.
+- NETWORK on the home screen spends persistent Intel on three new loot-pool weapons
+  (Circuit Thief, Margin Call, Hostile Takeover) and three starting perks (Fast Hands,
+  Quiet Shoes, Cool Head). Equip one perk for future runs. Existing weapons remain
+  available. Earn Intel on escape: 1 per two kills (max 6), 1 per disabled device
+  (max 4), plus 4 for the Auditor. Empty escapes earn nothing and replaying an awarded
+  checkpoint cannot duplicate Intel. Currency, unlocks, equipment and receipts save
+  immediately, including synchronous browser storage.
+- Screen shake, muzzle flashes, guard/player/boss hit flashes, a brief room-final-kill
+  slowdown, and animated gold totals. Low Effects suppresses these effects.
+- Resume restores quota progress as well as the map position.
 
 ## Play and controls
 
@@ -23,12 +55,12 @@ test save slot; your three case files are not overwritten.
 - **The Auditor**: declared radial levies with a green escape wedge, locked-direction
   foreclosure charges, and a faster **Margin Call** phase below half health.
   Defeating him triggers the existing marked/reinforcement/extraction consequences.
-- 17 weapons total: six new guns with bouncing rounds, penetrating shots,
+- 20 weapons in the full catalog, including three permanent unlocks and guns with bouncing rounds, penetrating shots,
   shotgun knockback or a reduced noise radius.
 - Nine stat upgrades total, plus six new purchasable fence perks: Fast Hands,
   Blood Dividend, Quiet Shoes, Cool Head, Scavenger and Golden Parachute.
 - Pump the Tape: 60 gold, selected venue +15%, +8 heat.
-- Short & Leak: 75 gold, selected venue -20%, 110 gold payout, +12 heat.
+- Short This Heist: 75 gold collateral; combat-driven settlement on escape, +0 heat.
 - Circuit Breaker: 100 gold, halve the next three damage-driven stock losses, +4 heat.
 - Enemy manager checks distance at 5 Hz with separate wake/sleep thresholds;
   sleeping guards stop physics, noise/damage wakes them, and hunting reinforcements

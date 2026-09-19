@@ -107,12 +107,16 @@ func _apply_raw(effective: float) -> void:
 ## Player landed a bullet on an enemy.
 func report_hit_landed() -> void:
 	var base := _profile.gain_per_hit if _profile else 0.01
+	if ShortBook.targets(venue_asset_id):
+		base = -base
 	_apply(base)
 	market_event.emit(&"hit", base)
 
 ## Player killed an enemy.
 func report_kill() -> void:
 	var base := _profile.gain_per_kill if _profile else 0.05
+	if ShortBook.targets(venue_asset_id):
+		base = -base
 	_apply(base)
 	market_event.emit(&"kill", base)
 
@@ -124,8 +128,13 @@ func report_damage_taken(amount: int) -> void:
 	if RunState.hedge_charges > 0:
 		RunState.hedge_charges -= 1
 		base *= 0.5
-	_apply(-base)
+	_apply(base if ShortBook.targets(venue_asset_id) else -base)
 	market_event.emit(&"damage", base)
+
+func report_sabotage() -> void:
+	# Destroying a venue's security weakens its value regardless of your position.
+	_apply(-0.035)
+	market_event.emit(&"sabotage", 0.035)
 
 ## A big scripted move (boss pump, grade payout at extraction).
 func report_shock(multiplier: float, kind: StringName = &"grade") -> void:

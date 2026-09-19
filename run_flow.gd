@@ -62,6 +62,8 @@ func continue_run() -> void:
 	# Fast-forward the map to the saved position.
 	RunState.run_map.current_stage = stage
 	RunState.run_map.current_step = step
+	RunState.run_map.quota_block = int(data.get("quota_block", stage))
+	RunState.run_map.heists_done = int(data.get("heists_done", heists_completed))
 	go_to_map()
 
 # --- Saving (called at every boundary) ---
@@ -125,6 +127,10 @@ func on_heist_finished() -> void:
 
 # --- Run end ---
 func end_run(victory: bool) -> void:
+	if not RunState.active:
+		return
+	ShortBook.settle(false)
+	Meta.record_run_end(RunEconomy.gold, victory)
 	# Snapshot the run's stats BEFORE clearing state — RunState.end_run() wipes
 	# the market and loadout, so reading them afterwards gives nothing.
 	# Everything here is guarded: a bad read must not stop the end screen.
@@ -190,6 +196,7 @@ func start_quick_test() -> void:
 	pending_heist = MapNode.new()
 	pending_heist.venue_id = &"bank_job"
 	pending_heist.room_rarity = 1
+	pending_heist.modifier = &"insider"
 	save()
 	RunFlow.queue_scene(ARENA_SCENE)
 

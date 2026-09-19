@@ -92,7 +92,7 @@ func _trade(operation: String) -> void:
 	if result["ok"]:
 		used = true
 		var scene := get_tree().current_scene as HeistFloor
-		scene.heat += float(result["heat"])
+		scene.add_heat(float(result["heat"]), "Market manipulation")
 		for button in _trade_buttons:
 			button.disabled = true
 		prompt.text = "TERMINAL LOCKED"

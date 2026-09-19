@@ -8,7 +8,7 @@ class_name HeistFloor
 ##    posted on the valuables and never leave them.
 ##  - No door locks, no forced room clearing. Rooms award gold when their crew
 ##    falls, but nothing gates your movement.
-##  - HEAT rises over time; reinforcements breach from the entrance and exits
+##  - HEAT comes from witnessed security reports; reinforcements breach from entrances
 ##    and HUNT you. Killing the boss MARKS you: bigger waves, and emergency
 ##    exits weld shut one by one. The main door always stays open.
 ##  - To extract, get back OUT of the building and stand at the car for a few
@@ -60,6 +60,14 @@ var director: EnemyDirector
 var _kill_streak := 0
 var _rarity: int = 0
 var _venue: StringName = &""
+var modifier: StringName = &""
+var fx: CombatFX
+var security_disabled := 0
+var last_heat_source := "No reports. Stay out of sight."
+var quiet_seconds := 0.0
+var _security_status: Label
+var tactical_map: HeistMap
+var _status_clock := 0.0
 
 func _ready() -> void:
 	director = EnemyDirector.new()
@@ -70,6 +78,9 @@ func _ready() -> void:
 		camera = Camera2D.new()
 		add_child(camera)
 	camera.make_current()
+	fx = CombatFX.new()
+	fx.camera = camera
+	add_child(fx)
 
 	_ensure_chest_ui()
 	_ensure_results()
@@ -83,6 +94,7 @@ func _build_floor() -> void:
 	if RunFlow.pending_heist != null:
 		_rarity = RunFlow.pending_heist.room_rarity
 		_venue = RunFlow.pending_heist.venue_id
+		modifier = RunFlow.pending_heist.modifier
 	else:
 		_rarity = 0
 		_venue = &"pickpocket"
@@ -95,7 +107,7 @@ func _build_floor() -> void:
 
 	generator = FloorGenerator.new()
 	add_child(generator)
-	if (stage == 0 and heist_index == 0) or _venue == &"bank_job":
+	if (stage == 0 and heist_index <= 1) or _venue == &"bank_job":
 		generator.generate_authored()
 	else:
 		generator.generate(
@@ -134,6 +146,9 @@ func _build_floor() -> void:
 	if generator.upgrade_chest_room:
 		_spawn_chest(generator.upgrade_chest_room, "upgrade")
 
+	if modifier == &"lockdown":
+		for gap: Dictionary in generator.exits:
+			generator.close_exit(gap)
 	_decorate_exits()
 	_ensure_prompt()
 	_spawn_car()
@@ -142,6 +157,8 @@ func _build_floor() -> void:
 	var terminal := MarketTerminal.new()
 	terminal.position = generator.start_room.position + Vector2(430, 270)
 	add_child(terminal)
+	_setup_security()
+	_setup_tactics()
 
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
@@ -209,7 +226,7 @@ func _decorate_exits() -> void:
 		_exit_label(generator.entrance["inside_pos"], "MAIN DOOR — the car is out here",
 			Color(0.95, 0.8, 0.3))
 	for g: Dictionary in generator.exits:
-		_exit_label(g["inside_pos"], "FIRE EXIT — quiet escape", Color(0.35, 0.85, 0.5))
+		_exit_label(g["inside_pos"], "LOCKDOWN — EXIT SEALED" if modifier == &"lockdown" else "FIRE EXIT — quiet escape", Color(0.35, 0.85, 0.5))
 
 ## A point OUTSIDE the main door, on the street side of the entrance wall.
 func _outside_position() -> Vector2:
@@ -257,6 +274,7 @@ func _assign_guard_roles() -> void:
 			# Archetype first: rarity raises the odds of the nastier kinds.
 			c.apply_archetype(_pick_archetype(room, guards_loot))
 			c.set_guard_room(room_rect)
+			c.radio_carrier = c == guards[0]
 
 			if guards_loot:
 				# Treasure guards: rooted, watchful, never leave the prize.
@@ -382,7 +400,7 @@ func _on_enemy_died(e) -> void:
 		player.health = mini(player.health + 1, player.max_health)
 		player.health_changed.emit(player.health, player.max_health)
 	RunFlow.total_kills += 1
-	heat += 1.5
+	fx.shake(3.0)
 	if live:
 		live.report_kill()
 
@@ -392,20 +410,23 @@ func _on_room_cleared(room) -> void:
 	var rarity: int = room.get("rarity")
 	var row: Array = GOLD_TABLE.get(rarity, GOLD_TABLE[0])
 	if _rng.randf() < row[0]:
-		RunEconomy.award_clear(_rng.randi_range(row[1], row[2]))
+		RunEconomy.award_clear(_rng.randi_range(row[1], row[2]) * loot_multiplier())
 	RunEconomy.on_room_start()   # hit-penalty ramp resets per cleared room
+	# Empty treasure rooms also emit cleared on activation; only actual kills get the beat.
+	if room.get("spawn_count") > 0:
+		fx.last_kill()
 
 	if room.has_meta("is_boss") and not marked:
 		_become_marked()
 
 func _become_marked() -> void:
 	marked = true
-	heat += 10.0
+	add_heat(16.0, "Auditor distress beacon")
 	_close_timer = exit_close_interval
 	# Big payoff for the boss: gold + a hard stock pump on the venue.
-	RunEconomy.add_bonus(_rng.randi_range(250, 400))
+	RunEconomy.add_bonus(_rng.randi_range(250, 400) * loot_multiplier())
 	if live:
-		live.report_shock(1.30, &"boss")
+		live.report_shock(0.70 if ShortBook.targets(_venue) else 1.30, &"boss")
 	pass # Debug logging removed.
 
 # ------------------------------------------------- heat & reinforcements ----
@@ -416,6 +437,10 @@ func _process(delta: float) -> void:
 	# Camera follows the player.
 	camera.global_position = camera.global_position.lerp(
 		player.global_position, clampf(delta * 8.0, 0.0, 1.0))
+	_status_clock -= delta
+	if _status_clock <= 0.0:
+		_status_clock = 0.15
+		_update_security_status()
 
 	# The car stays locked until you've actually been inside the building.
 	if car and not car.armed and _player_is_inside():
@@ -429,17 +454,14 @@ func _process(delta: float) -> void:
 		return
 
 	active_elapsed += delta
-	# Cool Head changes escalation without changing reinforcement identity.
-	heat += delta * (0.35 if not marked else 0.9) * (0.75 if RunState.has_perk(&"cool_head") else 1.0)
-
-	# Reinforcement waves at the entrance + exits.
-	_heat_timer -= delta
-	if _heat_timer <= 0.0:
+	# No passive escalation: lose sight, interrupt calls, disable alarms to cool off.
+	quiet_seconds += delta
+	if quiet_seconds >= 4.0:
+		heat = maxf(0.0, heat - delta)
+	_heat_timer = maxf(0.0, _heat_timer - delta)
+	if heat >= dispatch_threshold() and _heat_timer <= 0.0:
 		_spawn_reinforcements()
-		var interval: float = reinforcement_interval - heat * 0.25
-		if marked:
-			interval *= 0.55
-		_heat_timer = maxf(interval, min_interval)
+		_heat_timer = 12.0 if modifier == &"heavy_police" else 24.0
 
 	# Marked: emergency exits weld shut one by one. Main door never closes.
 	if marked:
@@ -584,6 +606,11 @@ func _extract() -> void:
 	if _extracting:
 		return
 	_extracting = true
+	Engine.time_scale = 1.0
+	# Settle at the combat price, before the extraction grade changes it.
+	var short_result := ShortBook.settle(true)
+	var receipt := "%s:%s:%s" % [RunState.run_id, RunState.run_map.current_stage, RunState.run_map.current_step]
+	var earned_intel := Meta.award_extraction(receipt, _kills, security_disabled, marked)
 	var elapsed: float = active_elapsed
 	var stats := {
 		"hits_taken": player.hits_taken,
@@ -595,6 +622,9 @@ func _extract() -> void:
 		"par_time": 15.0 * generator.rooms.size(),
 	}
 	var result: Dictionary = HeistGrader.grade_heist(stats)
+	result["intel"] = earned_intel
+	result["short"] = short_result
+	result["meta_saved"] = Meta.last_save_ok
 
 	# Grade moves the venue stock. "Inside Trader" perk boosts the upside.
 	var delta: float = result["stock_delta"]
@@ -681,7 +711,7 @@ func _loot_slot(size: Vector2, placed: Array) -> Vector2:
 	return candidate
 
 func _on_loot_collected(value: int) -> void:
-	RunEconomy.add_bonus(roundi(value * (1.25 if RunState.has_perk(&"scavenger") else 1.0)))
+	RunEconomy.add_bonus(roundi(value * loot_multiplier() * (1.25 if RunState.has_perk(&"scavenger") else 1.0)))
 	Sfx.play_sound("pickup")
 	if hud and hud.has_method("flash_gold"):
 		hud.flash_gold()
@@ -713,3 +743,80 @@ func _on_item_claimed(item) -> void:
 			RunState.add_stat_mod(item.stat, add, mult)
 		if player:
 			item.apply_to(player)
+
+func loot_multiplier() -> int:
+	return 2 if modifier == &"heavy_police" else 1
+
+func dispatch_threshold() -> float:
+	return 8.0 if modifier == &"heavy_police" else 16.0
+
+func add_heat(amount: float, source: String) -> void:
+	if amount <= 0.0 or _extracting:
+		return
+	var was_quiet := heat < dispatch_threshold()
+	heat = minf(100.0, heat + amount * (0.75 if RunState.has_perk(&"cool_head") else 1.0))
+	quiet_seconds = 0.0
+	last_heat_source = source
+	if was_quiet and heat >= dispatch_threshold():
+		_heat_timer = minf(_heat_timer, 4.0)
+
+func security_alert(room: Node, source: String, amount: float) -> void:
+	add_heat(amount, source)
+	for device in get_tree().get_nodes_in_group("security"):
+		if device.room == room and device.kind == SecurityDevice.Kind.ALARM and not device.disabled:
+			device.armed = true
+			device.transmit_clock = maxf(device.transmit_clock, 2.0)
+
+func on_security_disabled(_device: SecurityDevice) -> void:
+	security_disabled += 1
+	heat = maxf(0.0, heat - 4.0)
+	last_heat_source = "Security disabled · heat -4"
+	if live:
+		live.report_sabotage()
+	Sfx.play_sound("pickup")
+	fx.shake(3.0)
+
+func _setup_security() -> void:
+	for room in generator.rooms:
+		if room == generator.start_room:
+			continue
+		for kind in [SecurityDevice.Kind.CAMERA, SecurityDevice.Kind.ALARM]:
+			var device := SecurityDevice.new()
+			device.kind = kind
+			device.floor_host = self
+			device.room = room
+			device.position = room.position + (Vector2(55, 70) if kind == SecurityDevice.Kind.CAMERA else Vector2(room.room_size.x - 65, room.room_size.y - 100))
+			add_child(device)
+
+func _setup_tactics() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 8
+	add_child(layer)
+	_security_status = Label.new()
+	_security_status.position = Vector2(360, 18)
+	_security_status.size = Vector2(500, 160)
+	_security_status.add_theme_font_size_override("font_size", 19)
+	_security_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_security_status)
+	tactical_map = HeistMap.new()
+	tactical_map.floor_host = self
+	tactical_map.full_reveal = modifier == &"insider"
+	layer.add_child(tactical_map)
+	tactical_map.hide()
+	var toggle := Button.new()
+	toggle.text = "MAP"
+	toggle.position = Vector2(984, 18)
+	toggle.size = Vector2(130, 70)
+	toggle.pressed.connect(func(): tactical_map.visible = not tactical_map.visible)
+	layer.add_child(toggle)
+	_update_security_status()
+
+func _update_security_status() -> void:
+	if _security_status == null:
+		return
+	var tag := RunFlow.pending_heist.modifier_name() if RunFlow.pending_heist else "STANDARD SECURITY"
+	var response := " · POLICE IN %.0fs" % _heat_timer if heat >= dispatch_threshold() else " · CLEAR"
+	_security_status.text = "%s\nHEAT %.0f / %.0f%s\n%s" % [tag, heat, dispatch_threshold(), response, last_heat_source]
+	var short_quote := ShortBook.quote()
+	if not short_quote.is_empty():
+		_security_status.text += "\nSHORT: %s%d P/L · escape pays %d" % ["+" if short_quote["profit"] >= 0 else "", short_quote["profit"], short_quote["payout"]]

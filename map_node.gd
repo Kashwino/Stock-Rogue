@@ -15,6 +15,18 @@ var completed: bool = false
 var room_rarity: int = 0             # maps to Room.RoomRarity
 var venue_id: StringName = &""       # which stock this heist moves
 var is_valuable: bool = false        # flagged high-reward (may be a disguised boss)
+var modifier: StringName = &""
+const MODIFIERS := {
+	&"heavy_police": ["HEAVY POLICE RESPONSE", "2x loot. Police deploy at half the heat, twice as often."],
+	&"lockdown": ["LOCKDOWN", "Fire exits sealed. Escape through the main door."],
+	&"insider": ["INSIDER", "Full building layout revealed on your map."],
+}
+
+func modifier_name() -> String:
+	return MODIFIERS[modifier][0] if MODIFIERS.has(modifier) else "STANDARD SECURITY"
+
+func modifier_detail() -> String:
+	return MODIFIERS[modifier][1] if MODIFIERS.has(modifier) else "Normal loot and police response."
 
 func _init(t: Type = Type.HEIST) -> void:
 	type = t

@@ -69,11 +69,32 @@ try {
   await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
   assert.deepEqual((await state()).settings, saved, 'audio/video settings survive browser reload');
   assert(Math.abs((await state()).master_db - 20 * Math.log10(saved.master)) < 0.02, 'saved volume applied to audio bus');
+  // Seed earned currency only in this isolated test browser; purchases use real UI.
+  await page.evaluate(() => localStorage.setItem('stock-rogue-career-v1', JSON.stringify({intel: 30, unlocked_assets: [], extraction_receipts: {'browser-fixture':30}})));
+  await page.reload();
+  await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
+  await tap('NETWORK');
+  await tap('BUY Circuit Thief · 12');
+  await tap('BUY Fast Hands · 8');
+  await tap('EQUIP Fast Hands');
+  assert.equal((await state()).intel, 10, 'career purchases deduct Intel through touch UI');
+  await shot('phone-network');
+  await page.reload();
+  await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
+  assert.equal((await state()).starting_perk, 'fast_hands', 'equipped starting perk survives reload');
+  assert((await state()).unlocks.includes('circuit_smg'), 'weapon unlock survives reload');
   await tap('QUICK HEIST');
   await wait(() => window.stockRogueQA?.scene.endsWith('heist_floor.tscn') && window.stockRogueQA.touch_visible);
   await page.waitForTimeout(500);
   await shot('phone-heist');
   let s = await state();
+  assert(s.perks.includes('fast_hands'), 'purchased starting perk applies to a new run');
+  assert.equal(s.modifier, 'insider');
+  assert(s.map_revealed && s.security_count === 14, 'Insider reveals layout and security devices exist');
+  await tap('MAP');
+  assert((await state()).map_visible, 'tactical map opens by touch');
+  await shot('phone-insider-map');
+  await tap('MAP');
   assert(s.active_enemies < s.all_enemies, 'distance sleeping is active');
   const before = [...s.position], shotsBefore = s.shots;
   const cd = await context.newCDPSession(page);
@@ -94,6 +115,26 @@ try {
   await page.waitForTimeout(300);
   s = await state();
   assert(!s.firing && s.move.every(v => v === 0), 'finger release clears both sticks');
+  // Walk to the lobby terminal using the movement stick, then open a real short.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    s = await state();
+    const dx = s.terminal_position[0] - s.position[0], dy = s.terminal_position[1] - s.position[1];
+    const distance = Math.hypot(dx, dy);
+    if (distance < 85) break;
+    const stick = await point(...s.left);
+    await cd.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...stick }] });
+    await cd.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: stick.x + dx / distance * 30, y: stick.y + dy / distance * 30 }] });
+    await page.waitForTimeout(250);
+    await cd.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(150);
+  }
+  await tap('USE');
+  await wait(() => window.stockRogueQA?.controls.some(c => c.text.startsWith('SHORT THIS HEIST')));
+  const shortButton = (await state()).controls.find(c => c.text.startsWith('SHORT THIS HEIST')).text;
+  await tap(shortButton);
+  assert.equal((await state()).short.payout, 75, 'opening a short only reserves collateral');
+  await shot('phone-short-contract');
+  await tap('BACK TO HEIST');
   await tap('PAUSE');
   assert((await state()).paused, 'pause button works with touch');
   const paused = await state();
@@ -126,7 +167,7 @@ try {
   await tap('HEIST OPTION 1');
   await wait(() => window.stockRogueQA?.scene.endsWith('heist_floor.tscn'));
   assert.deepEqual(errors, [], 'no browser runtime errors');
-  await writeFile('artifacts/browser-report.json', JSON.stringify({ passed: true, settings: saved, tests: ['mobile menu', 'touch settings', 'reload persistence', 'audio application', 'distance sleeping', 'simultaneous movement and firing', 'touch release', 'pause heat/time/movement', 'resume', 'case-file screen', 'crew recruitment', 'map selection', 'normal heist launch', 'compressed engine loading'] }, null, 2));
+  await writeFile('artifacts/browser-report.json', JSON.stringify({ passed: true, settings: saved, tests: ['mobile menu', 'touch settings', 'reload persistence', 'audio application', 'career purchases and reload persistence', 'starting perk applies', 'Insider tactical map', 'visible security devices', 'short contract opened by touch', 'distance sleeping', 'simultaneous movement and firing', 'touch release', 'pause heat/time/movement', 'resume', 'case-file screen', 'crew recruitment', 'map selection', 'normal heist launch', 'compressed engine loading'] }, null, 2));
   assert.deepEqual(errors, [], 'no browser runtime errors');
   console.log('BROWSER TEST SUITE COMPLETE');
 } catch (e) {

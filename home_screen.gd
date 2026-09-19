@@ -112,7 +112,11 @@ func _build_main_menu() -> Control:
 	col.add_child(spacer)
 
 	col.add_child(_menu_button("PLAY", true, _on_play))
-	col.add_child(_menu_button("QUICK HEIST", false, RunFlow.start_quick_test))
+	var quick_row := HBoxContainer.new()
+	quick_row.add_theme_constant_override("separation", 12)
+	quick_row.add_child(_menu_button("QUICK HEIST", false, RunFlow.start_quick_test))
+	quick_row.add_child(_menu_button("NETWORK", false, _on_network))
+	col.add_child(quick_row)
 	if RunFlow.can_continue():
 		col.add_child(_menu_button("CONTINUE", false, _on_continue))
 	col.add_child(_menu_button("SETTINGS", false, _on_open_settings))
@@ -185,3 +189,13 @@ func _on_quit() -> void:
 	else:
 		get_tree().quit()
 
+func _on_network() -> void:
+	_main_menu.hide()
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var panel := CareerPanel.new()
+	center.add_child(panel)
+	_root.add_child(center)
+	panel.closed.connect(func():
+		center.queue_free()
+		_main_menu.show())

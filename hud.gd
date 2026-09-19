@@ -18,6 +18,8 @@ extends CanvasLayer
 
 var _flash_tween: Tween
 var _loadout = null
+var _gold_tween: Tween
+var _display_gold := -1.0
 
 func _ready() -> void:
 	# Show current gold immediately, then listen for changes.
@@ -117,8 +119,18 @@ func _update_health(current: int, maxv: int) -> void:
 	health_label.text = "HP  %d / %d" % [clampi(current, 0, maxv), maxv]
 
 func _update_gold(amount: int) -> void:
-	currency_label.text = "GOLD  " + str(amount)   # gold coins
+	if _gold_tween and _gold_tween.is_valid():
+		_gold_tween.kill()
+	if _display_gold < 0.0 or Settings.values["low_effects"]:
+		_draw_gold(float(amount))
+	else:
+		_gold_tween = create_tween()
+		_gold_tween.tween_method(_draw_gold, _display_gold, float(amount), 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	currency_label.modulate = Color(1.0, 0.84, 0.0)   # gold color
+
+func _draw_gold(value: float) -> void:
+	_display_gold = value
+	currency_label.text = "GOLD  " + str(roundi(value))
 
 ## Quick pop on the gold counter when a floor pickup is grabbed.
 func flash_gold() -> void:

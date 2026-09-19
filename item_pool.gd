@@ -67,6 +67,19 @@ static func weapons() -> Array:
 		2, 0.65, 620.0, 0.20, 5, true, 8, 160, &"shell")
 	scatter.ricochets = 1
 	out.append(scatter)
+	var circuit := _wpn(&"circuit_smg", "Circuit Thief", Rarity.Tier.CLASSIFIED, WeaponItem.Slot.BIG,
+		1, 0.13, 850.0, 0.03, 1, true, 26, 390, &"light")
+	circuit.noise_radius = 160.0
+	circuit.pierce = 1
+	out.append(circuit)
+	var margin := _wpn(&"margin_call", "Margin Call", Rarity.Tier.COVERT, WeaponItem.Slot.SMALL,
+		4, 0.85, 1400.0, 0.0, 1, true, 5, 100, &"heavy")
+	margin.pierce = 2
+	out.append(margin)
+	var takeover := _wpn(&"hostile_takeover", "Hostile Takeover", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		2, 0.48, 740.0, 0.22, 6, true, 10, 150, &"shell")
+	takeover.ricochets = 1
+	out.append(takeover)
 	for weapon: WeaponItem in out:
 		if weapon.id == &"silenced9mm":
 			weapon.noise_radius = 230.0
@@ -80,7 +93,7 @@ static func weapons() -> Array:
 static func rewardable_weapons() -> Array:
 	var out := []
 	for w in weapons():
-		if w.id != &"pistol":
+		if w.id != &"pistol" and (not Meta.CATALOG.has(w.id) or w.id in Meta.unlocked_assets):
 			out.append(w)
 	return out
 

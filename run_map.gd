@@ -65,6 +65,13 @@ func generate(run_seed: int = 0) -> void:
 	stages.clear()
 	for s in stage_order:
 		stages.append(_build_stage(s))
+	# Independent of the map RNG: existing save seeds keep their original choices.
+	for s in stages.size():
+		for h in stages[s].size():
+			var choice: Step = stages[s][h]
+			for i in choice.options.size():
+				var tags: Array = [&"heavy_police", &"lockdown", &"insider"]
+				choice.options[i].modifier = tags[(absi(hash(str(run_seed) + ":" + str(s) + ":" + str(h))) + i) % 3]
 	current_stage = 0
 	current_step = 0
 	heists_done = 0

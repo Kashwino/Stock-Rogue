@@ -159,6 +159,10 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 		if "speed" in b:
 			b.speed = bspeed
 	shots_fired += pellets
+	var host := get_tree().current_scene
+	if host is HeistFloor:
+		host.fx.muzzle(muzzle.global_position, aim)
+		host.fx.shake(2.0 if pellets <= 1 else 4.0)
 	Sfx.play_sound("shot")
 	# Every shot is heard across the floor.
 	if has_node("/root/Noise"):
@@ -195,6 +199,12 @@ func take_damage(amount: int = 1) -> void:
 		return
 	health = maxi(health - amount, 0)
 	hits_taken += amount
+	var host := get_tree().current_scene
+	if host is HeistFloor:
+		host.fx.shake(9.0)
+	if not Settings.values["low_effects"]:
+		sprite.modulate = Color(2.0, 0.4, 0.4)
+		create_tween().tween_property(sprite, "modulate", Color.WHITE, 0.12)
 	Sfx.play_sound("hit")
 	RunEconomy.on_player_hit(amount)      # currency drops on every hit
 	if live_stock:

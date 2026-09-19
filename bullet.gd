@@ -22,7 +22,7 @@ func setup(direction: Vector2, shooter: Node) -> void:
 
 func _ready() -> void:
 	collision_layer = 0
-	collision_mask = wall_mask | 2
+	collision_mask = wall_mask | 2 | 8
 	body_entered.connect(_try_hit)
 
 func _physics_process(delta: float) -> void:
@@ -39,7 +39,7 @@ func _physics_process(delta: float) -> void:
 		if remaining <= 0.01 or _spent:
 			break
 		var target := global_position + _dir * remaining
-		var query := PhysicsRayQueryParameters2D.create(global_position, target, wall_mask | 2, _excluded)
+		var query := PhysicsRayQueryParameters2D.create(global_position, target, wall_mask | 2 | 8, _excluded)
 		var hit := get_world_2d().direct_space_state.intersect_ray(query)
 		if hit.is_empty():
 			global_position = target
@@ -47,7 +47,7 @@ func _physics_process(delta: float) -> void:
 		remaining -= global_position.distance_to(hit["position"])
 		global_position = hit["position"]
 		var body: Node = hit["collider"]
-		if body.is_in_group("enemies"):
+		if body.is_in_group("enemies") or body.is_in_group("security"):
 			_try_hit(body)
 			global_position += _dir * 0.5
 			remaining -= 0.5
@@ -63,7 +63,7 @@ func _physics_process(delta: float) -> void:
 func _try_hit(target: Node) -> void:
 	if _spent or not is_instance_valid(target) or target == _shooter:
 		return
-	if not target.is_in_group("enemies") or not target.has_method("take_damage"):
+	if not (target.is_in_group("enemies") or target.is_in_group("security")) or not target.has_method("take_damage"):
 		return
 	if target.get_instance_id() in _hit_ids:
 		return
@@ -74,7 +74,7 @@ func _try_hit(target: Node) -> void:
 	if knockback > 0.0 and target is CharacterBody2D and not target is AuditorBoss:
 		target.velocity += _dir * knockback
 		target.move_and_slide()
-	if is_instance_valid(_shooter) and _shooter.has_method("register_hit_landed"):
+	if target.is_in_group("enemies") and is_instance_valid(_shooter) and _shooter.has_method("register_hit_landed"):
 		_shooter.register_hit_landed()
 	if pierce > 0:
 		pierce -= 1

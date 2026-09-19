@@ -3,11 +3,20 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	var expected := {"master": 0.37, "sfx": 0.62, "fullscreen": true, "low_effects": true, "frame_cap": 30, "touch_mode": 1}
 	if "write" in args:
+		Meta.reset()
+		assert(Meta.award_extraction("persistence-fixture", 12, 4, true) == 14)
+		assert(Meta.purchase(&"fast_hands") == "Unlocked permanently.")
+		assert(Meta.equip_starting_perk(&"fast_hands"))
 		for key: String in expected:
 			Settings.set_setting(key, expected[key])
 		assert(Settings.last_save_error == OK, "settings write")
 		print("TEST settings: wrote audio and video")
 	else:
+		assert(Meta.intel == 6 and Meta.starting_perk == &"fast_hands")
+		assert(&"fast_hands" in Meta.unlocked_assets)
+		assert(Meta.award_extraction("persistence-fixture", 12, 4, true) == 0)
+		print("TEST career: currency, unlock, equipped perk and receipt survived a fresh process")
+		Meta.reset()
 		for key: String in expected:
 			assert(Settings.values[key] == expected[key], "settings cross-process reload: " + key)
 		assert(Engine.max_fps == 30)

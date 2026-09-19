@@ -158,6 +158,14 @@ func _make_heist_card(node: MapNode, index: int) -> Control:
 	else:
 		detail.text = String(node.venue_id).to_upper() + "\n" + _rarity_name(node.room_rarity)
 	vb.add_child(detail)
+	var tag := Label.new()
+	tag.text = node.modifier_name() + "\n" + node.modifier_detail()
+	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tag.add_theme_font_size_override("font_size", 19)
+	tag.add_theme_color_override("font_color", Color(0.95, 0.78, 0.35))
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(tag)
 
 	if node.is_valuable and not is_mystery:
 		var star := Label.new()

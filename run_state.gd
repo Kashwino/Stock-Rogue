@@ -20,6 +20,8 @@ var market: CriminalMarket = null
 ## Run perks (bought in the shop): &"recon", &"inside_trader", ...
 var perks: Array = []
 var hedge_charges: int = 0
+var short_position: Dictionary = {}
+var run_id: String = ""
 
 var max_health: int = 3
 var health: int = 3
@@ -36,6 +38,8 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	health = max_health
 	stat_mods.clear()
 	hedge_charges = 0
+	short_position.clear()
+	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
 
 	# Fresh loadout with the starter Sidearm.
 	if is_instance_valid(loadout):
@@ -56,6 +60,8 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	add_child(market)
 	market.setup(run_seed)
 	perks.clear()
+	if Meta.starting_perk != &"":
+		add_perk(Meta.starting_perk)
 
 	# Reset gold for the run.
 	if has_node("/root/RunEconomy"):
@@ -165,6 +171,10 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"profile_path": character_profile.resource_path if character_profile else "",
 		"perks": perks.duplicate(),
 		"hedge_charges": hedge_charges,
+		"short_position": short_position.duplicate(true),
+		"run_id": run_id,
+		"quota_block": run_map.quota_block if run_map else 0,
+		"heists_done": run_map.heists_done if run_map else 0,
 		"market": _serialize_market(),
 	}
 
@@ -197,6 +207,8 @@ func _serialize_loadout() -> Dictionary:
 ## Rebuild run state from a saved Dictionary. Returns the map seed so the caller
 ## can regenerate the map and jump to the saved position.
 func deserialize(data: Dictionary) -> void:
+	run_id = str(data.get("run_id", "legacy-" + str(data.get("seed", 0))))
+	short_position = data.get("short_position", {}).duplicate(true)
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))
 

@@ -131,6 +131,10 @@ func show_result(result: Dictionary, venue_name: String = "") -> void:
 	_add_row("Time", _fmt_time(stats.get("time_seconds", 0.0)))
 	_add_row("Kills", "%d / %d" % [stats.get("kills", 0),
 		stats.get("enemies_total", 0)])
+	_add_row("Intel banked", "+%d  /  NETWORK" % int(result.get("intel", 0)) if result.get("meta_saved", true) else "Could not save on this device")
+	var short_result: Dictionary = result.get("short", {})
+	if not short_result.is_empty():
+		_add_row("Short settled", "%d gold returned (%+d profit)" % [short_result["payout"], short_result["profit"]])
 
 	var delta: float = result.get("stock_delta", 1.0)
 	var pct: float = (delta - 1.0) * 100.0
