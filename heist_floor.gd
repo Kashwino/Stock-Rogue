@@ -795,6 +795,7 @@ func _setup_security() -> void:
 func _setup_tactics() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 8
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
 	_security_status = Label.new()
 	_security_status.position = Vector2(360, 18)
@@ -811,9 +812,16 @@ func _setup_tactics() -> void:
 	toggle.text = "MAP"
 	toggle.position = Vector2(984, 18)
 	toggle.size = Vector2(130, 70)
-	toggle.pressed.connect(func(): tactical_map.visible = not tactical_map.visible)
+	toggle.pressed.connect(_toggle_map)
 	layer.add_child(toggle)
 	_update_security_status()
+
+func _toggle_map() -> void:
+	if get_tree().paused and not tactical_map.visible:
+		return
+	Controls.release_all()
+	tactical_map.visible = not tactical_map.visible
+	get_tree().paused = tactical_map.visible
 
 func _update_security_status() -> void:
 	if _security_status == null:

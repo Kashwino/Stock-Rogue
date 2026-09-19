@@ -92,7 +92,7 @@ try {
   assert.equal(s.modifier, 'insider');
   assert(s.map_revealed && s.security_count === 14, 'Insider reveals layout and security devices exist');
   await tap('MAP');
-  assert((await state()).map_visible, 'tactical map opens by touch');
+  assert((await state()).map_visible && (await state()).paused, 'tactical map opens and pauses by touch');
   await shot('phone-insider-map');
   await tap('MAP');
   assert(s.active_enemies < s.all_enemies, 'distance sleeping is active');
