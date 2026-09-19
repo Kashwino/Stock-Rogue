@@ -86,7 +86,7 @@ func refresh() -> void:
 	var stage := run_map.stage_name()
 	stage_label.text = stage.to_upper()
 	stage_label.add_theme_color_override("font_color", STAGE_COLORS.get(stage, Color.WHITE))
-	quota_label.text = "Next quota: ⦿%d  +  Index %d  (now %d)" % [
+	quota_label.text = "Next quota: GOLD %d  +  Index %d  (now %d)" % [
 		int(run_map.current_quota()), int(run_map.current_stock_quota()),
 		int(RunState.empire_index())]
 
@@ -183,6 +183,7 @@ func _on_card_input(event: InputEvent, index: int) -> void:
 func _show_shop(step: RunMap.Step) -> void:
 	step_title.text = "A BREAK — THE FENCE'S SHOP"
 	var enter := Button.new()
+	enter.custom_minimum_size.y = 74
 	enter.text = "Enter Shop"
 	enter.pressed.connect(func():
 		pass # Debug logging removed.
@@ -192,6 +193,7 @@ func _show_shop(step: RunMap.Step) -> void:
 
 	if step.skippable:
 		var skip := Button.new()
+		skip.custom_minimum_size.y = 74
 		skip.text = "Skip (look for a way around…)"
 		skip.pressed.connect(func():
 			hide(); shop_skipped.emit())
@@ -199,10 +201,11 @@ func _show_shop(step: RunMap.Step) -> void:
 
 # --- Quota gate ---
 func _show_quota_gate() -> void:
-	step_title.text = "QUOTA CHECK — ⦿%d and Index %d required (you: ⦿%d, %d)" % [
+	step_title.text = "QUOTA CHECK — GOLD %d and Index %d required (you: GOLD %d, %d)" % [
 		int(run_map.current_quota()), int(run_map.current_stock_quota()),
 		get_node("/root/RunEconomy").gold, int(RunState.empire_index())]
 	var proceed := Button.new()
+	proceed.custom_minimum_size.y = 74
 	proceed.text = "Face the quota"
 	proceed.pressed.connect(func():
 		quota_reached.emit(run_map.current_quota()))
@@ -212,6 +215,7 @@ func _show_quota_gate() -> void:
 func _show_advance() -> void:
 	step_title.text = "MOVE TO THE NEXT CITY"
 	var go := Button.new()
+	go.custom_minimum_size.y = 74
 	go.text = "Advance"
 	go.pressed.connect(func():
 		run_advanced.emit())
@@ -221,6 +225,7 @@ func _show_complete() -> void:
 	step_title.text = "RUN COMPLETE"
 	stage_label.text = "DOOMSDAY CLEARED"
 	var done := Button.new()
+	done.custom_minimum_size.y = 74
 	done.text = "Finish"
 	done.pressed.connect(func(): run_complete.emit())
 	action_row.add_child(done)

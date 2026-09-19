@@ -56,7 +56,7 @@ func _on_shop_opened() -> void:
 			+ "exactly that path.")
 		map_ui.show()          # don't strand the player on a blank screen
 		return
-	var err := get_tree().change_scene_to_file(HIDEOUT_SCENE)
+	var err := RunFlow.queue_scene(HIDEOUT_SCENE)
 	if err != OK:
 		push_error("[MapScreen] failed to load " + HIDEOUT_SCENE
 			+ " (error code " + str(err) + ")")
