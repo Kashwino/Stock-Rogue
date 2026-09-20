@@ -6,6 +6,8 @@ func _ready() -> void:
 		Meta.reset()
 		assert(Meta.award_extraction("persistence-fixture", 12, 4, true) == 14)
 		assert(Meta.purchase(&"fast_hands") == "Unlocked permanently.")
+		Meta.intel += 8
+		assert(Meta.purchase(&"room_training") == "Unlocked permanently.")
 		assert(Meta.equip_starting_perk(&"fast_hands"))
 		for key: String in expected:
 			Settings.set_setting(key, expected[key])
@@ -14,6 +16,7 @@ func _ready() -> void:
 	else:
 		assert(Meta.intel == 6 and Meta.starting_perk == &"fast_hands")
 		assert(&"fast_hands" in Meta.unlocked_assets)
+		assert(&"room_training" in Meta.unlocked_assets, "built rooms persist across processes")
 		assert(Meta.award_extraction("persistence-fixture", 12, 4, true) == 0)
 		print("TEST career: currency, unlock, equipped perk and receipt survived a fresh process")
 		Meta.reset()

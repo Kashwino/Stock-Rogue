@@ -210,7 +210,7 @@ func _make_file_card(i: int) -> Control:
 	if active:
 		status.text = "JOB IN PROGRESS"
 		status.add_theme_color_override("font_color", GOLD)
-		var stage_names := ["Town", "City", "World", "Doomsday"]
+		var stage_names := ["Town", "City", "Capital", "Final Boss"]
 		var st: int = clampi(int(data.get("stage", 0)), 0, 3)
 		detail.text = "Reached: %s\nGold on hand: ⦿ %d\n\nOpen the file to pick the job back up." % [
 			stage_names[st], int(data.get("gold", 0))]
@@ -238,7 +238,7 @@ func _on_file_chosen(i: int) -> void:
 		# Resume the job exactly where the file left off.
 		RunFlow.continue_run()
 	else:
-		_show_crew()
+		RunFlow.open_preparation()
 
 # -------------------------------------------------------- phase 2: crew -----
 func _show_crew() -> void:

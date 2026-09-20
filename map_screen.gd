@@ -48,6 +48,11 @@ func _on_shop_opened() -> void:
 	# hideout_room.gd advances the step and returns to this scene itself when
 	# the player walks out the door, so nothing else to wire here.
 	pass # Debug logging removed.
+	var step: RunMap.Step = RunState.run_map.current()
+	if not step.market_available or step.market_visited:
+		map_ui.show()
+		return
+	step.market_visited = true
 	RunFlow.save()
 	const HIDEOUT_SCENE := "res://hideout_room.tscn"
 	if not ResourceLoader.exists(HIDEOUT_SCENE):

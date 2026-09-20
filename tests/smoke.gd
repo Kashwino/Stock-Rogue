@@ -20,6 +20,7 @@ func _run() -> void:
 	check(ItemPool.rewardable_weapons().size() == 16, "three career weapons gated from rewards")
 	_test_progression()
 	_test_modifiers()
+	_test_route()
 	check(ItemPool.upgrades().size() >= 9, "expanded upgrade pool")
 	var weapon_ids: Dictionary = {}
 	for weapon: WeaponItem in ItemPool.weapons():
@@ -167,7 +168,7 @@ func _run() -> void:
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
-	for path: String in ["res://home_screen.tscn", "res://character_select.tscn", "res://map_ui_screen.tscn", "res://hideout_room.tscn"]:
+	for path: String in ["res://home_screen.tscn", "res://character_select.tscn", "res://map_ui_screen.tscn", "res://hideout_room.tscn", "res://prep_lobby.tscn"]:
 		var scene: Node = load(path).instantiate()
 		get_tree().root.add_child(scene)
 		get_tree().current_scene = scene
@@ -340,3 +341,31 @@ func _test_projectiles() -> void:
 	await get_tree().create_timer(0.1).timeout
 	arena.queue_free()
 	await get_tree().process_frame
+
+func _test_route() -> void:
+	var markets := 0
+	var empty := 0
+	for seed_value in range(1, 31):
+		var route := RunMap.new()
+		route.generate(seed_value)
+		check(route.stages.map(func(s): return s.size()) == [3, 3, 3, 1], "exact 3 Town / 3 City / 3 Capital / 1 final")
+		for i in 10:
+			var choice: RunMap.Step = route.current()
+			check(choice.kind == RunMap.StepKind.HEIST_CHOICE, "no forced markets or quota gates")
+			check(choice.options.size() == 1 if i == 9 else choice.options.size() >= 2 and choice.options.size() <= 4, "correct location count")
+			if choice.market_available: markets += 1
+			else: empty += 1
+			if i == 9:
+				check(choice.options[0].type == MapNode.Type.BOSS, "final node is explicit boss")
+			route.choose_option(0)
+			route.advance_step()
+		check(route.is_complete(), "run ends after tenth score")
+		route.restore_progress(7)
+		check(route.current_stage == 2 and route.current_step == 1, "old checkpoint migrates by completed scores")
+		route.current().market_visited = true
+		var restored := RunMap.new()
+		restored.generate(seed_value)
+		restored.restore_progress(7)
+		restored.restore_markets(route.visited_markets())
+		check(restored.current().market_visited, "visited market preserved on resume")
+	check(markets > 0 and empty > 0, "RNG includes and omits optional markets")

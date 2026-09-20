@@ -25,6 +25,8 @@ var room_index: int = 0                # which room within the current heist
 
 # The heist the player just chose (set before swapping to the arena).
 var pending_heist: MapNode = null
+var lobby_resume := false
+const LOBBY_SCENE := "res://prep_lobby.tscn"
 
 func _ready() -> void:
 	pass
@@ -59,12 +61,17 @@ func continue_run() -> void:
 	RunState.deserialize(data)
 	RunState.run_map = RunMap.new()
 	RunState.run_map.generate(run_seed)
-	# Fast-forward the map to the saved position.
-	RunState.run_map.current_stage = stage
-	RunState.run_map.current_step = step
-	RunState.run_map.quota_block = int(data.get("quota_block", stage))
-	RunState.run_map.heists_done = int(data.get("heists_done", heists_completed))
-	go_to_map()
+	# Migrate old checkpoint positions by completed heists, preserving all gear.
+	RunState.run_map.restore_progress(heists_completed)
+	RunState.run_map.restore_markets(data.get("visited_markets", []))
+	pending_heist = null
+	lobby_resume = true
+	RunFlow.queue_scene(LOBBY_SCENE)
+
+func open_preparation() -> void:
+	lobby_resume = false
+	RunState.active = false
+	RunFlow.queue_scene(LOBBY_SCENE)
 
 # --- Saving (called at every boundary) ---
 func save() -> void:
@@ -74,6 +81,8 @@ func save() -> void:
 	var data := RunState.serialize(run_seed, stage, step, room_index)
 	data["heists_completed"] = heists_completed
 	data["total_kills"] = total_kills
+	data["route_version"] = 2
+	data["visited_markets"] = RunState.run_map.visited_markets() if RunState.run_map else []
 	RunSave.save_run(data)
 
 # --- Scene transitions ---

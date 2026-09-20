@@ -108,6 +108,11 @@ func _process(delta: float) -> void:
 		_cancel("down")
 		return
 
+	var scene := get_tree().current_scene
+	if scene is HeistFloor and RunState.run_map and RunState.run_map.current_stage == 3 and not scene.marked:
+		_label.text = "DEFEAT THE AUDITOR BEFORE ESCAPING"
+		return
+
 	var inside := global_position.distance_to(_player.global_position) <= zone_radius
 
 	# Not armed yet: you haven't set foot in the building. Standing here does

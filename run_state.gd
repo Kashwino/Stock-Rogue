@@ -63,6 +63,11 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	if Meta.starting_perk != &"":
 		add_perk(Meta.starting_perk)
 
+	if profile and profile.id == &"ghost":
+		add_perk(&"quiet_shoes")
+	if profile and profile.id == &"wolf":
+		add_stat_mod(&"damage_bonus", 1.0, 1.0)
+
 	# Reset gold for the run.
 	if has_node("/root/RunEconomy"):
 		get_node("/root/RunEconomy").reset()

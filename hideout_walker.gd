@@ -42,6 +42,7 @@ func _build_visual_and_collision() -> void:
 		Vector2(10, -5), Vector2(20, 0), Vector2(10, 5)])
 	nose.color = Color(0.95, 0.85, 0.5)
 	sprite.add_child(nose)
+	ActorArt.dress(sprite, true, false, 0, Color("69d6c4"))
 
 func _physics_process(_delta: float) -> void:
 	if not movement_enabled:

@@ -25,6 +25,12 @@ func _process(delta: float) -> void:
 		"left": [left.x, left.y],
 		"right": [right.x, right.y],
 		"move": [TouchInput.move.x, TouchInput.move.y], "firing": TouchInput.firing}
+	if scene is PrepLobby:
+		data["position"] = [scene._walker.position.x, scene._walker.position.y]
+		data["selected_crew"] = scene.selected
+	if RunState.run_map:
+		data["route_stage"] = RunState.run_map.current_stage
+		data["route_step"] = RunState.run_map.current_step
 	data["intel"] = Meta.intel
 	data["unlocks"] = Meta.unlocked_assets
 	data["starting_perk"] = String(Meta.starting_perk)
@@ -52,7 +58,7 @@ func _collect(node: Node, out: Array) -> void:
 		out.append({"text": labels.get(String(node.action), String(node.action)), "type": "TouchScreenButton", "rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y]})
 	if node is Control and node.is_visible_in_tree() and (node is BaseButton or node is HSlider or node.has_meta("qa_label")):
 		var rect: Rect2 = get_viewport().get_final_transform() * node.get_global_rect()
-		out.append({"text": node.text if node is Button else node.get_meta("qa_label", node.name), "type": node.get_class(),
+		out.append({"text": node.get_meta("qa_label", node.text if node is Button else node.name), "type": node.get_class(),
 			"rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y]})
 	for child in node.get_children():
 		_collect(child, out)

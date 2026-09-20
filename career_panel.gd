@@ -1,6 +1,7 @@
 extends PanelContainer
 class_name CareerPanel
 signal closed
+var category := ""
 var body: VBoxContainer
 var message := ""
 
@@ -32,6 +33,8 @@ func _rebuild() -> void:
 	scroll.add_child(list)
 	for id: StringName in Meta.CATALOG:
 		var entry: Dictionary = Meta.CATALOG[id]
+		if category != "" and entry["kind"] != category:
+			continue
 		var row := HBoxContainer.new()
 		row.custom_minimum_size.y = 86
 		list.add_child(row)
@@ -46,7 +49,7 @@ func _rebuild() -> void:
 		var owned := id in Meta.unlocked_assets
 		button.text = ("EQUIPPED" if Meta.starting_perk == id else "EQUIP " + entry["name"]) if owned and entry["kind"] == "perk" else ("UNLOCKED" if owned else "BUY " + entry["name"] + " · " + str(entry["cost"]))
 		button.add_theme_font_size_override("font_size", 18)
-		button.disabled = owned and entry["kind"] == "weapon"
+		button.disabled = owned and entry["kind"] != "perk"
 		button.pressed.connect(_choose.bind(id))
 		row.add_child(button)
 	var status := Label.new()

@@ -156,19 +156,33 @@ try {
   await wait(() => window.stockRogueQA?.scene.endsWith('character_select.tscn'));
   await shot('phone-case-files');
   await tapCard();
-  await wait(() => window.stockRogueQA?.controls.some(c => c.text === '← Case files'));
-  await shot('phone-crew');
-  await tapCard();
+  await wait(() => window.stockRogueQA?.scene.endsWith('prep_lobby.tscn') && window.stockRogueQA.touch_visible);
+  await shot('phone-preparation-lobby');
+  s = await state();
+  const lobbyStart = [...s.position];
+  const hubStick = await point(...s.left);
+  await cd.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{id: 1, ...hubStick}]});
+  await cd.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [{id: 1, x: hubStick.x, y: hubStick.y - 30}]});
+  await page.waitForTimeout(650);
+  await cd.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+  await page.waitForTimeout(250);
+  assert((await state()).position[1] < lobbyStart[1] - 70, 'touch walks through the training room doorway');
+  await tap('USE');
+  assert((await state()).unlocks.includes('room_training'), 'walking to a room and USE builds it');
+  assert.equal((await state()).intel, 2, 'room construction charges Intel once');
+  await shot('phone-built-room');
+  await tap('CHOOSE CHARACTER');
+  await tap('The Ghost / 2 HP');
+  assert.equal((await state()).selected_crew, 'ghost', 'lobby character selection works');
+  await tap('PLAN HEIST');
   await wait(() => window.stockRogueQA?.scene.endsWith('map_ui_screen.tscn'));
-  await shot('phone-map');
-  if ((await state()).controls.some(c => c.text === 'Skip (look for a way around…)')) {
-    await tap('Skip (look for a way around…)');
-  }
+  assert.equal((await state()).route_stage, 0);
+  assert.equal((await state()).route_step, 0);
   await shot('phone-contracts');
   await tap('HEIST OPTION 1');
   await wait(() => window.stockRogueQA?.scene.endsWith('heist_floor.tscn'));
   assert.deepEqual(errors, [], 'no browser runtime errors');
-  await writeFile('artifacts/browser-report.json', JSON.stringify({ passed: true, settings: saved, tests: ['mobile menu', 'touch settings', 'reload persistence', 'audio application', 'career purchases and reload persistence', 'starting perk applies', 'Insider tactical map', 'visible security devices', 'short contract opened by touch', 'distance sleeping', 'simultaneous movement and firing', 'touch release', 'pause heat/time/movement', 'resume', 'case-file screen', 'crew recruitment', 'map selection', 'normal heist launch', 'compressed engine loading'] }, null, 2));
+  await writeFile('artifacts/browser-report.json', JSON.stringify({ passed: true, settings: saved, tests: ['mobile menu', 'touch settings', 'reload persistence', 'audio application', 'career purchases and reload persistence', 'starting perk applies', 'Insider tactical map', 'visible security devices', 'short contract opened by touch', 'distance sleeping', 'simultaneous movement and firing', 'touch release', 'pause heat/time/movement', 'resume', 'case-file screen', 'walkable preparation lobby', 'persistent room construction', 'lobby character selection', 'map selection', 'normal heist launch', 'compressed engine loading'] }, null, 2));
   assert.deepEqual(errors, [], 'no browser runtime errors');
   console.log('BROWSER TEST SUITE COMPLETE');
 } catch (e) {

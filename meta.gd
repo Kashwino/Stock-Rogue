@@ -6,6 +6,9 @@ extends Node
 const SAVE_PATH := "user://meta.save"
 const WEB_KEY := "stock-rogue-career-v1"
 const CATALOG := {
+	&"room_armory": {"name": "Armory", "cost": 8, "kind": "room", "detail": "Build an armory to research permanent weapon unlocks."},
+	&"room_training": {"name": "Training Room", "cost": 8, "kind": "room", "detail": "Build a training room to buy and equip starting perks."},
+	&"room_crew": {"name": "Crew Quarters", "cost": 12, "kind": "room", "detail": "Build crew quarters to recruit the Wolf and Broker."},
 	&"circuit_smg": {"name": "Circuit Thief", "cost": 12, "kind": "weapon", "detail": "Quiet SMG with piercing rounds. Enters cases and chests."},
 	&"margin_call": {"name": "Margin Call", "cost": 18, "kind": "weapon", "detail": "Heavy rail pistol. Pierces three guards. Enters the loot pool."},
 	&"hostile_takeover": {"name": "Hostile Takeover", "cost": 24, "kind": "weapon", "detail": "Rapid shotgun with ricochets. Enters the loot pool."},

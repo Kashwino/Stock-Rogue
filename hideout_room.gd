@@ -30,6 +30,7 @@ const WALL_THICK := 24.0
 var _walker: HideoutWalker
 var _stations: Array = []
 var _active_panel: CanvasLayer = null
+var _market_layer: CanvasLayer = null
 var _active_gold_label: Label = null
 var _near_station: Dictionary = {}
 var _near_door: bool = false
@@ -139,15 +140,7 @@ func _build_walker() -> void:
 
 # -------------------------------------------------------------- stations ---
 func _build_stations() -> void:
-	_make_station(&"weapons", "WEAPON DEALER",
-		"Guns for the next job", Vector2(ROOM_SIZE.x * 0.22, ROOM_SIZE.y * 0.32),
-		Color(0.85, 0.4, 0.35))
-	_make_station(&"stocks", "THE FENCE",
-		"Move the market", Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y * 0.18),
-		GOLD)
-	_make_station(&"blackmarket", "BLACK MARKET",
-		"Case-specific gear", Vector2(ROOM_SIZE.x * 0.78, ROOM_SIZE.y * 0.32),
-		Color(0.6, 0.4, 0.85))
+	_make_station(&"market", "NIGHT MARKET", "Weapons / upgrades / perks / stocks", Vector2(300, 140), GOLD)
 
 func _make_station(kind: StringName, title: String, subtitle: String,
 		pos: Vector2, tint: Color) -> void:
@@ -176,7 +169,7 @@ func _make_station(kind: StringName, title: String, subtitle: String,
 
 	var title_l := Label.new()
 	title_l.text = title
-	title_l.add_theme_font_size_override("font_size", 15)
+	title_l.add_theme_font_size_override("font_size", 22)
 	title_l.add_theme_color_override("font_color", tint)
 	title_l.position = Vector2(-48, -54)
 	area.add_child(title_l)
@@ -237,7 +230,7 @@ func _build_door() -> void:
 	var label := Label.new()
 	label.text = "OUT TO THE JOB BOARD"
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_font_size_override("font_size", 19)
 	label.add_theme_color_override("font_color", GOLD_DIM)
 	label.position = Vector2(-60, -38)
 	label.custom_minimum_size = Vector2(140, 0)
@@ -265,8 +258,6 @@ func _on_door_exited(b: Node) -> void:
 		_door_prompt.hide()
 
 func _leave_hideout() -> void:
-	if RunState.run_map:
-		RunState.run_map.advance_step()
 	RunFlow.save()
 	RunFlow.queue_scene("res://map_ui_screen.tscn")
 
@@ -290,6 +281,14 @@ func _open_station(kind: StringName) -> void:
 		return
 	_walker.movement_enabled = false
 	match kind:
+		&"market":
+			if is_instance_valid(_market_layer):
+				_active_panel = _market_layer
+				_active_panel.show()
+				_refresh_gold_label()
+				return
+			_market_layer = _build_market()
+			_active_panel = _market_layer
 		&"weapons": _active_panel = _build_weapon_dealer()
 		&"stocks": _active_panel = _build_stock_manipulation()
 		&"blackmarket": _active_panel = _build_black_market()
@@ -298,10 +297,16 @@ func _open_station(kind: StringName) -> void:
 
 func _close_panel() -> void:
 	if _active_panel:
-		_active_panel.queue_free()
+		if _active_panel == _market_layer:
+			_active_panel.hide()
+		else:
+			_active_panel.queue_free()
 		_active_panel = null
-	_active_gold_label = null
+	if not is_instance_valid(_market_layer):
+		_active_gold_label = null
 	_walker.movement_enabled = true
+	if RunState.active:
+		RunFlow.save()
 
 ## Shared panel chrome: dim + centered frame + title + gold label + close.
 ## Returns {layer, body} where `body` is the VBoxContainer to fill with content.
@@ -347,7 +352,7 @@ func _panel_frame(title: String, kicker: String, accent: Color) -> Dictionary:
 	head_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var k := Label.new()
 	k.text = kicker
-	k.add_theme_font_size_override("font_size", 11)
+	k.add_theme_font_size_override("font_size", 19)
 	k.add_theme_color_override("font_color", GOLD_DIM)
 	head_col.add_child(k)
 	var t := Label.new()
@@ -411,12 +416,12 @@ func _item_row(body: VBoxContainer, name_text: String, desc_text: String,
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var n := Label.new()
 	n.text = name_text
-	n.add_theme_font_size_override("font_size", 15)
+	n.add_theme_font_size_override("font_size", 22)
 	n.add_theme_color_override("font_color", accent)
 	info.add_child(n)
 	var d := Label.new()
 	d.text = desc_text
-	d.add_theme_font_size_override("font_size", 11)
+	d.add_theme_font_size_override("font_size", 19)
 	d.add_theme_color_override("font_color", INK_SOFT)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(d)
@@ -430,7 +435,7 @@ func _item_row(body: VBoxContainer, name_text: String, desc_text: String,
 	right.add_child(price_l)
 	var buy := Button.new()
 	buy.text = "Buy"
-	buy.custom_minimum_size = Vector2(74, 0)
+	buy.custom_minimum_size = Vector2(120, 68)
 	right.add_child(buy)
 	row.add_child(right)
 
@@ -449,6 +454,7 @@ func _on_row_buy(price: int, on_buy: Callable, buy: Button) -> void:
 	_refresh_gold_label()
 	buy.text = "Bought"
 	buy.disabled = true
+	RunFlow.save()
 
 # ============================================================ ALL VENDORS ===
 ## Every station -- Weapon Dealer, The Fence, Black Market -- follows the
@@ -479,7 +485,7 @@ func _open_vendor(title: String, kicker: String, accent: Color,
 	if intro_text != "":
 		var intro := Label.new()
 		intro.text = intro_text
-		intro.add_theme_font_size_override("font_size", 11)
+		intro.add_theme_font_size_override("font_size", 19)
 		intro.add_theme_color_override("font_color", INK_SOFT)
 		intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		body.add_child(intro)
@@ -547,7 +553,7 @@ func _build_weapon_dealer() -> CanvasLayer:
 
 	var intro := Label.new()
 	intro.text = "Sealed off the truck. Nobody knows what's inside until it cracks -- but the grade only goes up the more heat you've weathered."
-	intro.add_theme_font_size_override("font_size", 11)
+	intro.add_theme_font_size_override("font_size", 19)
 	intro.add_theme_color_override("font_color", INK_SOFT)
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(intro)
@@ -689,7 +695,7 @@ func _make_result_card(w: WeaponItem) -> PanelContainer:
 	var tag := Label.new()
 	tag.text = "EQUIPPED"
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tag.add_theme_font_size_override("font_size", 11)
+	tag.add_theme_font_size_override("font_size", 19)
 	tag.add_theme_color_override("font_color", Color(0.55, 0.95, 0.6))
 	col.add_child(tag)
 
@@ -978,3 +984,25 @@ func _buy_filed_trigger() -> void:
 func _buy_blueprints() -> void:
 	RunState.add_max_health(1)
 	RunState.add_stat_mod(&"fire_rate", 0.0, 0.92)
+
+func _build_market() -> CanvasLayer:
+	var frame := _panel_frame("NIGHT MARKET", "ONE STOP / GOLD PURCHASES FOR THIS RUN", GOLD)
+	var body: VBoxContainer = frame["body"]
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(860, 380)
+	body.add_child(scroll)
+	var offers := VBoxContainer.new()
+	offers.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(offers)
+	var weapons: Array = ItemPool.rewardable_weapons()
+	weapons.shuffle()
+	for i in mini(3, weapons.size()):
+		var w: WeaponItem = weapons[i]
+		_item_row(offers, w.display_name, "WEAPON / " + w.rarity_name(), 120 + 80 * w.rarity,
+			w.rarity_color(), _market_weapon.bind(w))
+	for offer: Dictionary in _black_market_offer_generator() + _fence_offer_generator():
+		_item_row(offers, offer["name"], offer["desc"], offer["price"], offer["accent"], offer["cb"])
+	return frame["layer"]
+
+func _market_weapon(w: WeaponItem) -> void:
+	RunState.loadout.equip(w)

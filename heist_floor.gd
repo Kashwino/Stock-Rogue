@@ -104,7 +104,7 @@ func _build_floor() -> void:
 	var quota_level: int = RunState.run_map.quota_block if RunState.run_map else 0
 	var exit_count: int = clampi(quota_level + 1, 1, 4)
 
-	_rng.seed = hash(str(RunFlow.run_seed) + "_floor_" + str(heist_index))
+	_rng.seed = hash(str(RunFlow.run_seed) + "_floor_" + str(stage) + "_" + str(heist_index))
 
 	generator = FloorGenerator.new()
 	add_child(generator)
@@ -112,7 +112,7 @@ func _build_floor() -> void:
 		generator.generate_authored()
 	else:
 		generator.generate(
-			hash(str(RunFlow.run_seed) + "_floor_" + str(heist_index)),
+			hash(str(RunFlow.run_seed) + "_floor_" + str(stage) + "_" + str(heist_index)),
 			room_count, exit_count)
 	if generator.rooms.is_empty():
 		push_error("HeistFloor: no rooms generated")
@@ -125,7 +125,7 @@ func _build_floor() -> void:
 			room.spawn_count = 0
 		elif room.has_meta("is_boss"):
 			room.spawn_count = 1
-			room.enemy_scene = load("res://auditor_boss.tscn")
+			room.enemy_scene = load("res://auditor_boss.tscn") if stage == 3 or RunSave.slot == RunSave.SLOT_COUNT else load("res://enemy.tscn")
 		elif room.get_meta("chest_kind", "") == "":
 			var base: int = room.get("spawn_count")
 			room.set("spawn_count", base + int(_rarity * 0.75))
@@ -609,6 +609,8 @@ func _fire_exit_in_reach() -> Dictionary:
 	return {}
 
 func _extract() -> void:
+	if RunState.run_map and RunState.run_map.current_stage == 3 and not marked:
+		return
 	if _extracting:
 		return
 	_extracting = true
