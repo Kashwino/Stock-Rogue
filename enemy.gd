@@ -128,7 +128,8 @@ func _apply_archetype_visual() -> void:
 		return
 	var a: Dictionary = ARCHETYPES[kind]
 	if sprite is CanvasItem:
-		sprite.modulate = a["colour"]
+		sprite.modulate = Color.WHITE
+	ActorArt.dress(sprite, false, self is AuditorBoss, kind, a["colour"])
 	var scale_mult := 1.0
 	match kind:
 		Kind.BRUTE: scale_mult = 1.35
@@ -551,7 +552,7 @@ func heal(amount: int) -> void:
 	if sprite:
 		var flash := create_tween()
 		flash.tween_property(sprite, "modulate", Color(0.5, 1.0, 0.6), 0.1)
-		flash.tween_property(sprite, "modulate", ARCHETYPES[kind]["colour"], 0.25)
+		flash.tween_property(sprite, "modulate", Color.WHITE, 0.25)
 
 func take_damage(amount: int = 1) -> void:
 	# queue_free() only frees at end of frame, so without this guard several
@@ -578,7 +579,7 @@ func _flash() -> void:
 			_flash_tween.kill()
 		sprite.modulate = Color(3, 3, 3)
 		_flash_tween = create_tween()
-		_flash_tween.tween_property(sprite, "modulate", ARCHETYPES[kind]["colour"], 0.06)
+		_flash_tween.tween_property(sprite, "modulate", Color.WHITE, 0.06)
 
 func _die() -> void:
 	if _dead:

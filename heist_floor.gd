@@ -78,6 +78,7 @@ func _ready() -> void:
 		camera = Camera2D.new()
 		add_child(camera)
 	camera.make_current()
+	camera.zoom = Vector2(1.15, 1.15)
 	fx = CombatFX.new()
 	fx.camera = camera
 	add_child(fx)
@@ -116,6 +117,7 @@ func _build_floor() -> void:
 	if generator.rooms.is_empty():
 		push_error("HeistFloor: no rooms generated")
 		return
+	_dress_building()
 
 	# Difficulty from heist rarity: denser crews in rarer heists.
 	for room in generator.rooms:
@@ -798,9 +800,9 @@ func _setup_tactics() -> void:
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
 	_security_status = Label.new()
-	_security_status.position = Vector2(360, 18)
-	_security_status.size = Vector2(500, 160)
-	_security_status.add_theme_font_size_override("font_size", 19)
+	_security_status.position = Vector2(332, 29)
+	_security_status.size = Vector2(530, 102)
+	_security_status.add_theme_font_size_override("font_size", 18)
 	_security_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_security_status)
 	tactical_map = HeistMap.new()
@@ -828,7 +830,42 @@ func _update_security_status() -> void:
 		return
 	var tag := RunFlow.pending_heist.modifier_name() if RunFlow.pending_heist else "STANDARD SECURITY"
 	var response := " · POLICE IN %.0fs" % _heat_timer if heat >= dispatch_threshold() else " · CLEAR"
-	_security_status.text = "%s\nHEAT %.0f / %.0f%s\n%s" % [tag, heat, dispatch_threshold(), response, last_heat_source]
+	_security_status.text = "%s\nHEAT  %.0f / %.0f%s\n%s" % [tag, heat, dispatch_threshold(), response, last_heat_source]
 	var short_quote := ShortBook.quote()
 	if not short_quote.is_empty():
 		_security_status.text += "\nSHORT: %s%d P/L · escape pays %d" % ["+" if short_quote["profit"] >= 0 else "", short_quote["profit"], short_quote["payout"]]
+
+func _dress_building() -> void:
+	var bounds := Rect2()
+	for room: BuildingRoom in generator.rooms:
+		var rect := Rect2(room.global_position, room.room_size)
+		bounds = rect if bounds.size == Vector2.ZERO else bounds.merge(rect)
+		var label := room.get_node_or_null("RoomName")
+		if label:
+			label.hide()
+		var art := RoomArt.new()
+		art.room = room
+		room.add_child(art)
+		var walls := room.get_node_or_null("Walls")
+		if walls:
+			for wall in walls.get_children():
+				if wall is Polygon2D:
+					wall.color = Color("506069")
+					var edge := Line2D.new()
+					edge.points = wall.polygon
+					edge.closed = true
+					edge.width = 2
+					edge.default_color = Color("82958d")
+					wall.add_child(edge)
+		var counter := room.get_node_or_null("Counter/Countertop") as Polygon2D
+		if counter:
+			counter.color = Color("6b6856")
+			var trim := Line2D.new()
+			trim.points = counter.polygon
+			trim.closed = true
+			trim.width = 3
+			trim.default_color = Color("c3ad77")
+			counter.add_child(trim)
+	var street := StreetArt.new()
+	street.bounds = bounds
+	add_child(street)

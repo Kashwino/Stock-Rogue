@@ -14,7 +14,7 @@ extends CanvasLayer
 
 signal item_chosen(item)
 
-const CARD_SIZE := Vector2(160, 230)
+const CARD_SIZE := Vector2(220, 280)
 
 var _root: Control
 var _dim: ColorRect
@@ -161,21 +161,21 @@ func _make_card(item) -> Button:
 	card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	var col: Color = item.rarity_color()
-	card.text = "%s\n\n%s" % [item.display_name, item.rarity_name()]
+	card.text = "\n\n\n%s\n%s" % [item.display_name, item.rarity_name()]
 	card.add_theme_color_override("font_color", col)
 	card.add_theme_color_override("font_hover_color", Color.WHITE)
 	card.add_theme_color_override("font_focus_color", Color.WHITE)
-	card.add_theme_font_size_override("font_size", 15)
+	card.add_theme_font_size_override("font_size", 21)
 
 	for state in ["normal", "hover", "pressed", "focus"]:
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.09, 0.09, 0.12)
+		sb.bg_color = Color("14232d")
 		if state == "hover" or state == "focus":
 			sb.bg_color = Color(0.15, 0.15, 0.2)
 		elif state == "pressed":
 			sb.bg_color = Color(0.05, 0.05, 0.07)
 		sb.border_color = col
-		sb.set_border_width_all(4 if state != "normal" else 3)
+		sb.set_border_width_all(2 if state != "normal" else 1)
 		sb.set_corner_radius_all(6)
 		sb.content_margin_left = 12
 		sb.content_margin_right = 12
@@ -183,6 +183,11 @@ func _make_card(item) -> Button:
 		sb.content_margin_bottom = 14
 		card.add_theme_stylebox_override(state, sb)
 
+	var illustration := ItemIllustration.new()
+	illustration.item = item
+	illustration.position = Vector2(16, 16)
+	illustration.size = Vector2(188, 115)
+	card.add_child(illustration)
 	card.pressed.connect(_claim.bind(item))
 	card.mouse_entered.connect(_show_detail.bind(item))
 	card.focus_entered.connect(_show_detail.bind(item))

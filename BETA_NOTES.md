@@ -1,4 +1,24 @@
-# Stock Rogue 0.3 — criminal network update
+# Stock Rogue 0.4 — visual overhaul
+
+## New visual direction
+
+- A noir exchange identity: ink-blue panels, warm brass, teal highlights, and a
+  custom illustrated vault on the main menu.
+- Illustrated suited characters with visible heads, arms, weapons and shadows;
+  separate turret silhouettes and an oversized Auditor. Crew portraits replace
+  letter placeholders, and loot cards show weapon/upgrade illustrations.
+- Stone tile floors, inlaid borders, carpets, exchange seals, wall-mounted cabinets,
+  trim on existing walls/counters, static lamp pools and surrounding streets.
+  Cabinets have matching collision and leave doorways and spawn markers clear.
+- Illustrated cash bundles, equipment cases, market terminals, cameras, alarm panels
+  and a detailed getaway car. Nearby interaction labels reduce visual clutter.
+- A framed HUD separates health/gold, equipped weapon, security reports and the
+  market chart. Touch buttons use matching pictograms and clear labels. Main menu,
+  contract cards and shared controls use the same palette and hierarchy.
+- Vector artwork stays crisp at phone and desktop resolutions. Room decoration is
+  drawn once; no per-frame lighting or post-processing is required. Existing Low
+  Effects and enemy sleeping behavior remain available.
+
 
 ## New in 0.3
 

@@ -16,7 +16,7 @@ const MODULE := Vector2(600, 450)
 const ROOMS_DIR := "res://rooms"
 const WALL_THICK := 24.0
 const DOOR_GAP := 96.0
-const WALL_COLOR := Color(0.30, 0.31, 0.37)
+const WALL_COLOR := Color("506069")
 
 const NORTH := 0
 const SOUTH := 1

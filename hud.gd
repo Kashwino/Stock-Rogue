@@ -56,7 +56,7 @@ func bind_hud(player, live_stock, loadout = null) -> void:
 		_update_health(player.health, player.max_health)
 		player.health_changed.connect(_update_health)
 	if live_stock:
-		stock_name_label.text = String(live_stock.venue_asset_id).to_upper()
+		stock_name_label.text = String(live_stock.venue_asset_id).replace("_", " ").to_upper()
 		live_stock.price_updated.connect(_update_stock)
 		# Tell the chart which venue this heist is moving.
 		if stock_chart:
@@ -117,6 +117,11 @@ func _update_ammo_readout(text: String) -> void:
 
 func _update_health(current: int, maxv: int) -> void:
 	health_label.text = "HP  %d / %d" % [clampi(current, 0, maxv), maxv]
+	var frame := get_node_or_null("Frame") as HUDFrame
+	if frame:
+		frame.health = current
+		frame.max_health = maxv
+		frame.queue_redraw()
 
 func _update_gold(amount: int) -> void:
 	if _gold_tween and _gold_tween.is_valid():

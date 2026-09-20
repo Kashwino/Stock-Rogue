@@ -24,6 +24,9 @@ var _cards: Array = []
 
 func _ready() -> void:
 	_ensure_control_root()
+	var backdrop := MenuBackdrop.new()
+	add_child(backdrop)
+	move_child(backdrop, 0)
 
 ## Godot routes mouse input down the CONTROL tree. This scene is a CanvasLayer
 ## with Controls parented straight to it — with no full-rect Control root in
@@ -117,7 +120,7 @@ func _show_heist_choice(step: RunMap.Step) -> void:
 
 func _make_heist_card(node: MapNode, index: int) -> Control:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(220, 260)
+	card.custom_minimum_size = Vector2(250, 370)
 	card.set_meta("qa_label", "HEIST OPTION %d" % (index + 1))
 
 	var is_mystery := (node.type == MapNode.Type.MYSTERY and not node.revealed \
@@ -125,17 +128,17 @@ func _make_heist_card(node: MapNode, index: int) -> Control:
 	var accent := Color(0.7, 0.55, 0.95) if is_mystery else _rarity_color(node.room_rarity)
 
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.09, 0.12)
+	sb.bg_color = Color("14232d")
 	sb.border_color = accent
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(6)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
 	sb.content_margin_left = 12; sb.content_margin_right = 12
 	sb.content_margin_top = 14; sb.content_margin_bottom = 14
 	card.add_theme_stylebox_override("panel", sb)
 
 	var vb := VBoxContainer.new()
 	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vb.add_theme_constant_override("separation", 10)
+	vb.add_theme_constant_override("separation", 12)
 	card.add_child(vb)
 
 	var title := Label.new()
@@ -147,6 +150,9 @@ func _make_heist_card(node: MapNode, index: int) -> Control:
 		title.text = node.label()
 	title.add_theme_color_override("font_color", accent)
 	vb.add_child(title)
+	var art := ContractArt.new()
+	art.accent = accent
+	vb.add_child(art)
 
 	# Detail: venue + rarity (hidden for mystery). Hook: a "Recon" upgrade could
 	# force-show rarity even on mystery nodes later.
@@ -156,7 +162,7 @@ func _make_heist_card(node: MapNode, index: int) -> Control:
 	if is_mystery:
 		detail.text = "Unknown score.\nHigh risk."
 	else:
-		detail.text = String(node.venue_id).to_upper() + "\n" + _rarity_name(node.room_rarity)
+		detail.text = String(node.venue_id).replace("_", " ").to_upper() + "\n" + _rarity_name(node.room_rarity)
 	vb.add_child(detail)
 	var tag := Label.new()
 	tag.text = node.modifier_name() + "\n" + node.modifier_detail()

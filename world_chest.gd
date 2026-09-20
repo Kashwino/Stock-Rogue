@@ -22,6 +22,15 @@ var _used: bool = false
 var _chest_ui = null                         # set by spawner, or found at open time
 
 func _ready() -> void:
+	if sprite is Polygon2D:
+		sprite.polygon = PackedVector2Array()
+	for child in sprite.get_children():
+		if child is CanvasItem:
+			child.hide()
+	var illustration := PropArt.new()
+	illustration.kind = "chest"
+	illustration.tone = VisualTheme.GOLD if kind == Kind.WEAPON else VisualTheme.TEAL
+	sprite.add_child(illustration)
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	if prompt:

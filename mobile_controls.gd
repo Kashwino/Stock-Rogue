@@ -28,19 +28,15 @@ func _ready() -> void:
 		var shape := CircleShape2D.new()
 		shape.radius = 46.0
 		button.shape = shape
-		var visual := Polygon2D.new()
-		var points := PackedVector2Array()
-		for i in 24:
-			points.append(Vector2.from_angle(TAU * i / 24.0) * 45.0)
-		visual.polygon = points
-		visual.color = Color(0.13, 0.18, 0.25, 0.9)
+		var visual := TouchArt.new()
+		visual.action = pair[0]
 		button.add_child(visual)
 		var label := Label.new()
 		label.text = pair[1]
-		label.position = Vector2(-43, -12)
+		label.position = Vector2(-43, 8)
 		label.size = Vector2(86, 28)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 18)
+		label.add_theme_font_size_override("font_size", 16)
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(label)
 		_root.add_child(button)
@@ -49,9 +45,12 @@ func _ready() -> void:
 
 func _ring(text: String) -> Line2D:
 	var ring := Line2D.new()
-	ring.width = 3.0
-	ring.default_color = Color(0.92, 0.78, 0.4, 0.6)
+	ring.width = 0.5
+	ring.default_color = Color(0.42, 0.83, 0.77, 0.3)
 	ring.closed = true
+	var art := TouchArt.new()
+	art.stick = true
+	ring.add_child(art)
 	for i in 48:
 		ring.add_point(Vector2.from_angle(TAU * i / 48.0) * 83.0)
 	var label := Label.new()
@@ -71,7 +70,7 @@ func _knob(parent: Node) -> Polygon2D:
 	for i in 24:
 		points.append(Vector2.from_angle(TAU * i / 24.0) * 27.0)
 	knob.polygon = points
-	knob.color = Color(0.95, 0.82, 0.5, 0.7)
+	knob.color = Color(0.42, 0.83, 0.77, 0.75)
 	parent.add_child(knob)
 	return knob
 

@@ -50,28 +50,9 @@ func _pick_kind() -> void:
 func _build_visual() -> void:
 	_visual = Node2D.new()
 	add_child(_visual)
-	var col: Color = KINDS[_kind]["color"]
-
-	# A little diamond token so loot reads at a glance.
-	var poly := Polygon2D.new()
-	poly.polygon = PackedVector2Array([
-		Vector2(0, -12), Vector2(11, 0), Vector2(0, 12), Vector2(-11, 0)])
-	poly.color = col
-	_visual.add_child(poly)
-
-	var glow := Polygon2D.new()
-	glow.polygon = PackedVector2Array([
-		Vector2(0, -20), Vector2(18, 0), Vector2(0, 20), Vector2(-18, 0)])
-	glow.color = Color(col.r, col.g, col.b, 0.18)
-	glow.z_index = -1
-	_visual.add_child(glow)
-
-	var lbl := Label.new()
-	lbl.text = KINDS[_kind]["label"]
-	lbl.add_theme_color_override("font_color", Color(0.1, 0.1, 0.12))
-	lbl.add_theme_font_size_override("font_size", 12)
-	lbl.position = Vector2(-4, -10)
-	_visual.add_child(lbl)
+	var illustration := PropArt.new()
+	illustration.kind = "loot"
+	_visual.add_child(illustration)
 
 func _process(delta: float) -> void:
 	if Settings.values["low_effects"]:

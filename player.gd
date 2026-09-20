@@ -63,6 +63,7 @@ func _on_reload_started(duration: float) -> void:
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _ready() -> void:
+	ActorArt.dress(sprite, true, false)
 	add_to_group("player")
 	# Player on layer 4; still collides with walls (layer 1) for movement.
 	collision_layer = 4

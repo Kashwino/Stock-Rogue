@@ -32,6 +32,7 @@ func _ready() -> void:
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(caption)
 	_update_caption()
+	caption.hide()
 	queue_redraw()
 
 func _physics_process(delta: float) -> void:
@@ -69,6 +70,7 @@ func _physics_process(delta: float) -> void:
 			transmit_clock = 8.0
 			floor_host.security_alert(room, "Camera spotted you", 8.0)
 	_update_caption()
+	caption.visible = global_position.distance_squared_to(p.global_position) < 260.0 * 260.0 or detected > 0.0
 	queue_redraw()
 
 func take_damage(amount: int = 1) -> void:
@@ -112,7 +114,16 @@ func _draw() -> void:
 		for i in 17:
 			cone.append(Vector2.from_angle(scan_angle - 0.48 + i * 0.06) * RANGE)
 		draw_colored_polygon(cone, Color(1.0, 0.3 if detected > 0 else 0.7, 0.15, 0.10))
-	draw_rect(Rect2(-21, -16, 42, 32), color)
-	draw_circle(Vector2.ZERO, 8, Color(0.03, 0.07, 0.09))
+	draw_rect(Rect2(-22, -14, 48, 34), Color(0, 0, 0, 0.3))
+	draw_style_box(VisualTheme.panel(Color("526b70"), 0), Rect2(-22, -17, 44, 34))
+	if kind == Kind.CAMERA:
+		draw_rect(Rect2(-15, -10, 28, 20), Color("8daba7") if not disabled else Color("33464d"))
+		draw_circle(Vector2(7, 0), 8, Color("13232d"))
+		draw_circle(Vector2(8, 0), 4, color)
+	else:
+		draw_rect(Rect2(-16, -11, 21, 14), color.darkened(0.6))
+		draw_line(Vector2(-12, -4), Vector2(0, -4), color, 2)
+		for y in [-7, 1, 9]:
+			draw_circle(Vector2(13, y), 2, color)
 	if armed and not disabled:
 		draw_arc(Vector2.ZERO, 30, 0, TAU, 20, Color(1, 0.2, 0.15), 3)

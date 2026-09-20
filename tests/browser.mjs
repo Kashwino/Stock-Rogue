@@ -164,6 +164,7 @@ try {
   if ((await state()).controls.some(c => c.text === 'Skip (look for a way around…)')) {
     await tap('Skip (look for a way around…)');
   }
+  await shot('phone-contracts');
   await tap('HEIST OPTION 1');
   await wait(() => window.stockRogueQA?.scene.endsWith('heist_floor.tscn'));
   assert.deepEqual(errors, [], 'no browser runtime errors');

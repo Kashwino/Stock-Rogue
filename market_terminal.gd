@@ -10,9 +10,7 @@ var _trade_buttons: Array[Button] = []
 
 func _ready() -> void:
 	add_to_group("market_terminal")
-	var screen := Polygon2D.new()
-	screen.polygon = PackedVector2Array([Vector2(-24, -20), Vector2(24, -20), Vector2(24, 20), Vector2(-24, 20)])
-	screen.color = Color(0.12, 0.72, 0.67)
+	var screen := PropArt.new()
 	add_child(screen)
 	prompt = Label.new()
 	prompt.text = "MARKET TERMINAL\nUSE / E"
@@ -26,6 +24,7 @@ func _process(_delta: float) -> void:
 	var player := get_tree().get_first_node_in_group("player") as Node2D
 	var near := player != null and global_position.distance_squared_to(player.global_position) < 110.0 * 110.0
 	prompt.modulate = Color.WHITE if near else Color(0.6, 0.7, 0.75)
+	prompt.visible = near and not opened
 	if near and not used and Input.is_action_just_pressed("interact"):
 		open_terminal()
 

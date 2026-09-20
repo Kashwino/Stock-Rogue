@@ -26,7 +26,7 @@ var _quota: float = 120.0
 var _font: Font
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(260, 150)
+	custom_minimum_size = Vector2(260, 100)
 	_font = ThemeDB.fallback_font
 	set_process(true)
 	# Do NOT sample here — RunState may not be ready yet on some scenes. The

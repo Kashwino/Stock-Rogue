@@ -60,6 +60,11 @@ func _build_visual() -> void:
 		Vector2(-22, -18), Vector2(20, -18), Vector2(20, 18), Vector2(-22, 18)])
 	roof.color = Color(0.28, 0.31, 0.40)
 	add_child(roof)
+	_body.hide()
+	roof.hide()
+	var illustration := PropArt.new()
+	illustration.kind = "car"
+	add_child(illustration)
 
 	# Anchor a Control label into world space via this Node2D.
 	var anchor := Node2D.new()

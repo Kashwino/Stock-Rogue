@@ -72,9 +72,8 @@ func _build_frame() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_root)
 
-	var bg := ColorRect.new()
+	var bg := MenuBackdrop.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = BG
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(bg)
 
@@ -298,13 +297,9 @@ func _make_crew_card(c: Dictionary) -> Control:
 	med.custom_minimum_size = Vector2(80, 80)
 	med.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	med_wrap.add_child(med)
-	var mono := Label.new()
-	mono.text = c["mono"] if unlocked else "?"
-	mono.add_theme_font_size_override("font_size", 38)
-	mono.add_theme_color_override("font_color", GOLD if unlocked else Color(0.4, 0.4, 0.46))
-	mono.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mono.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	med.add_child(mono)
+	var portrait := PortraitArt.new()
+	portrait.unlocked = unlocked
+	med.add_child(portrait)
 
 	var name_l := Label.new()
 	name_l.text = c["name"]
