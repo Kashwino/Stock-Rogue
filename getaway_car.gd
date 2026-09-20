@@ -64,6 +64,7 @@ func _build_visual() -> void:
 	roof.hide()
 	var illustration := PropArt.new()
 	illustration.kind = "car"
+	illustration.position = Vector2(60, 38)
 	add_child(illustration)
 
 	# Anchor a Control label into world space via this Node2D.

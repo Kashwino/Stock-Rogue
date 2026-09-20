@@ -1,4 +1,4 @@
-[gd_resource load_steps=8 format=3]
+[gd_resource type="Theme" load_steps=8 format=3]
 
 [sub_resource type="StyleBoxFlat" id="panel"]
 bg_color = Color(0.06275, 0.11373, 0.14902, 1)
