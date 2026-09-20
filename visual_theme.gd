@@ -13,10 +13,11 @@ func _ready() -> void:
 
 func _on_node_added(node: Node) -> void:
 	if node is Button and not node is OptionButton and not node is CheckButton and node.text != "":
-		_style_button.call_deferred(node)
+		_style_button.call_deferred(node.get_instance_id())
 
-func _style_button(node: Node) -> void:
-	if not is_instance_valid(node) or not node.is_inside_tree():
+func _style_button(instance_id: int) -> void:
+	var node := instance_from_id(instance_id)
+	if not is_instance_valid(node) or not node is Button or not node.is_inside_tree():
 		return
 	var button := node as Button
 	if button.text == "" or button.has_meta("item"):

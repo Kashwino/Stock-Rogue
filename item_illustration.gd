@@ -10,7 +10,7 @@ func _draw() -> void:
 	var c := size * 0.5
 	draw_arc(c, 43, 0, TAU, 40, Color(accent, 0.13), 1, true)
 	if item is WeaponItem:
-		var big := item.slot == WeaponItem.Slot.BIG
+		var big: bool = item.slot == WeaponItem.Slot.BIG
 		var length := 102.0 if big else 65.0
 		var start := c - Vector2(length * 0.5, 7)
 		draw_rect(Rect2(start + Vector2(-3, 6), Vector2(length + 6, 16)), Color(0, 0, 0, 0.3))
