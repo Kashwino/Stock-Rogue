@@ -1,4 +1,27 @@
-# Stock Rogue 0.4 — visual overhaul
+# Stock Rogue 0.5 — the ten scores and safehouse
+
+- PLAY > case file now opens a walkable preparation lobby. Choose the Operator
+  (3 HP) or Ghost (2 HP, quiet footsteps); Crew Quarters unlock the Wolf (4 HP,
+  +1 bullet damage) and Broker (2 HP, amplified market swings). Active runs keep
+  their original character, health and gear when returning to the lobby.
+- Build permanent Armory (8 Intel), Training Room (8 Intel) and Crew Quarters
+  (12 Intel) by walking into their wings and pressing USE. Armory opens weapon
+  research; Training opens starting-perk purchases/equipment. Intel and rooms
+  share the existing transaction-safe career save and survive death/reload.
+- Exactly 3 Town, 3 City, 3 Capital heists then 1 explicit Auditor final boss.
+  District maps offer 2–4 target locations; the final confrontation is one target.
+  Old saves migrate by completed-heist count while retaining their inventory.
+- Forced shops and stock/gold quota gates are removed. Each ordinary map has a
+  seeded 45% chance of one optional Night Market visit, containing weapons,
+  upgrades, perks and stock operations in one vendor. Visiting does not advance
+  the route. Visit flags and purchases save immediately; reopening the stall
+  does not reroll or restock bought items. Leaving ends that visit.
+- The Auditor appears on the final job (and QUICK HEIST's isolated test scenario).
+  The final job cannot be completed by escaping before defeating him.
+- Automated regression checks cover route lengths, location counts, deterministic
+  choices, optional visits, save migration and permanent room persistence.
+
+## Previous: 0.4 visual overhaul
 
 ## New visual direction
 

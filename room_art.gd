@@ -14,7 +14,7 @@ func _ready() -> void:
 		title = "EXCHANGE / %02d" % (room.get_index() + 1)
 	if room.has_meta("is_boss"):
 		accent = Color("a98051")
-		title = "EXECUTIVE / THE AUDITOR"
+		title = "EXECUTIVE / THE AUDITOR" if (RunState.run_map and RunState.run_map.current_stage == 3) or RunSave.slot == RunSave.SLOT_COUNT else "SECURITY / CAPTAIN"
 	elif room.has_meta("chest_kind"):
 		accent = Color("b89b66")
 	elif room.is_start_room:

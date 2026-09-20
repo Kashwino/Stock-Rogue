@@ -35,6 +35,8 @@ func _process(delta: float) -> void:
 	data["unlocks"] = Meta.unlocked_assets
 	data["starting_perk"] = String(Meta.starting_perk)
 	data["perks"] = RunState.perks
+	data["profile"] = String(RunState.character_profile.id) if RunState.character_profile else ""
+	data["health"] = RunState.health
 	if scene is HeistFloor and is_instance_valid(scene.player):
 		data["position"] = [scene.player.global_position.x, scene.player.global_position.y]
 		data["shots"] = scene.player.shots_fired

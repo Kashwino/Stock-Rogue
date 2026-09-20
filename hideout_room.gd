@@ -1000,7 +1000,14 @@ func _build_market() -> CanvasLayer:
 		var w: WeaponItem = weapons[i]
 		_item_row(offers, w.display_name, "WEAPON / " + w.rarity_name(), 120 + 80 * w.rarity,
 			w.rarity_color(), _market_weapon.bind(w))
-	for offer: Dictionary in _black_market_offer_generator() + _fence_offer_generator():
+	var stock_offers: Array = [
+		{"name": "Spread Rumors", "desc": "STOCKS / +25% to weakest venue", "price": 120, "accent": GOLD, "cb": _op_pump_weak},
+		{"name": "Market Manipulation", "desc": "STOCKS / +8% to every venue", "price": 260, "accent": GOLD, "cb": _op_pump_all},
+	]
+	for perk: Array in [[&"fast_hands", "Fast Hands", 220], [&"scavenger", "Scavenger", 260], [&"cool_head", "Cool Head", 240]]:
+		if not RunState.has_perk(perk[0]):
+			stock_offers.append({"name": perk[1], "desc": "PERK / active for this run", "price": perk[2], "accent": VisualTheme.TEAL, "cb": _buy_perk.bind(perk[0])})
+	for offer: Dictionary in _black_market_offer_generator() + stock_offers:
 		_item_row(offers, offer["name"], offer["desc"], offer["price"], offer["accent"], offer["cb"])
 	return frame["layer"]
 

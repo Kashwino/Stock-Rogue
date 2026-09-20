@@ -147,6 +147,11 @@ func _run() -> void:
 	boss.clock = 0.0
 	boss._physics_process(0.02)
 	check(boss.phase == 2 and boss.attack == AuditorBoss.Attack.DECLARE_CHARGE, "margin-call phase declares charge")
+	var prior_stage := RunState.run_map.current_stage
+	RunState.run_map.current_stage = 3
+	floor_scene._extract()
+	check(not floor_scene._extracting, "final boss cannot be skipped by extraction")
+	RunState.run_map.current_stage = prior_stage
 	boss.take_damage(9999)
 	check(floor_scene.marked, "boss death marks heist and triggers reward")
 	await get_tree().create_timer(0.2).timeout
@@ -175,6 +180,18 @@ func _run() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		check(is_instance_valid(scene), "screen ready " + path)
+		if path == "res://hideout_room.tscn":
+			RunEconomy.gold = 2000
+			scene._open_station(&"market")
+			await get_tree().process_frame
+			var panel: CanvasLayer = scene._active_panel
+			var purchase: Button = panel.find_children("*", "Button", true, false).filter(func(b): return b.text == "Buy")[0]
+			purchase.pressed.emit()
+			check(RunEconomy.gold < 2000 and purchase.disabled, "unified market buys weapon and debits gold")
+			scene._close_panel()
+			scene._open_station(&"market")
+			check(scene._active_panel == panel and purchase.disabled, "reopening market does not restock purchases")
+			scene._close_panel()
 		scene.queue_free()
 		await get_tree().process_frame
 	RunState.end_run(false)
