@@ -30,6 +30,14 @@ var runs_survived: int = 0
 var tutorial_seen: bool = false
 var specialists: Array[StringName] = []          # unlocked crew beyond the Operator
 var total_profit: float = 0.0                    # lifetime cash earned
+## Career stats across all three case files. Specialist unlocks read these.
+const STAT_DEFAULTS := {
+	"fire_exit_escapes": 0, "bosses_killed": 0, "best_index": 0.0, "runs_won": 0,
+	"heists_completed": 0, "total_gold": 0, "deaths": 0,
+}
+var stats: Dictionary = STAT_DEFAULTS.duplicate()
+## Stage bosses put down, by id (lieutenants count only in bosses_killed).
+var bosses_seen: Array = []
 
 func _ready() -> void:
 	load_meta()
@@ -47,6 +55,8 @@ func save_meta() -> bool:
 		"starting_perk": String(starting_perk),
 		"extraction_receipts": extraction_receipts,
 		"specialists": specialists,
+		"stats": stats,
+		"bosses_seen": bosses_seen,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	last_save_ok = f != null
@@ -83,6 +93,14 @@ func load_meta() -> void:
 	specialists.clear()
 	for sp in parsed.get("specialists", []):
 		specialists.append(StringName(sp))
+	stats = STAT_DEFAULTS.duplicate()
+	var saved_stats = parsed.get("stats", {})
+	if saved_stats is Dictionary:
+		for key in STAT_DEFAULTS:
+			stats[key] = saved_stats.get(key, STAT_DEFAULTS[key])
+	bosses_seen = []
+	for b in parsed.get("bosses_seen", []):
+		bosses_seen.append(String(b))
 	if starting_perk not in unlocked_assets or not CATALOG.has(starting_perk) or CATALOG[starting_perk]["kind"] != "perk":
 		starting_perk = &""
 
@@ -136,6 +154,25 @@ func award_extraction(receipt: String, kills: int, sabotaged: int, boss: bool) -
 		return 0
 	return earned
 
+## Add to a career stat and save.
+func record(stat: String, amount = 1) -> void:
+	stats[stat] = stats.get(stat, 0) + amount
+	save_meta()
+
+## Keep the best value of a career stat.
+func record_best(stat: String, value: float) -> void:
+	if value > float(stats.get(stat, 0.0)):
+		stats[stat] = value
+		save_meta()
+
+## A boss or lieutenant put down: counts toward the Wolf, and pays Intel.
+func record_boss(boss_id: StringName, is_lieutenant: bool) -> void:
+	stats["bosses_killed"] = int(stats.get("bosses_killed", 0)) + 1
+	intel += 1 if is_lieutenant else 3
+	if not is_lieutenant and String(boss_id) not in bosses_seen:
+		bosses_seen.append(String(boss_id))
+	save_meta()
+
 # --- Convenience helpers ---
 func unlock(asset_id: StringName) -> void:
 	if asset_id not in unlocked_assets:
@@ -167,4 +204,6 @@ func reset() -> void:
 	tutorial_seen = false
 	total_profit = 0.0
 	specialists.clear()
+	stats = STAT_DEFAULTS.duplicate()
+	bosses_seen.clear()
 	save_meta()

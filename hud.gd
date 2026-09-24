@@ -24,7 +24,7 @@ var stock_label: Label
 var stock_change: Label
 var stock_chart: StockChart
 var trader_feed: TraderFeed
-var boss_bar: Control
+var boss_bar: BossBar
 
 var _loadout = null
 var _live = null
@@ -102,6 +102,9 @@ func _ready() -> void:
 	trader_feed.position = Vector2(1040, 418)
 	trader_feed.size = Vector2(226, 86)
 	root.add_child(trader_feed)
+
+	boss_bar = BossBar.new()
+	root.add_child(boss_bar)
 
 	weapon_panel = HudWidgets.WeaponPanel.new()
 	weapon_panel.position = Vector2(430, 638)

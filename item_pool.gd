@@ -84,7 +84,37 @@ static func weapons() -> Array:
 		if weapon.id == &"silenced9mm":
 			weapon.noise_radius = 230.0
 
+	# Boss uniques: only ever dropped by the stage boss who carried them.
+	var eviction := _wpn(&"eviction_notice", "Eviction Notice", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		3, 0.9, 520.0, 0.3, 8, true, 4, 64, &"shell")
+	eviction.knockback = 160.0
+	out.append(eviction)
+	var red_pen := _wpn(&"red_pen", "The Red Pen", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.SMALL,
+		3, 0.3, 1100.0, 0.0, 1, true, 10, 120, &"heavy")
+	red_pen.pierce = 2
+	out.append(red_pen)
+	var pouch := _wpn(&"diplomatic_pouch", "Diplomatic Pouch", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.SMALL,
+		4, 0.55, 900.0, 0.12, 3, true, 6, 90, &"heavy")
+	out.append(pouch)
+	var gavel := _wpn(&"golden_gavel", "Golden Gavel", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		6, 1.1, 1300.0, 0.0, 1, true, 5, 60, &"heavy")
+	gavel.pierce = 4
+	gavel.knockback = 220.0
+	out.append(gavel)
 	return out
+
+## Each stage boss's unique drop.
+const BOSS_WEAPONS := {
+	&"landlord": &"eviction_notice", &"auditor": &"red_pen",
+	&"ambassador": &"diplomatic_pouch", &"chairman": &"golden_gavel",
+}
+
+static func boss_weapon(boss_id: StringName) -> WeaponItem:
+	var id: StringName = BOSS_WEAPONS.get(boss_id, &"")
+	for w: WeaponItem in weapons():
+		if w.id == id:
+			return w
+	return null
 
 ## Same pool, minus the starter pistol -- every player already has it equipped,
 ## so it's a wasted pull as a case/chest reward. Used anywhere a weapon is
@@ -93,7 +123,7 @@ static func weapons() -> Array:
 static func rewardable_weapons() -> Array:
 	var out := []
 	for w in weapons():
-		if w.id != &"pistol" and (not Meta.CATALOG.has(w.id) or w.id in Meta.unlocked_assets):
+		if w.id != &"pistol" and w.id not in BOSS_WEAPONS.values() and (not Meta.CATALOG.has(w.id) or w.id in Meta.unlocked_assets):
 			out.append(w)
 	return out
 

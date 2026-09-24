@@ -27,6 +27,9 @@ signal player_moved(pct: float)
 ## heist could drift the stock ±30% on luck alone and swamp the player's grade.
 @export var mean_reversion: float = 0.004
 
+## The Auditor's AUDIT window doubles the crash from damage.
+var damage_multiplier := 1.0
+
 var _market: CriminalMarket = null
 var _player: Player = null
 var _profile: CharacterProfile = null
@@ -126,7 +129,7 @@ func report_kill() -> void:
 
 ## Player took damage (crash, amplified at low health).
 func report_damage_taken(amount: int) -> void:
-	var base := (_profile.crash_per_damage if _profile else 0.04) * amount
+	var base := (_profile.crash_per_damage if _profile else 0.04) * amount * damage_multiplier
 	if RunState.has_perk(&"golden_parachute"):
 		base *= 0.7
 	if RunState.hedge_charges > 0:

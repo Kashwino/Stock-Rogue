@@ -18,7 +18,7 @@ func _ready() -> void:
 	footprint = room.room_size
 	if theme == null:
 		theme = EnvTheme.for_stage(0)
-	title = _title_for(room_type)
+	title = room.get_meta("authored_title", _title_for(room_type))
 	var label := room.get_node_or_null("RoomName")
 	if label:
 		label.hide()

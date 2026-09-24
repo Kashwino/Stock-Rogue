@@ -424,30 +424,50 @@ func _rect_points(size: Vector2) -> PackedVector2Array:
 	return PackedVector2Array([
 		Vector2(-hx, -hy), Vector2(hx, -hy), Vector2(hx, hy), Vector2(-hx, hy)])
 
-## This authored scene fixes rooms, cover, approach, loops and loot branches.
-## Seed affects combat/loot only; it never changes this building's geometry.
-func generate_authored() -> void:
+## A boss's signature building, built from BossLayouts data: fixed rooms,
+## approach and loot branches. The seed affects crews and loot only; it never
+## changes the geometry.
+func generate_authored(boss_id: StringName = &"auditor") -> void:
 	_clear()
-	var layout := preload("res://layouts/marlowe_exchange.tscn").instantiate()
-	add_child(layout)
-	for child in layout.get_children():
-		if child is BuildingRoom:
-			rooms.append(child)
-			var cell := Vector2i(child.position / MODULE)
-			child.set_meta("cell", cell)
-			for occupied: Vector2i in _cells_for(child, cell):
-				_occupied[occupied] = child
-	start_room = layout.get_node("Lobby")
-	start_room.is_start_room = true
-	boss_room = layout.get_node("Auditor")
-	boss_room.set_meta("is_boss", true)
-	boss_room.rarity = 6
-	boss_room.spawn_count = 1
-	weapon_chest_room = layout.get_node("Records")
-	upgrade_chest_room = layout.get_node("Vault")
-	for room in [weapon_chest_room, upgrade_chest_room]:
-		room.spawn_count = 0
-		room.rarity = 5
-		room.set_meta("chest_kind", "weapon" if room == weapon_chest_room else "upgrade")
-	_process_gaps(2)
+	var data := BossLayouts.layout(boss_id)
+	var templates := {
+		"small": load(ROOMS_DIR + "/small_01.tscn"),
+		"medium": load(ROOMS_DIR + "/medium_01.tscn"),
+		"large": load(ROOMS_DIR + "/large_01.tscn"),
+	}
+	for spec: Dictionary in data["rooms"]:
+		var template: PackedScene = templates.get(spec.get("size", "small"))
+		var room = _place_room(template, spec["cell"])
+		if room == null:
+			push_error("FloorGenerator: authored room %s overlaps another" % spec["id"])
+			continue
+		room.name = spec["id"]
+		room.set("id", StringName(String(spec["id"]).to_lower()))
+		if spec.has("type"):
+			room.set_meta("authored_type", spec["type"])
+		if spec.has("title"):
+			room.set_meta("authored_title", spec["title"])
+		if spec.has("counter"):
+			var counter := StaticBody2D.new()
+			counter.name = "Counter"
+			counter.position = spec["counter"]
+			room.add_child(counter)
+		match spec.get("role", ""):
+			"start":
+				start_room = room
+				room.is_start_room = true
+			"boss":
+				boss_room = room
+				room.set_meta("is_boss", true)
+				room.rarity = 6
+				room.spawn_count = 1
+			"weapon", "upgrade":
+				room.spawn_count = 0
+				room.rarity = 5
+				room.set_meta("chest_kind", spec["role"])
+				if spec["role"] == "weapon":
+					weapon_chest_room = room
+				else:
+					upgrade_chest_room = room
+	_process_gaps(int(data.get("exits", 2)))
 	floor_built.emit(rooms, start_room)

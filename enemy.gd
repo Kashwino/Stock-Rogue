@@ -918,6 +918,22 @@ func make_elite(a: StringName) -> void:
 	material = StreetArt._unshaded()
 	queue_redraw()
 
+## A named elite who runs an ordinary job's boss room: double an elite's
+## health, bigger, with his name over his head.
+var lieutenant := false
+
+func make_lieutenant(title: String) -> void:
+	if not elite:
+		make_elite(AFFIXES[randi() % AFFIXES.size()])
+	lieutenant = true
+	max_health *= 2
+	health = max_health
+	elite_tag = title
+	if overhead:
+		overhead.tag_color = Palette.GOLD
+	if sprite:
+		sprite.scale *= 1.2
+
 func _tick_elite(delta: float) -> void:
 	if not elite:
 		return

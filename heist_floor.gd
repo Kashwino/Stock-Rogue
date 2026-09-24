@@ -85,6 +85,14 @@ var _stage := 0
 ## Heat-log bookkeeping read by objectives and the grade.
 var civilians_killed := 0
 var alarms_raised := 0
+## Boss fight state.
+var boss: Boss = null
+var lieutenant: Enemy = null
+var audit_active := false
+var _shutters: Array = []
+var _focus_point := Vector2.ZERO
+var _focus_until_msec := 0
+var _lieutenant_shown := false
 var _alarm_quiet_until := -1.0
 
 func _ready() -> void:
@@ -133,8 +141,8 @@ func _build_floor() -> void:
 
 	generator = FloorGenerator.new()
 	add_child(generator)
-	if boss_id == &"auditor":
-		generator.generate_authored()
+	if boss_heist and BossLayouts.has_layout(boss_id):
+		generator.generate_authored(boss_id)
 	else:
 		generator.generate(
 			hash(str(RunFlow.run_seed) + "_floor_" + str(stage) + "_" + str(heist_index)),
@@ -149,8 +157,10 @@ func _build_floor() -> void:
 		if room == generator.start_room:
 			room.spawn_count = 0
 		elif room.has_meta("is_boss"):
-			room.spawn_count = 1
-			room.enemy_scene = load("res://auditor_boss.tscn") if boss_heist else load("res://enemy.tscn")
+			# Stage bosses fight alone (they call their own help); ordinary jobs
+			# keep a titled lieutenant and two of his crew in the boss room.
+			room.spawn_count = 1 if boss_heist else 3
+			room.enemy_scene = load(boss_scene_path(boss_id)) if boss_heist else load("res://enemy.tscn")
 		elif room.get_meta("chest_kind", "") == "":
 			var base: int = room.get("spawn_count")
 			room.set("spawn_count", base + int(_rarity * 0.75))
@@ -208,7 +218,7 @@ func _show_intro_card() -> void:
 	card.objective = "LOOT"
 	card.objective_detail = "grab the valuables and get back to the car"
 	if boss_heist:
-		card.boss_title = String(boss_id).to_upper()
+		card.boss_title = Story.boss_name(boss_id)
 		card.objective = "TAKE HIM DOWN"
 		card.objective_detail = "the car won't leave while he stands"
 	if RunFlow.pending_heist and RunFlow.pending_heist.modifier != &"":
@@ -332,8 +342,9 @@ func _assign_guard_roles() -> void:
 		var room_rect := Rect2(room.global_position, room.get("room_size"))
 		var has_radio := false
 		for c in guards:
-			if c is AuditorBoss:
+			if c is Boss:
 				c.set_guard_room(room_rect)
+				c.set_post(c.global_position)
 				continue
 			# Archetype first: rarity raises the odds of the nastier kinds.
 			c.apply_archetype(_pick_archetype(room, guards_loot))
@@ -343,6 +354,10 @@ func _assign_guard_roles() -> void:
 				c.radio_carrier = true
 				has_radio = true
 			_maybe_elite(c, room)
+			if room.has_meta("is_boss") and not boss_heist and lieutenant == null:
+				lieutenant = c
+				c.make_lieutenant(Story.lieutenant_name(_rng))
+				c.died.connect(_on_lieutenant_down)
 
 			if guards_loot:
 				# Treasure guards: rooted, watchful, never leave the prize.
@@ -542,21 +557,18 @@ func _on_room_cleared(room) -> void:
 	if room.get("spawn_count") > 0:
 		fx.last_kill()
 
-	if room.has_meta("is_boss") and not marked:
+	if room.has_meta("is_boss") and not marked and not boss_heist:
 		_become_marked()
 		fx.slow_mo(0.9, 0.25)
-		if boss_heist:
-			Audio.play("boss_death")
-			Audio.music_layers("heist_stealth", "heist_combat")
-			Audio.set_intensity(1.0)
-			_boss_music = false
 
 func _become_marked() -> void:
 	marked = true
-	add_heat(16.0, "Auditor distress beacon")
+	add_heat(16.0, "The Board wants answers" if boss_heist else "Lieutenant down")
 	_close_timer = exit_close_interval
-	# Big payoff for the boss: gold + a hard stock pump on the venue.
-	RunEconomy.add_bonus(_rng.randi_range(250, 400) * loot_multiplier())
+	# Big payoff: gold (a stage boss pays through his cash burst instead) and
+	# a hard stock shock on the venue.
+	if not boss_heist:
+		RunEconomy.add_bonus(_rng.randi_range(250, 400) * loot_multiplier())
 	if live:
 		live.report_shock(0.70 if ShortBook.targets(_venue) else 1.30, &"boss")
 
@@ -566,8 +578,11 @@ func _process(delta: float) -> void:
 		return
 
 	# Camera follows the player, leaning a little toward where they aim.
+	var look_at: Vector2 = player.global_position
+	if Time.get_ticks_msec() < _focus_until_msec:
+		look_at = _focus_point
 	camera.global_position = camera.global_position.lerp(
-		player.global_position, clampf(delta * 8.0, 0.0, 1.0))
+		look_at, clampf(delta * (4.0 if look_at != player.global_position else 8.0), 0.0, 1.0))
 	var want := Vector2.ZERO
 	if TouchInput.touch_active and Settings.values["touch_mode"] != 2:
 		want = TouchInput.aim * (60.0 if TouchInput.firing else 20.0)
@@ -581,6 +596,7 @@ func _process(delta: float) -> void:
 	if _status_clock <= 0.0:
 		_status_clock = 0.15
 		_update_security_status()
+		_watch_lieutenant()
 
 	# The car stays locked until you've actually been inside the building.
 	if car and not car.armed and _player_is_inside():
@@ -1139,7 +1155,7 @@ func drop_loot(at: Vector2, value: int) -> void:
 	pickup.value = value
 	pickup.position = to_local(at)
 	pickup.collected.connect(_on_loot_collected.bind(pickup))
-	add_child.call_deferred(pickup)
+	spawn_deferred(pickup)
 
 ## Where a fleeing civilian heads: the nearest way out of the building.
 func nearest_way_out(pos: Vector2) -> Vector2:
@@ -1184,6 +1200,222 @@ func _spawn_civilians() -> void:
 			placed.append(pos)
 			civ.position = pos
 			room.add_child(civ)
+
+# ------------------------------------------------------------- bosses -----
+static func boss_scene_path(id: StringName) -> String:
+	var path := "res://%s_boss.tscn" % String(id)
+	return path if ResourceLoader.exists(path) else "res://auditor_boss.tscn"
+
+## The player walked into the arena: seal it, pan to the boss, title card.
+func start_boss_fight(b: Boss) -> void:
+	boss = b
+	_seal_arena(b.get_parent())
+	start_boss_music()
+	if hud and hud.boss_bar:
+		hud.boss_bar.show_for(b, b.display_name, b.subtitle, b.thresholds)
+	if is_instance_valid(player):
+		player._mercy_timer = 2.8
+	_focus_point = b.global_position
+	_focus_until_msec = Time.get_ticks_msec() + 2300
+	var card := BossIntroCard.new()
+	card.boss_name = b.display_name
+	card.subtitle = b.subtitle
+	add_child(card)
+	card.finished.connect(_on_boss_intro_done)
+
+func _on_boss_intro_done() -> void:
+	if is_instance_valid(boss) and not boss._dead:
+		boss.finish_intro()
+
+## Steel shutters drop over every doorway of the arena.
+func _seal_arena(room: Node2D) -> void:
+	for gap: Dictionary in _open_gaps_local(room):
+		var shutter := Shutter.new()
+		shutter.horizontal = gap["horizontal"]
+		shutter.width = FloorGenerator.DOOR_GAP + 18.0
+		shutter.thickness = FloorGenerator.WALL_THICK + 8.0
+		shutter.position = gap["local"]
+		room.add_child(shutter)
+		shutter.close()
+		_shutters.append(shutter)
+
+func _open_arena() -> void:
+	for shutter in _shutters:
+		if is_instance_valid(shutter):
+			shutter.open()
+	_shutters.clear()
+
+## A line of dialogue under the boss bar (and over the boss).
+func boss_says(b: Enemy, line: String) -> void:
+	if line == "":
+		return
+	if hud and hud.boss_bar:
+		hud.boss_bar.say(line)
+	if is_instance_valid(b):
+		fx.chip(b.global_position + Vector2(0, -40), line, Palette.PAPER)
+
+## The Auditor's ledger: while it is open, hits crash the stock twice as hard.
+func set_audit(on: bool) -> void:
+	audit_active = on
+	if live:
+		live.damage_multiplier = 2.0 if on else 1.0
+
+## The Auditor's cover: `count` desks spread through the arena. World positions.
+func place_desks(b: Boss, count: int, first: int = 0) -> Array:
+	var room: Node2D = b.get_parent()
+	var spots := [Vector2(0.28, 0.3), Vector2(0.72, 0.3), Vector2(0.5, 0.72), Vector2(0.2, 0.62), Vector2(0.8, 0.62)]
+	var out: Array = []
+	for i in range(first, mini(first + count, spots.size())):
+		var local: Vector2 = room.room_size * spots[i]
+		var world := room.to_global(local)
+		if is_instance_valid(player) and world.distance_to(player.global_position) < 90.0:
+			continue
+		_clear_props_at(room, local, 70.0)
+		var desk := Prop.new()
+		desk.kind = "desk"
+		desk.size = Vector2(112, 56)
+		desk.theme = env
+		desk.seed_value = i
+		desk.position = local
+		room.add_child(desk)
+		out.append(world)
+	return out
+
+## The Landlord's second act: tables flip up into new cover around the room.
+func flip_tables(b: Boss, count: int) -> void:
+	var room: Node2D = b.get_parent()
+	for i in count:
+		var local := Vector2.ZERO
+		for attempt in 12:
+			local = Vector2(randf_range(120.0, room.room_size.x - 120.0), randf_range(120.0, room.room_size.y - 120.0))
+			var world := room.to_global(local)
+			if world.distance_to(b.global_position) > 130.0 and (not is_instance_valid(player) or world.distance_to(player.global_position) > 130.0):
+				break
+		_clear_props_at(room, local, 60.0)
+		var table := Prop.new()
+		table.kind = "card_table"
+		table.size = Vector2(92, 92)
+		table.is_round = true
+		table.theme = env
+		table.seed_value = 40 + i
+		table.position = local
+		table.scale = Vector2(0.2, 0.2)
+		room.add_child(table)
+		var tw := table.create_tween()
+		tw.tween_property(table, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		fx.spark(table.global_position, Vector2.UP, Palette.SODIUM)
+	Audio.play("door_bang", b.global_position)
+
+func _clear_props_at(room: Node2D, local: Vector2, radius: float) -> void:
+	for c in room.get_children():
+		if c is Prop and c.position.distance_to(local) < radius:
+			c.queue_free()
+
+## Boss down: slow motion, a burst of cash, the stock shock, the doors open,
+## and a unique reward drops where he fell.
+func on_boss_down(b: Boss) -> void:
+	fx.slow_mo(1.2, 0.2)
+	fx.add_trauma(0.9)
+	Audio.play("boss_death")
+	set_audit(false)
+	if hud and hud.boss_bar:
+		hud.boss_bar.clear()
+	if not marked:
+		_become_marked()
+	_open_arena()
+	_boss_music = false
+	Audio.music_layers("heist_stealth", "heist_combat")
+	Audio.set_intensity(1.0)
+	if not RunFlow.practice:
+		Meta.record_boss(b.boss_id, false)
+	if b.boss_id == &"chairman":
+		# The last trade: the heist wraps itself up and the ending plays.
+		RunEconomy.add_bonus(_rng.randi_range(400, 600))
+		get_tree().create_timer(3.2, false).timeout.connect(_extract)
+		return
+	_cash_burst(b.global_position, _rng.randi_range(8, 12), 18 + 8 * _stage)
+	_drop_boss_reward(b)
+
+## Coins and notes spraying out of a fallen boss.
+func _cash_burst(at: Vector2, count: int, each: int) -> void:
+	for i in count:
+		var pickup := LootPickup.new()
+		pickup.value = each + _rng.randi_range(0, each)
+		var landing := at + Vector2.from_angle(TAU * i / count + _rng.randf() * 0.4) * _rng.randf_range(50.0, 150.0)
+		pickup.position = to_local(at)
+		pickup.set_meta("landing", to_local(landing))
+		pickup.collected.connect(_on_loot_collected.bind(pickup))
+		spawn_deferred(pickup)
+
+## Nodes born inside a physics callback (a kill, a blast) join the floor on the
+## next idle frame. Anything still waiting when the floor goes away is freed
+## with it instead of leaking.
+var _pending_spawns: Array = []
+
+func spawn_deferred(node: Node) -> void:
+	_pending_spawns.append(node)
+	_add_pending.call_deferred(node)
+
+func _add_pending(node: Node) -> void:
+	_pending_spawns.erase(node)
+	if not is_instance_valid(node):
+		return
+	add_child(node)
+	if node.has_meta("landing"):
+		var tw := node.create_tween()
+		tw.tween_property(node, "position", node.get_meta("landing"), 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for node in _pending_spawns:
+			if is_instance_valid(node):
+				node.free()
+		_pending_spawns.clear()
+
+## The boss's unique weapon, in a case where he fell.
+func _drop_boss_reward(b: Boss) -> void:
+	var weapon := ItemPool.boss_weapon(b.boss_id)
+	var scene = load("res://world_chest.tscn")
+	if weapon == null or scene == null:
+		return
+	var chest = scene.instantiate()
+	chest.set("kind", 0)
+	chest.set("tier", LootRoller.ChestTier.AIRDROP)
+	chest.fixed_items = [weapon]
+	chest.position = to_local(b.global_position)
+	spawn_deferred(chest)
+
+## Debug/screenshot helper: skip the intro and put the stage boss down.
+func debug_kill_boss() -> void:
+	var b: Boss = boss
+	if b == null and generator and generator.boss_room:
+		for c in generator.boss_room.get_children():
+			if c is Boss:
+				b = c
+	if b == null or b._dead:
+		return
+	if not b.engaged:
+		b.engage()
+	b.finish_intro()
+	b.invulnerable = false
+	b.immune_reason = ""
+	b._transition = 0.0
+	b.take_damage(999999)
+
+## Ordinary jobs: the lieutenant gets a bar once he joins the fight.
+func _watch_lieutenant() -> void:
+	if _lieutenant_shown or not is_instance_valid(lieutenant) or lieutenant._dead:
+		return
+	if lieutenant._alert == Enemy.Alert.HUNTING and hud and hud.boss_bar:
+		_lieutenant_shown = true
+		hud.boss_bar.show_for(lieutenant, lieutenant.elite_tag, "LIEUTENANT")
+
+func _on_lieutenant_down(e) -> void:
+	if hud and hud.boss_bar and hud.boss_bar.boss == e:
+		hud.boss_bar.clear()
+	fx.chip(e.global_position, "LIEUTENANT DOWN", Palette.GOLD)
+	if not RunFlow.practice:
+		Meta.record_boss(&"lieutenant", true)
 
 func _setup_tactics() -> void:
 	var layer := CanvasLayer.new()
@@ -1270,8 +1502,8 @@ func _update_security_status() -> void:
 ## furniture that doubles as cover. Runs right after generation, before crews.
 func _dress_building() -> void:
 	var stage_idx: int = RunFlow.pending_heist.stage if RunFlow.pending_heist else (RunState.run_map.current_stage if RunState.run_map else 0)
-	if boss_id == &"auditor":
-		stage_idx = 1
+	if boss_heist and BossLayouts.has_layout(boss_id):
+		stage_idx = BossLayouts.stage_of(boss_id)
 	env = EnvTheme.for_stage(stage_idx)
 	building_bounds = Rect2()
 	for room: BuildingRoom in generator.rooms:

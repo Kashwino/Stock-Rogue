@@ -91,6 +91,8 @@ static func for_stage(stage_index: int) -> EnvTheme:
 ## Room type for a generated room: lobby, boss office and vault are fixed;
 ## everything else comes from the stage list, seeded by the room's position.
 func room_type_for(room: Node, is_start: bool) -> String:
+	if room.has_meta("authored_type"):
+		return room.get_meta("authored_type")
 	if is_start:
 		return "lobby"
 	if room.has_meta("is_boss"):

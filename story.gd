@@ -38,6 +38,17 @@ const COLLECTOR_FAIL := [
 	"That's the last number you'll ever miss.",
 ]
 
+## Lieutenants: the names on the Board's payroll who run an ordinary job.
+const LIEUTENANT_FIRST := ["Knuckles", "Two-Tone", "Sal", "Mickey", "Vinnie", "Lefty", "Dutch", "Rocco",
+	"Bruno", "Frankie", "Nails", "Tommy", "Eddie", "Big Lou", "Silk", "Duchess", "Mags", "Ruby"]
+const LIEUTENANT_LAST := ["Moretti", "Kowalski", "Doyle", "Vance", "Castellano", "Byrne", "Novak",
+	"Marchetti", "Kane", "Rourke", "Lazlo", "Petrov", "Santoro", "Quill"]
+
+static func lieutenant_name(rng: RandomNumberGenerator) -> String:
+	var first: String = LIEUTENANT_FIRST[rng.randi() % LIEUTENANT_FIRST.size()]
+	var last: String = LIEUTENANT_LAST[rng.randi() % LIEUTENANT_LAST.size()]
+	return ("\"%s\" %s" % [first, last]).to_upper()
+
 static func _pick(pool: Array) -> String:
 	return pool[randi() % pool.size()]
 

@@ -17,7 +17,7 @@ func _run() -> void:
 	RunFlow.pending_heist = MapNode.new(MapNode.Type.BOSS)
 	RunFlow.pending_heist.venue_id = &"bank_job"
 	RunFlow.pending_heist.boss_id = &"auditor"
-	check(ItemPool.weapons().size() == 20, "20 weapons in catalog")
+	check(ItemPool.weapons().size() == 24, "24 weapons in catalog (four boss uniques)")
 	check(ItemPool.rewardable_weapons().size() == 16, "three career weapons gated from rewards")
 	_test_progression()
 	_test_modifiers()
@@ -134,24 +134,44 @@ func _run() -> void:
 	check(Engine.time_scale < 1.0, "room finish slows action")
 	await get_tree().create_timer(0.35, true, false, true).timeout
 	check(Engine.time_scale == 1.0, "room finish restores normal speed")
-	# Boss telegraphs, a second phase, projectile identity and death hookup.
-	player.global_position = boss.global_position + Vector2(180, 80)
+	# Boss fight: walking in engages him, shutters seal the arena, the intro
+	# gates damage, telegraphed attacks, phases, the AUDIT window, death.
+	player.global_position = boss.arena.get_center() + Vector2(0, 160)
 	boss.set_sleeping(false)
-	boss.clock = 0.0
-	boss.attack = AuditorBoss.Attack.RECOVER
 	boss._physics_process(0.02)
-	check(boss.attack == AuditorBoss.Attack.DECLARE_LEVY, "boss declares levy")
+	check(boss.engaged and floor_scene.boss == boss, "walking into the arena engages the boss")
+	check(floor_scene._shutters.size() > 0, "shutters seal the arena")
+	check(floor_scene.hud.boss_bar.visible, "boss bar shows")
+	var boss_hp := boss.health
+	boss.take_damage(5)
+	check(boss.health == boss_hp, "boss cannot be hurt during the intro")
+	floor_scene._on_boss_intro_done()
+	check(boss.intro_done and boss.desks.size() > 0, "the Auditor fights from behind desks")
+	boss.attack = &"levy_wind"
 	boss.clock = 0.0
 	boss._physics_process(0.02)
-	check(boss.attack == AuditorBoss.Attack.RECOVER, "boss fires levy and recovers")
+	check(boss.attack == &"recover", "boss fires the levy and recovers")
+	boss.attack = &"recover"
+	boss.clock = 0.0
+	boss._physics_process(0.02)
+	check(boss.attack in [&"sweep_wind", &"levy_wind", &"drones"], "boss picks a telegraphed attack")
+	boss._set_audit(true)
+	check(floor_scene.live.damage_multiplier == 2.0 and floor_scene.audit_active, "AUDIT doubles the stock crash from hits")
+	boss._set_audit(false)
 	boss.health = boss.max_health / 2
-	boss.clock = 0.0
 	boss._physics_process(0.02)
-	check(boss.phase == 2 and boss.attack == AuditorBoss.Attack.DECLARE_CHARGE, "margin-call phase declares charge")
+	check(boss.phase == 2 and boss.invulnerable, "second phase opens with a beat of invulnerability")
 	floor_scene._extract()
 	check(not floor_scene._extracting, "boss heist cannot be skipped by extraction")
+	boss.invulnerable = false
+	boss._transition = 0.0
 	boss.take_damage(9999)
 	check(floor_scene.marked, "boss death marks heist and triggers reward")
+	await get_tree().process_frame
+	check(floor_scene._shutters.is_empty(), "the arena opens when the boss falls")
+	var reward := floor_scene.find_children("*", "WorldChest", true, false).filter(func(c): return not c.fixed_items.is_empty())
+	check(reward.size() == 1 and reward[0].fixed_items[0].id == &"red_pen", "the Auditor drops his unique weapon")
+	check(ItemPool.boss_weapon(&"auditor") not in ItemPool.rewardable_weapons(), "boss uniques never enter reward pools")
 	await get_tree().create_timer(0.2).timeout
 	check(MarketOps.execute("short", &"bank_job")["ok"], "open final extraction contract")
 	asset.current_price = float(RunState.short_position["entry"]) * 0.9
@@ -159,15 +179,16 @@ func _run() -> void:
 	floor_scene._extract()
 	check(get_tree().paused and floor_scene.results._shown, "extraction presents results while paused")
 	check(RunEconomy.gold == extraction_gold + 105 and RunState.short_position.is_empty(), "real extraction pays short before grade movement")
-	check(Meta.intel == 8, "real extraction banks sabotage and boss Intel")
+	check(Meta.intel == 11, "real extraction banks sabotage and boss Intel (+3 for the boss)")
 	floor_scene._extract()
-	check(RunEconomy.gold == extraction_gold + 105 and Meta.intel == 8, "duplicate extraction cannot duplicate gold or Intel")
+	check(RunEconomy.gold == extraction_gold + 105 and Meta.intel == 11, "duplicate extraction cannot duplicate gold or Intel")
 	floor_scene.queue_free()
 	await get_tree().process_frame
 	get_tree().paused = false
 	check(Engine.time_scale == 1.0, "scene exit restores time scale")
 	await _test_lockdown()
 	await _test_projectiles()
+	await _test_bosses()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
@@ -392,6 +413,59 @@ func _test_enemies() -> void:
 	check(again == b and pool.created <= created + 1, "spent bullets return to the pool")
 	again._finish()
 	floor_scene.heat = 0.0
+
+## Every stage boss: signature building, engagement, phases, death. And an
+## ordinary job's titled lieutenant.
+func _test_bosses() -> void:
+	RunFlow.pending_heist = MapNode.new(MapNode.Type.HEIST)
+	RunFlow.pending_heist.venue_id = &"corner_racket"
+	RunFlow.pending_heist.room_rarity = 2
+	var job: HeistFloor = load("res://heist_floor.tscn").instantiate()
+	get_tree().root.add_child(job)
+	get_tree().current_scene = job
+	await get_tree().physics_frame
+	check(is_instance_valid(job.lieutenant) and job.lieutenant.lieutenant and job.lieutenant.elite, "ordinary jobs keep a titled lieutenant")
+	check(job.lieutenant.get_parent() == job.generator.boss_room and job.lieutenant.elite_tag.contains("\""), "the lieutenant runs the boss room under his name")
+	var lt := job.lieutenant
+	var intel_before := Meta.intel
+	lt.take_damage(99999)
+	check(Meta.intel == intel_before + 1 and Meta.stats["bosses_killed"] >= 1, "a lieutenant kill counts toward the career")
+	job.queue_free()
+	await get_tree().process_frame
+	for id: StringName in [&"landlord", &"ambassador", &"chairman"]:
+		RunFlow.pending_heist = MapNode.new(MapNode.Type.BOSS)
+		RunFlow.pending_heist.venue_id = &"bank_job"
+		RunFlow.pending_heist.boss_id = id
+		var heist: HeistFloor = load("res://heist_floor.tscn").instantiate()
+		get_tree().root.add_child(heist)
+		get_tree().current_scene = heist
+		await get_tree().physics_frame
+		var b: Boss = heist.generator.boss_room.get_children().filter(func(c): return c is Boss)[0]
+		check(b.boss_id == id, "signature building hosts " + String(id))
+		check(heist.generator.boss_room.get_meta("authored_title", "") != "", "authored arena for " + String(id))
+		heist.player._invulnerable = true
+		heist.player.global_position = b.arena.get_center() + Vector2(0, 170)
+		b._physics_process(0.02)
+		check(b.engaged and heist._shutters.size() > 0, String(id) + " engages and seals the arena")
+		heist._on_boss_intro_done()
+		for i in 120:
+			await get_tree().physics_frame
+		check(is_instance_valid(b) and not b._dead and b.intro_done, String(id) + " fights without errors")
+		b.health = int(b.max_health * 0.15)
+		for i in 5:
+			await get_tree().physics_frame
+		check(b.phase == b.thresholds.size() + 1, String(id) + " reaches its final phase")
+		b._transition = 0.0
+		b.invulnerable = false
+		b.immune_reason = ""
+		for g in b.get_parent().get_children():
+			if g is Enemy and g != b:
+				g.queue_free()
+		b.take_damage(99999)
+		check(heist.marked and b._dead, String(id) + " death marks the heist")
+		heist.queue_free()
+		await get_tree().process_frame
+		await get_tree().process_frame
 
 func _test_lockdown() -> void:
 	RunFlow.pending_heist.modifier = &"lockdown"

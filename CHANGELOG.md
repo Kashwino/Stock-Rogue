@@ -193,6 +193,50 @@
   `Grenade`, `EnemyOverhead` (tags, radio bar, alarm icon, shield bubble),
   `Civilian`; new generated sounds (throw, punch, cloak, scream, beep).
 
+## Phase 5 — Bosses
+
+- **Boss framework** (`boss.gd`, extends Enemy): name and title, health
+  thresholds that start new phases (1.3 s of invulnerability, one line of
+  dialogue, an arena change), an attack state machine with telegraphs, and
+  health/damage scaled by the quota block (+30% health per block).
+- **The fight**: walking into the arena (clear of the doorways) seals every
+  doorway with steel shutters, pans the camera to the boss and slams a title
+  card (name, title, PRIORITY TARGET). A top-centre **boss bar** shows the
+  name, a tick at every phase threshold, a damage trail, status tags
+  (DIPLOMATIC IMMUNITY, AUDIT, LIQUIDATION) and the boss's lines.
+- **Death**: slow motion, a burst of cash on the floor, the venue's big stock
+  shock (the existing `report_shock`), shutters roll up, the heist is marked
+  as before, the boss's **unique weapon** drops in a case, and the career
+  earns Intel (+3; lieutenants +1) and a boss kill.
+- **Signature buildings** as data (`boss_layouts.gd`) built by
+  `FloorGenerator.generate_authored`: Tenement Row, the Marlowe Exchange
+  (converted from its old scene), the Embassy of Valdoria and the Exchange
+  tower. All dressing, crews, loot, chests, security and exits run through the
+  normal pipeline.
+- **The Landlord** (Town): shotgun volleys behind a cone telegraph, calls two
+  goons; P2 flips tables into new cover and charges down a shown lane,
+  smashing furniture and ending dazed against a wall; P3 enraged.
+- **The Auditor** (City, rebuilt): fights from behind wheeled-in desks; a
+  safe-wedge levy ring, a laser swept across the room (start line and arc
+  shown first), drones; the AUDIT window doubles the stock crash from every
+  hit; P2 teleports between desks (landing ring first) with two more desks.
+- **The Ambassador** (World): diplomatic immunity while her bodyguards stand
+  (a second detail returns once); rocket barrages with landing markers; P2
+  gold-revolver fans and falling chandeliers.
+- **The Chairman** (Doomsday): a giant ticker wall over the trading floor;
+  P1 "Bull Market" volleys shaped like rising chart lines with a gap; P2
+  "Margin Call" floor strips that follow a live price line (orange warning,
+  then red); P3 "Liquidation" drains gold every second. His death wraps the
+  heist up by itself and leads into the ending.
+- **Lieutenants**: ordinary jobs keep a named elite ("KNUCKLES" BYRNE) and two
+  of his crew in the boss room; he gets the boss bar once he joins the fight.
+- Four boss-only weapons (Eviction Notice, The Red Pen, Diplomatic Pouch,
+  Golden Gavel) that never enter the reward pools.
+- `Meta` gained career stats (fire-exit escapes, bosses killed, best index,
+  runs won, heists, gold, deaths) for Phase 9's unlocks.
+- Deferred spawns (cash, reward cases, elite drops) are tracked by the floor
+  so none can leak if the floor is torn down first.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -246,3 +290,10 @@
   25 s only adds heat, so several techs cannot chain vans.
 - **Civilian deaths** caused by guards' grenades still add heat (+6) but do
   not count against the crew's grade or the venue.
+- **Boss payouts** come from the cash burst on the floor rather than a
+  direct bonus, so the money is visibly there to pick up; the Chairman pays
+  directly because the run ends with him.
+- **Boss rewards are weapons for now**: relics arrive in Phase 8 and join the
+  boss drop then.
+- **The Marlowe Exchange scene** was replaced by layout data; the room names
+  (Lobby, Auditor, Records, Vault…) are unchanged so saves and tests agree.

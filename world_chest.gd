@@ -17,6 +17,9 @@ enum Kind { WEAPON, UPGRADE }
 @onready var prompt = get_node_or_null("Prompt")   # optional "Press E" child
 @onready var sprite: Node2D = $Sprite        # chest visual
 
+## A fixed reward (a boss's unique weapon) instead of a random roll.
+var fixed_items: Array = []
+
 var _player_in_range: bool = false
 var _used: bool = false
 var _chest_ui = null                         # set by spawner, or found at open time
@@ -79,7 +82,7 @@ func _open() -> void:
 	rng.randomize()
 	# Weapon chests exclude the starter pistol -- every player already has it.
 	var pool: Array = ItemPool.rewardable_weapons() if kind == Kind.WEAPON else ItemPool.upgrades()
-	var items := LootRoller.roll_items(pool, tier, reveal_count, rng)
+	var items := LootRoller.roll_items(pool, tier, reveal_count, rng) if fixed_items.is_empty() else fixed_items.duplicate()
 	if items.is_empty():
 		push_warning("WorldChest: loot roll returned nothing — pool size "
 			+ str(pool.size()) + ". Falling back to the raw pool.")

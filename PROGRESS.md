@@ -51,7 +51,10 @@ from `SecurityDevice` cameras/alarm panels, guard radio calls, techs and
 civilians reaching panels, and market moves; above the dispatch threshold `CargoVan`s drop miniboss
 pairs. `LiveStock` moves the venue price in real time; `HeistGrader` grades the
 job at extraction and shocks the venue. `MarketTerminal` in the lobby offers one
-market operation per heist (`MarketOps`, `ShortBook`).
+market operation per heist (`MarketOps`, `ShortBook`). Boss jobs build a
+signature building from `BossLayouts`; the boss (`boss.gd` subclasses) engages
+when the player walks in, the floor seals the arena (`Shutter`), shows
+`BossIntroCard` and the HUD `BossBar`, and pays out in `on_boss_down`.
 
 **Collision layers** (`layers.gd`): 1 walls, 2 enemies, 4 player, 8 security
 devices, 16 props/cover, 32 flyers (drones). All set in code.
@@ -76,7 +79,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
 - [x] Phase 4 — enemies & security (9 new archetypes via EnemyBrain, elites,
       stage pools, civilians, sparse alarm panels with hold-to-cut, radio bar,
       bullet pooling)
-- [ ] Phase 5 — bosses
+- [x] Phase 5 — bosses (Boss framework, four multi-phase bosses in data-authored
+      signature buildings, shutters, intro card, boss bar, lieutenants, uniques)
 - [ ] Phase 6 — market mechanics
 - [ ] Phase 7 — objectives & map modifiers
 - [ ] Phase 8 — build identity (relics, mods, traits)
