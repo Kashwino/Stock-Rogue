@@ -69,6 +69,7 @@ func _physics_process(delta: float) -> void:
 			_finish()
 
 func _impact(at: Vector2, normal: Vector2) -> void:
+	Audio.play("impact_wall", at)
 	var host := get_tree().current_scene
 	if host is HeistFloor:
 		host.fx.spark(at, normal, Palette.PLAYER_BULLET)
@@ -89,6 +90,7 @@ func _try_hit(target: Node) -> void:
 		host.fx.damage_number(global_position, damage, Palette.GOLD_PALE if damage >= 3 else Palette.PAPER)
 		if target.is_in_group("enemies"):
 			host.fx.blood(global_position, _dir)
+			Audio.play("impact_body", global_position)
 		else:
 			host.fx.spark(global_position, -_dir, Palette.NEON_CYAN)
 	target.take_damage(damage)

@@ -311,6 +311,8 @@ func _physics_process(delta: float) -> void:
 	# the whole building opening fire the instant you're visible down a hallway.
 	var sees := _can_see_player()
 	if sees and _provoked:
+		if _alert != Alert.HUNTING:
+			Audio.play("alert", global_position)
 		_alert = Alert.HUNTING
 		_lose_timer = LOSE_INTEREST_TIME
 	elif _alert == Alert.HUNTING:
@@ -537,6 +539,7 @@ func _shoot(dir: Vector2) -> void:
 		host.fx.muzzle(global_position + dir * 28.0, dir)
 	if kit:
 		kit.kick(0.6 + 0.2 * pellets)
+	Audio.play("shot_enemy", global_position, 0.0, 1.15 if pellets == 1 else 0.8)
 	for i in maxi(pellets, 1):
 		var offset := 0.0
 		if pellets > 1:
@@ -608,6 +611,7 @@ func _die() -> void:
 		get_node("/root/Noise").death(global_position)
 	if kit and get_parent():
 		SpriteKit.drop_corpse(get_parent(), global_position, sprite.global_rotation if sprite else 0.0, kit.spec)
+	Audio.play("death_enemy", global_position)
 	died.emit(self)
 	queue_free()
 

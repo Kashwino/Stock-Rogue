@@ -9,6 +9,7 @@ extends Node
 
 func _ready() -> void:
 	get_tree().paused = false      # never inherit a paused tree from a heist
+	Audio.music("menu")
 	# Safety: if there's no active run (e.g. opened this scene directly), start one.
 	if RunState.run_map == null:
 		var profile = load("res://main_character.tres") if ResourceLoader.exists("res://main_character.tres") else null

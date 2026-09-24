@@ -18,8 +18,9 @@ browser localStorage), `RunEconomy` (gold), `RunSave` (3 case-file slots + a
 practice slot), `Meta` (career save: unlocks, stats, currency), `RunState` (the
 live run: loadout, health, market, perks, positions), `RunFlow` (route position +
 scene changes), `Noise` (AI hearing bus), `TouchInput` (virtual sticks + input
-map guard), `Sfx` (audio), `Controls` (mobile_controls.gd touch overlay),
-`QAProbe` (read-only browser telemetry behind `?qa=1`).
+map guard), `Audio` (audio.gd: SFX pools, loops, layered music), `Controls` (mobile_controls.gd touch overlay),
+`QAProbe` (read-only browser telemetry behind `?qa=1`), `Transition` (scene
+changes behind a shutter/stamp).
 
 **Loop:** `home_screen.tscn` → `character_select.tscn` (case files → crew
 cards) → `RunFlow.start_new_run` → `map_ui_screen.tscn` (the case wall) shows the
@@ -67,7 +68,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       lighting, street, post-fx, transitions, HUD, case wall, hideout, menus)
 - [x] Phase 2 — game feel (shake, hit-stop, slow-mo, knockback, damage numbers,
       muzzle/casings/sparks/holes, crosshair, recoil + lead, loot magnet, market chips)
-- [ ] Phase 3 — audio
+- [x] Phase 3 — audio (Audio autoload, generated SFX + 6 music loops, layered
+      heist music, hooks everywhere, volume/shake/display settings)
 - [ ] Phase 4 — enemies & security
 - [ ] Phase 5 — bosses
 - [ ] Phase 6 — market mechanics

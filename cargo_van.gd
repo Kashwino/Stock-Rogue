@@ -28,6 +28,7 @@ func _ready() -> void:
 	_build_visual()
 	global_position = approach_from
 	_timer = approach_time
+	Audio.play("van_engine", drop_position)
 
 func _build_visual() -> void:
 	# Van body, deliberately chunky so it reads at a glance.
@@ -65,11 +66,13 @@ func _process(delta: float) -> void:
 		if _timer <= 0.0:
 			_state = 1
 			_timer = door_delay
+			Audio.play("van_brakes", global_position)
 	elif _state == 1 and _timer <= 0.0:
 		_deploy()
 
 func _deploy() -> void:
 	_state = 2
+	Audio.play("van_doors", global_position)
 	var spawned: Array = []
 	if enemy_scene == null:
 		squad_deployed.emit(spawned)

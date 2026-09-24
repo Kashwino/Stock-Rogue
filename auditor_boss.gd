@@ -38,7 +38,7 @@ func _physics_process(delta: float) -> void:
 	if phase == 2 and not _phase_announced:
 		_phase_announced = true
 		_name_label.text = "THE AUDITOR - MARGIN CALL"
-		Sfx.play_sound("warning")
+		Audio.play("boss_phase")
 	var inside := _guard_rect.has_point(_player.global_position) if _has_guard_rect else _can_see_player()
 	if not inside:
 		velocity = _steer_toward(_post, 70.0) if global_position.distance_to(_post) > 20.0 else Vector2.ZERO
@@ -48,6 +48,9 @@ func _physics_process(delta: float) -> void:
 		queue_redraw()
 		return
 	wake_for(2.0)
+	var host := get_tree().current_scene
+	if host is HeistFloor:
+		host.start_boss_music()
 	clock -= delta
 	var direction := (_player.global_position - global_position).normalized()
 	sprite.rotation = direction.angle()
@@ -60,7 +63,7 @@ func _physics_process(delta: float) -> void:
 				safe_angle = direction.angle() + PI * 0.5
 				attack = Attack.DECLARE_CHARGE if cycle % 2 == 0 else Attack.DECLARE_LEVY
 				clock = 0.9 if phase == 1 else 0.65
-				Sfx.play_sound("warning")
+				Audio.play("laser_charge", global_position, -8.0, 1.6)
 		Attack.DECLARE_LEVY:
 			velocity = Vector2.ZERO
 			if clock <= 0.0:

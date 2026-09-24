@@ -42,6 +42,7 @@ var _next_rarity: int = 1
 
 func _ready() -> void:
 	_rng.randomize()
+	Audio.music("hideout")
 	_check_input_actions()
 	_build_room()
 	_build_walker()
@@ -484,10 +485,12 @@ func _on_row_buy(price: int, on_buy: Callable, buy: Button) -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
 	if econ == null or not econ.can_afford(price):
 		buy.modulate = RED
+		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(buy, "modulate", Color.WHITE, 0.4)
 		return
 	econ.spend(price)
+	Audio.play_ui("cash_register")
 	on_buy.call()
 	_refresh_gold_label()
 	buy.text = "Bought"
@@ -565,6 +568,7 @@ func _on_reroll_offers() -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
 	if econ == null or not econ.can_afford(_reroll_cost):
 		_reroll_button.modulate = RED
+		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(_reroll_button, "modulate", Color.WHITE, 0.4)
 		return
@@ -760,6 +764,7 @@ func _on_case_pressed(index: int, card: Button) -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
 	if econ == null or not econ.can_afford(_case_price):
 		card.modulate = RED
+		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(card, "modulate", Color.WHITE, 0.4)
 		return
@@ -844,10 +849,21 @@ func _start_spin(index: int, w: WeaponItem) -> void:
 
 	strip.position = Vector2(start_x, 8)
 
+	_spin_last_slot = -1
 	var tw := create_tween()
-	tw.tween_property(strip, "position:x", target_x, SPIN_DURATION) \
+	tw.tween_method(_spin_step.bind(strip, pointer_x), start_x, target_x, SPIN_DURATION) \
 		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(_on_spin_landed.bind(index, w))
+
+var _spin_last_slot := -1
+
+## Moves the strip and ticks every time a new slot passes the pointer.
+func _spin_step(x: float, strip: Control, pointer_x: float) -> void:
+	strip.position.x = x
+	var slot := int((pointer_x - x) / SPIN_SLOT_PITCH)
+	if slot != _spin_last_slot:
+		_spin_last_slot = slot
+		Audio.play_ui("case_tick", 1.0 + slot * 0.004)
 
 func _make_spin_slot(color: Color) -> PanelContainer:
 	var slot := PanelContainer.new()
@@ -873,6 +889,7 @@ func _on_spin_landed(index: int, w: WeaponItem) -> void:
 		flash.tween_property(_spin_winner_slot, "scale", Vector2.ONE, 0.15)
 		_spin_winner_slot.pivot_offset = Vector2(SPIN_SLOT_WIDTH * 0.5, 107)
 
+	Audio.play_ui("reveal_%d" % clampi(int(w.rarity), 0, 4))
 	_case_result_label.text = "%s -- %s" % [w.rarity_name(), w.display_name]
 	_case_result_label.add_theme_color_override("font_color", w.rarity_color())
 

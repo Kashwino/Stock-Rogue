@@ -64,6 +64,8 @@ func _physics_process(delta: float) -> void:
 		if sees:
 			var query := PhysicsRayQueryParameters2D.create(global_position, p.global_position, Layers.SOLID)
 			sees = get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+		if sees and detected <= 0.0:
+			Audio.play("camera_spot", global_position)
 		detected = minf(1.6, detected + elapsed) if sees else maxf(0.0, detected - elapsed * 2.0)
 		transmit_clock = maxf(0.0, transmit_clock - elapsed)
 		if detected >= 1.6 and transmit_clock <= 0.0:

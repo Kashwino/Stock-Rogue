@@ -51,6 +51,7 @@ var _chosen_slot: int = -1
 
 func _ready() -> void:
 	layer = 60
+	Audio.music("menu")
 	for child in get_children():
 		child.queue_free()
 	_build_frame()

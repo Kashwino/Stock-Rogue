@@ -72,6 +72,9 @@ var boss_heist := false
 var boss_id: StringName = &""
 var exit_signs: Array = []
 var loot_banked := 0
+var _siren_on := false
+var _heartbeat_on := false
+var _boss_music := false
 var env: EnvTheme
 var lighting: HeistLighting
 var post_fx: PostFX
@@ -182,6 +185,7 @@ func _build_floor() -> void:
 	_setup_tactics()
 
 	_show_intro_card()
+	Audio.music_layers("heist_stealth", "heist_combat")
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
 	_heat_timer = reinforcement_interval
@@ -474,6 +478,11 @@ func _on_room_cleared(room) -> void:
 	if room.has_meta("is_boss") and not marked:
 		_become_marked()
 		fx.slow_mo(0.9, 0.25)
+		if boss_heist:
+			Audio.play("boss_death")
+			Audio.music_layers("heist_stealth", "heist_combat")
+			Audio.set_intensity(1.0)
+			_boss_music = false
 
 func _become_marked() -> void:
 	marked = true
@@ -673,6 +682,9 @@ func _extract() -> void:
 		return
 	_extracting = true
 	Engine.time_scale = 1.0
+	Audio.loop("alarm", false)
+	Audio.loop("heartbeat", false)
+	Audio.play("cash_register")
 	# Settle at the combat price, before the extraction grade changes it.
 	var short_result := ShortBook.settle(true)
 	var receipt := "%s:%s:%s" % [RunState.run_id, RunState.run_map.current_stage if RunState.run_map else 0, RunState.run_map.current_step if RunState.run_map else 0]
@@ -736,6 +748,7 @@ func _tick_market_chip(delta: float) -> void:
 		return
 	if absf(_chip_accum) >= 0.001 and is_instance_valid(player):
 		var col := Palette.UP if _chip_accum > 0.0 else Palette.DOWN
+		Audio.play("stock_up" if _chip_accum > 0.0 else "stock_down")
 		fx.chip(player.global_position, "%s %+.1f%%" % [Venues.ticker(_venue), _chip_accum * 100.0], col)
 		if hud and hud.get("ticker"):
 			hud.ticker.flash(col)
@@ -823,7 +836,8 @@ func _on_loot_collected(value: int, pickup: Node2D = null) -> void:
 	if pickup and is_instance_valid(pickup) and hud and hud.has_method("fly_gold"):
 		hud.fly_gold(pickup.get_global_transform_with_canvas().origin, paid)
 	RunEconomy.add_bonus(paid)
-	Sfx.play_sound("pickup")
+	var tier := 0 if value <= 25 else (1 if value <= 60 else (2 if value <= 140 else 3))
+	Audio.play("loot_%d" % tier, pickup.global_position if pickup and is_instance_valid(pickup) else null)
 	if hud and hud.has_method("flash_gold"):
 		hud.flash_gold()
 
@@ -900,8 +914,8 @@ func on_security_disabled(_device: SecurityDevice) -> void:
 	last_heat_source = "Security disabled · heat -4"
 	if live:
 		live.report_sabotage()
-	Sfx.play_sound("pickup")
-	fx.shake(3.0)
+	Audio.play("shutter")
+	fx.add_trauma(0.15)
 
 func _setup_security() -> void:
 	for room in generator.rooms:
@@ -940,6 +954,44 @@ func _setup_tactics() -> void:
 		hud.bind_floor(self)
 	_update_security_status()
 
+## Music intensity follows the alarm state: sneaking plays the stealth layer,
+## anyone hunting you (or heat past the dispatch line) brings in the combat
+## layer. The siren loops while a response is rolling; a heartbeat at 1 HP.
+func _update_audio() -> void:
+	if _extracting or not is_instance_valid(player):
+		return
+	var hunting := 0
+	for e in director.enemies:
+		if is_instance_valid(e) and not e.sleeping and e._alert == Enemy.Alert.HUNTING:
+			hunting += 1
+	var intensity := clampf(heat / maxf(dispatch_threshold(), 1.0), 0.0, 1.0)
+	if hunting > 0:
+		intensity = maxf(intensity, clampf(0.65 + hunting * 0.07, 0.0, 1.0))
+	if not _boss_music:
+		Audio.set_intensity(intensity)
+	var responding := heat >= dispatch_threshold()
+	if responding != _siren_on:
+		_siren_on = responding
+		Audio.loop("alarm", responding)
+		if lighting and not generator.entrance.is_empty():
+			lighting.set_police(responding, _outside_position())
+	var low := player.health == 1 and player.max_health > 1 and not player.is_dead()
+	if low != _heartbeat_on:
+		_heartbeat_on = low
+		Audio.loop("heartbeat", low)
+
+## The boss notices you: stinger, then the boss theme takes over.
+func start_boss_music() -> void:
+	if _boss_music:
+		return
+	_boss_music = true
+	Audio.play("boss_intro")
+	Audio.music("boss", 0.6)
+
+func _exit_tree() -> void:
+	Audio.loop("alarm", false)
+	Audio.loop("heartbeat", false)
+
 func _toggle_map() -> void:
 	if get_tree().paused and not tactical_map.visible:
 		return
@@ -953,6 +1005,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _update_security_status() -> void:
+	_update_audio()
 	if hud and hud.has_method("set_heat"):
 		hud.set_heat(heat, dispatch_threshold(), fire_exit_limit(), _heat_timer)
 		hud.set_loot_multiplier(live_loot_multiplier())

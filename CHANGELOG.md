@@ -127,6 +127,29 @@
 - Bullets restyled: gold/white tracers for the player, glowing orange-red
   slugs for enemies, both unshaded so darkness never hides them.
 
+## Phase 3 — Audio
+
+- New `Audio` autoload (`audio.gd`) replaces the old `Sfx` node: pooled 2D and
+  flat players, per-sound voice limits, ±6% pitch variance, a mix table of dB
+  offsets, looping one-shots (alarm, heartbeat, van engine, drone), and music
+  that crossfades between tracks. Heist music is two synced layers (stealth /
+  combat) crossfaded by an intensity value from heat, alert guards and nearby
+  fights; bosses switch to their own track.
+- `tools/gen_sfx.py` synthesises every sound (59 effects) and the six music
+  loops (menu, hideout, heist stealth, heist combat, boss, ending) as WAV files
+  under `assets/audio/`; see `assets/audio/README.md`. No third-party audio.
+- Hooked: weapon shots per class, dry fire, reload (mag out / in), footsteps
+  (silent when sneaking), dodge, hits, deaths, guard alerts, camera spotting,
+  alarm loop, radio calls, van engine, loot tiers, case reveals and ticks,
+  cash register / deny at vendors, stock up/down chips, typewriter, paper
+  sounds, low-health heartbeat, every button (hover tick + click).
+- Buses: Master, Music, SFX, UI. Settings gained Music, Interface volume and
+  Screen shake sliders plus Dynamic shadows, Post-processing, Reduce flashing
+  and Damage numbers toggles. The settings panel is two columns so it fits a
+  phone in landscape.
+- `build/` and `artifacts/` carry `.gdignore` so Godot never imports test
+  output.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -166,3 +189,8 @@
   to the main door is straight.
 - **Dodge tuning kept** (0.25 s i-frames, 0.6 s cooldown, sprint noise): the
   roll already existed; only its feel changed.
+- **Audio format.** Generated WAVs are imported with QOA compression; loops are
+  set at runtime (loop_mode on a duplicate) so the files need no import
+  overrides.
+- **Heist music is layered, not switched,** so heat changes never restart the
+  track.

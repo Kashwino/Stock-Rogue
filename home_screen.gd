@@ -8,6 +8,7 @@ var _settings_panel: Control
 
 func _ready() -> void:
 	get_tree().paused = false
+	Audio.music("menu")
 	for child in get_children():
 		child.queue_free()
 	_root = Control.new()

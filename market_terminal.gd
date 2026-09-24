@@ -106,7 +106,7 @@ func _trade(operation: String) -> void:
 			button.disabled = true
 		prompt.text = "TERMINAL LOCKED"
 		_ring.active = false
-		Sfx.play_sound("pickup")
+		Audio.play("cash_register")
 
 func close_terminal() -> void:
 	if not opened:

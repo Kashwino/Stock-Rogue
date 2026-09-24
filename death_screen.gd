@@ -32,10 +32,14 @@ func _ready() -> void:
 
 ## summary keys (all optional): heists, stage, gold, index, kills, cause, venue
 func show_death(summary: Dictionary = {}) -> void:
+	Audio.stop_music(0.4)
+	Audio.loop("alarm", false)
+	Audio.loop("heartbeat", false)
 	var headline := Headlines.busted(summary)
 	_present(headline, summary, false)
 
 func show_victory(summary: Dictionary = {}) -> void:
+	Audio.music("ending")
 	var headline := Headlines.victory(summary)
 	_present(headline, summary, true)
 

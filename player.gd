@@ -41,6 +41,9 @@ var _knock := Vector2.ZERO
 ## Recent-fire bloom for the crosshair (0..1).
 var bloom := 0.0
 var _ghost_clock := 0.0
+var _step_clock := 0.0
+## Ghost-style silent movement (no footstep sound, no movement noise).
+var silent_steps := false
 var shots_fired: int = 0
 var shots_hit: int = 0
 
@@ -56,6 +59,8 @@ func attach_loadout(l: Loadout) -> void:
 	loadout = l
 	if l and not l.reload_started.is_connected(_on_reload_started):
 		l.reload_started.connect(_on_reload_started)
+	if l and not l.reload_finished.is_connected(_on_reload_finished):
+		l.reload_finished.connect(_on_reload_finished)
 	if l and not l.active_changed.is_connected(_on_active_weapon):
 		l.active_changed.connect(_on_active_weapon)
 	_refresh_kit()
@@ -74,6 +79,10 @@ func _refresh_kit() -> void:
 func _on_reload_started(duration: float) -> void:
 	if kit:
 		kit.reload_pose(duration)
+	Audio.play("mag_out", global_position)
+
+func _on_reload_finished() -> void:
+	Audio.play("mag_in", global_position)
 
 func _ready() -> void:
 	_refresh_kit()
@@ -107,6 +116,12 @@ func _physics_process(delta: float) -> void:
 func _process_move() -> void:
 	var dir := TouchInput.movement()
 	velocity = dir * move_speed
+	if dir.length() > 0.2:
+		_step_clock -= get_physics_process_delta_time() * dir.length()
+		if _step_clock <= 0.0:
+			_step_clock = 0.34
+			if not silent_steps:
+				Audio.play("footstep", global_position)
 
 func aim_direction() -> Vector2:
 	if TouchInput.touch_active and Settings.values["touch_mode"] != 2:
@@ -148,6 +163,8 @@ func _try_fire() -> void:
 	if loadout and weapon:
 		if not loadout.consume_round():
 			# Out of ammo in mag: auto-reload attempt, no shot this press.
+			if not loadout.reloading:
+				Audio.play("dry_fire", global_position)
 			loadout.reload()
 			return
 
@@ -188,7 +205,7 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 		host.fx.add_trauma(heft)
 		host.fx.recoil(aim, 4.0 + heft * 30.0)
 		host.fx.casing(global_position + aim * 10.0, aim)
-	Sfx.play_sound("shot")
+	Audio.play(shot_sound(weapon), global_position)
 	# Every shot is heard across the floor.
 	if has_node("/root/Noise"):
 		get_node("/root/Noise").emit_noise(global_position, &"gunshot", weapon.noise_radius if weapon else 900.0)
@@ -206,6 +223,7 @@ func _try_dodge() -> void:
 		_dodge_dir = dir
 		_ghost_clock = 0.0
 		_dust_puff()
+		Audio.play("dodge", global_position)
 		# Diving across a room is audible, but only close by.
 		if has_node("/root/Noise") and not RunState.has_perk(&"quiet_shoes"):
 			get_node("/root/Noise").sprint(global_position)
@@ -241,7 +259,7 @@ func take_damage(amount: int = 1) -> void:
 	_knock = last_hit_dir * 260.0
 	if kit:
 		kit.flash()
-	Sfx.play_sound("hit")
+	Audio.play("hurt")
 	RunEconomy.on_player_hit(amount)      # currency drops on every hit
 	if live_stock:
 		live_stock.report_damage_taken(amount)   # stock crashes (bigger at low HP)
@@ -268,6 +286,7 @@ func _die() -> void:
 	for c in get_children():
 		if c is CollisionShape2D or c is CollisionPolygon2D:
 			c.set_deferred("disabled", true)
+	Audio.play("death_player")
 	died.emit()
 	# Level controller listens for `died` to end the heist.
 
@@ -321,3 +340,17 @@ func _dust_puff() -> void:
 		tw.tween_property(puff, "scale", Vector2(2.2, 2.2), 0.4)
 		tw.tween_property(puff, "modulate:a", 0.0, 0.4)
 		tw.chain().tween_callback(puff.queue_free)
+
+
+## Gunshot sound by weapon class; suppressed guns get the "pfft".
+static func shot_sound(weapon: WeaponItem) -> String:
+	if weapon and weapon.noise_radius < 400.0:
+		return "shot_silenced"
+	match SpriteKit.gun_for(weapon):
+		SpriteKit.Gun.REVOLVER: return "shot_revolver"
+		SpriteKit.Gun.SMG: return "shot_smg"
+		SpriteKit.Gun.RIFLE: return "shot_rifle"
+		SpriteKit.Gun.LONG_RIFLE: return "shot_sniper"
+		SpriteKit.Gun.SHOTGUN: return "shot_shotgun"
+		SpriteKit.Gun.LMG: return "shot_lmg"
+	return "shot_pistol"

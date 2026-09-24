@@ -69,6 +69,7 @@ func _open() -> void:
 		return
 
 	_used = true
+	Audio.play("chest_open", global_position)
 	if _ring:
 		_ring.active = false
 	if prompt:
