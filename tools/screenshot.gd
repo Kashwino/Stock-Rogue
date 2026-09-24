@@ -33,6 +33,8 @@ func _run() -> void:
 		scene.player.global_position = target
 		scene.player._invulnerable = true
 		scene.camera.global_position = target
+		if args.has("fire"):
+			Input.action_press("fire")
 		if args.has("provoke"):
 			for e in get_tree().get_nodes_in_group("enemies"):
 				e.hunting = true

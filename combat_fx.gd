@@ -1,47 +1,294 @@
 extends Node
 class_name CombatFX
+## The heist's feel hub: trauma-based camera shake, camera recoil and aim lead,
+## hit-stop and slow-motion (real-time managed, always restored), muzzle
+## flashes, pooled sparks, shell casings, bullet holes, blood, damage numbers
+## and market chips. Everything respects Settings (low effects, shake slider,
+## damage numbers, reduce flashing).
+
+const MAX_OFFSET := 20.0
+const MAX_ROLL := 0.035
+const HOLE_CAP := 80
+const CASING_CAP := 40
+
 var camera: Camera2D
-var shake_strength := 0.0
+var lighting: HeistLighting
+var trauma := 0.0
 var slow_active := false
+var lead := Vector2.ZERO
+var _kick := Vector2.ZERO
+var _noise := FastNoiseLite.new()
+var _t := 0.0
+var _hitstop_until := 0
+var _slow_until := 0
+var _slow_scale := 1.0
+var _holes: Array = []
+var _casings: Array = []
+var _numbers: Array = []
+var _sparks: Array = []
+var _layer: Node2D            # world-space FX parent (set by the heist)
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	_noise.frequency = 2.2
+	_noise.seed = 1234
+
+func _low() -> bool:
+	return Settings.values.get("low_effects", false)
+
+func world() -> Node2D:
+	if _layer == null or not is_instance_valid(_layer):
+		_layer = Node2D.new()
+		_layer.z_index = 12
+		get_parent().add_child(_layer)
+	return _layer
+
+# ---------------------------------------------------------------- camera ----
+## Trauma is 0..1; shake grows with its square so small hits stay subtle.
+func add_trauma(amount: float) -> void:
+	if _low():
+		return
+	trauma = clampf(trauma + amount, 0.0, 1.0)
+
+## Back-compat with pixel-ish amounts (2 = small shot, 9 = taking a hit).
+func shake(amount: float) -> void:
+	add_trauma(amount / 22.0)
+
+func recoil(direction: Vector2, strength: float) -> void:
+	if _low():
+		return
+	_kick -= direction.normalized() * strength
 
 func _process(delta: float) -> void:
+	_t += delta
+	var now := Time.get_ticks_msec()
+	# Time scale: hit-stop beats slow-mo beats normal. Real-time based, so a
+	# pause or a scene change can never leave the game stuck slow.
+	var target := 1.0
+	if now < _hitstop_until:
+		target = 0.06
+	elif now < _slow_until:
+		target = _slow_scale
+	if not get_tree().paused:
+		Engine.time_scale = target
+	slow_active = now < _slow_until
 	if not is_instance_valid(camera):
 		return
-	if Settings.values["low_effects"]:
-		shake_strength = 0.0
-	shake_strength = move_toward(shake_strength, 0, delta * 32.0)
-	camera.offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake_strength
+	var real_delta := delta / maxf(Engine.time_scale, 0.01) if Engine.time_scale < 1.0 else delta
+	trauma = maxf(trauma - real_delta * 1.3, 0.0)
+	_kick = _kick.lerp(Vector2.ZERO, clampf(real_delta * 14.0, 0.0, 1.0))
+	var amount: float = trauma * trauma * float(Settings.values.get("shake", 1.0))
+	var shake_offset := Vector2(_noise.get_noise_2d(_t * 60.0, 0.0), _noise.get_noise_2d(0.0, _t * 60.0)) * MAX_OFFSET * amount
+	camera.offset = shake_offset + _kick + lead
+	camera.rotation = _noise.get_noise_2d(_t * 40.0, 99.0) * MAX_ROLL * amount
 
-func shake(amount: float) -> void:
-	if not Settings.values["low_effects"]:
-		shake_strength = minf(10.0, maxf(shake_strength, amount))
-
-func muzzle(at: Vector2, direction: Vector2) -> void:
-	if Settings.values["low_effects"]:
+# ------------------------------------------------------------------ time ----
+## A few frames of near-freeze on a kill: the hit lands.
+func hit_stop(seconds: float = 0.06) -> void:
+	if _low():
 		return
-	var flash := Polygon2D.new()
-	flash.polygon = PackedVector2Array([Vector2(-4, -7), Vector2(30, 0), Vector2(-4, 7), Vector2(5, 0)])
-	flash.color = Color(1, 0.87, 0.35)
-	get_parent().add_child(flash)
-	flash.global_position = at
-	flash.rotation = direction.angle()
-	flash.z_index = 20
-	var t := flash.create_tween()
-	t.tween_property(flash, "modulate:a", 0.0, 0.065)
-	t.tween_callback(flash.queue_free)
+	_hitstop_until = maxi(_hitstop_until, Time.get_ticks_msec() + int(seconds * 1000.0))
 
-func last_kill() -> void:
-	shake(5.0)
-	if slow_active or Settings.values["low_effects"]:
+func slow_mo(seconds: float, scale: float) -> void:
+	if _low():
 		return
+	_slow_scale = scale
+	_slow_until = maxi(_slow_until, Time.get_ticks_msec() + int(seconds * 1000.0))
+	Engine.time_scale = scale
 	slow_active = true
-	Engine.time_scale = 0.35
-	# Pause freezes this beat. Real-time duration prevents slow-mo stretching itself.
-	await get_tree().create_timer(0.22, false, false, true).timeout
-	Engine.time_scale = 1.0
-	slow_active = false
+
+## Last guard in a room: a short slow beat.
+func last_kill() -> void:
+	add_trauma(0.25)
+	if slow_active or _low():
+		return
+	slow_mo(0.22, 0.35)
 
 func _exit_tree() -> void:
 	Engine.time_scale = 1.0
 	if is_instance_valid(camera):
 		camera.offset = Vector2.ZERO
+		camera.rotation = 0.0
+
+# ----------------------------------------------------------------- flashes --
+func muzzle(at: Vector2, direction: Vector2, big := false) -> void:
+	if lighting:
+		lighting.muzzle_flash(at)
+	if _low():
+		return
+	var flash := Polygon2D.new()
+	var l := 34.0 if big else 24.0
+	flash.polygon = PackedVector2Array([Vector2(-3, -7), Vector2(l, 0), Vector2(-3, 7), Vector2(6, 0)])
+	flash.color = Color(1.0, 0.9, 0.55)
+	flash.material = StreetArt._unshaded()
+	world().add_child(flash)
+	flash.global_position = at
+	flash.rotation = direction.angle() + randf_range(-0.15, 0.15)
+	flash.z_index = 20
+	var core := Polygon2D.new()
+	core.polygon = PackedVector2Array([Vector2(0, -3), Vector2(l * 0.5, 0), Vector2(0, 3)])
+	core.color = Color.WHITE
+	flash.add_child(core)
+	var t := flash.create_tween()
+	t.tween_property(flash, "modulate:a", 0.0, 0.06)
+	t.tween_callback(flash.queue_free)
+
+# ----------------------------------------------------------------- debris ---
+func spark(at: Vector2, normal: Vector2, color: Color = Color(1.0, 0.8, 0.4)) -> void:
+	if _low():
+		return
+	var s := Spark.new()
+	s.color = color
+	s.normal = normal if normal != Vector2.ZERO else Vector2.from_angle(randf() * TAU)
+	world().add_child(s)
+	s.global_position = at
+
+func bullet_hole(at: Vector2) -> void:
+	var hole := Hole.new()
+	world().add_child(hole)
+	hole.global_position = at
+	hole.z_index = -2
+	_holes.append(hole)
+	while _holes.size() > HOLE_CAP:
+		var old = _holes.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+
+func casing(at: Vector2, direction: Vector2) -> void:
+	if _low():
+		return
+	var c := Casing.new()
+	var side := Vector2(-direction.y, direction.x)
+	c.velocity = side * randf_range(90, 160) - direction * randf_range(10, 40)
+	world().add_child(c)
+	c.global_position = at
+	_casings.append(c)
+	while _casings.size() > CASING_CAP:
+		var old = _casings.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+
+func blood(at: Vector2, direction: Vector2) -> void:
+	if _low():
+		return
+	var b := Blood.new()
+	b.direction = direction
+	world().add_child(b)
+	b.global_position = at
+	b.z_index = -3
+
+# ---------------------------------------------------------------- numbers ---
+func damage_number(at: Vector2, amount: int, color: Color = Palette.PAPER) -> void:
+	if not Settings.values.get("damage_numbers", true):
+		return
+	_float_label(at + Vector2(randf_range(-10, 10), -20), str(amount), color, 20)
+
+## The market reacting to what you just did: "+2.3%" near the player.
+func chip(at: Vector2, text: String, color: Color) -> void:
+	_float_label(at + Vector2(randf_range(-20, 20), -46), text, color, 18, true)
+
+func _float_label(at: Vector2, text: String, color: Color, size: int, boxed := false) -> void:
+	var l: Label = null
+	for existing: Label in _numbers:
+		if is_instance_valid(existing) and not existing.visible:
+			l = existing
+			break
+	if l == null:
+		if _numbers.size() >= 28:
+			l = _numbers.pop_front()
+			_numbers.append(l)
+		else:
+			l = Label.new()
+			l.add_theme_font_override("font", VisualTheme.font("mono"))
+			l.material = StreetArt._unshaded()
+			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			l.z_index = 60
+			l.z_as_relative = false
+			world().add_child(l)
+			_numbers.append(l)
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 5)
+	if boxed:
+		l.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.7), color, 1, 3, 3))
+	else:
+		l.remove_theme_stylebox_override("normal")
+	l.reset_size()
+	l.global_position = at - l.size * 0.5
+	l.visible = true
+	l.modulate.a = 1.0
+	l.scale = Vector2(1.25, 1.25)
+	l.pivot_offset = l.size * 0.5
+	var tw := l.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(l, "scale", Vector2.ONE, 0.12)
+	tw.tween_property(l, "global_position:y", l.global_position.y - 36.0, 0.8).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(l, "modulate:a", 0.0, 0.35).set_delay(0.5)
+	tw.chain().tween_callback(l.hide)
+
+
+class Spark extends Node2D:
+	var color := Color.WHITE
+	var normal := Vector2.RIGHT
+	var _life := 0.0
+	var _dirs: Array = []
+	func _ready() -> void:
+		material = StreetArt._unshaded()
+		z_index = 22
+		for i in 6:
+			_dirs.append(normal.rotated(randf_range(-1.0, 1.0)) * randf_range(40, 140))
+	func _process(delta: float) -> void:
+		_life += delta
+		if _life > 0.18:
+			queue_free()
+			return
+		queue_redraw()
+	func _draw() -> void:
+		var k := _life / 0.18
+		for d: Vector2 in _dirs:
+			draw_line(d * k * 0.2, d * k * 0.2 + d * 0.08, Palette.with_alpha(color, 1.0 - k), 1.6)
+		draw_circle(Vector2.ZERO, 4.0 * (1.0 - k), Palette.with_alpha(Color.WHITE, 1.0 - k))
+
+class Hole extends Node2D:
+	func _ready() -> void:
+		queue_redraw()
+	func _draw() -> void:
+		draw_circle(Vector2.ZERO, 3.2, Color(0.05, 0.04, 0.04, 0.85))
+		draw_circle(Vector2(0.8, 0.8), 1.4, Color(0.3, 0.28, 0.25, 0.6))
+
+class Casing extends Node2D:
+	var velocity := Vector2.ZERO
+	var _spin := 0.0
+	var _age := 0.0
+	func _ready() -> void:
+		z_index = -1
+		_spin = randf_range(-20, 20)
+		queue_redraw()
+	func _process(delta: float) -> void:
+		_age += delta
+		if _age < 0.35:
+			position += velocity * delta
+			velocity = velocity.lerp(Vector2.ZERO, clampf(delta * 6.0, 0, 1))
+			rotation += _spin * delta
+		elif _age > 3.0:
+			modulate.a = maxf(0.0, 1.0 - (_age - 3.0))
+			if _age > 4.0:
+				queue_free()
+	func _draw() -> void:
+		draw_rect(Rect2(-3, -1.5, 6, 3), Color("c9a24a"))
+		draw_rect(Rect2(-3, -1.5, 2, 3), Color("8a6a2a"))
+
+class Blood extends Node2D:
+	var direction := Vector2.RIGHT
+	func _ready() -> void:
+		queue_redraw()
+		var tw := create_tween()
+		tw.tween_interval(8.0)
+		tw.tween_property(self, "modulate:a", 0.0, 2.0)
+		tw.tween_callback(queue_free)
+	func _draw() -> void:
+		for i in 5:
+			var p := direction.normalized().rotated(randf_range(-0.6, 0.6)) * randf_range(4, 22)
+			draw_circle(p, randf_range(1.5, 4.0), Color(0.35, 0.03, 0.04, 0.8))

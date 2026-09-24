@@ -20,6 +20,13 @@ func setup(direction: Vector2, shooter: Node) -> void:
 	rotation = _dir.angle()
 
 func _ready() -> void:
+	var tracer := get_node_or_null("Tracer")
+	if tracer:
+		tracer.hide()
+	var art := BulletArt.new()
+	art.hostile = true
+	art.length = clampf(speed * 0.03, 8.0, 22.0)
+	add_child(art)
 	# Walls (layer 1) + player (layer 4). NOT layer 2, so enemy bullets pass
 	# harmlessly through other enemies.
 	collision_mask = wall_mask | Layers.PLAYER
@@ -50,6 +57,11 @@ func _physics_process(delta: float) -> void:
 	var hit := space.intersect_ray(query)
 	if hit and not (hit["collider"] is CharacterBody2D):
 		global_position = hit["position"]
+		var host := get_tree().current_scene
+		if host is HeistFloor:
+			host.fx.spark(hit["position"], hit["normal"], Palette.ENEMY_BULLET)
+			host.fx.bullet_hole(hit["position"] - hit["normal"] * 2.0)
+		_spent = true
 		queue_free()
 		return
 
@@ -66,5 +78,7 @@ func _try_hit(target: Node) -> void:
 		return
 	if target.is_in_group("player") and target.has_method("take_damage"):
 		_spent = true
+		if "last_hit_dir" in target:
+			target.last_hit_dir = _dir
 		target.take_damage(damage)
 		queue_free()

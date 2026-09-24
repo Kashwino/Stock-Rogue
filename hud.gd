@@ -208,6 +208,22 @@ func flash_gold() -> void:
 	var t := create_tween()
 	t.tween_property(gold_label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
+## A "+$25" that flies from the pickup to the gold counter.
+func fly_gold(screen_pos: Vector2, amount: int) -> void:
+	var l := VisualTheme.label("+$%d" % amount, "", 22, Palette.GOLD_PALE)
+	l.add_theme_font_override("font", VisualTheme.font("mono"))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 5)
+	root.add_child(l)
+	l.position = screen_pos - Vector2(20, 20)
+	var target := gold_anchor()
+	var tw := l.create_tween()
+	tw.tween_property(l, "position", l.position + Vector2(0, -24), 0.15).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "position", target, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(l, "scale", Vector2(0.6, 0.6), 0.45)
+	tw.tween_callback(flash_gold)
+	tw.tween_callback(l.queue_free)
+
 ## Where pickups should fly to (screen space).
 func gold_anchor() -> Vector2:
 	return gold_label.global_position + Vector2(40, 16) if gold_label else Vector2(60, 90)

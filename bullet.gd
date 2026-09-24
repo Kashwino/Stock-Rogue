@@ -21,6 +21,12 @@ func setup(direction: Vector2, shooter: Node) -> void:
 		_excluded.append(shooter.get_rid())
 
 func _ready() -> void:
+	var tracer := get_node_or_null("Tracer")
+	if tracer:
+		tracer.hide()
+	var art := BulletArt.new()
+	art.length = clampf(speed * 0.028, 12.0, 34.0)
+	add_child(art)
 	collision_layer = 0
 	collision_mask = wall_mask | Layers.ENEMIES | Layers.SECURITY | Layers.FLYERS
 	body_entered.connect(_try_hit)
@@ -52,13 +58,21 @@ func _physics_process(delta: float) -> void:
 			global_position += _dir * 0.5
 			remaining -= 0.5
 		elif ricochets > 0:
+			_impact(hit["position"], hit["normal"])
 			ricochets -= 1
 			_dir = _dir.bounce(hit["normal"]).normalized()
 			rotation = _dir.angle()
 			global_position += hit["normal"] * 1.0
 			remaining -= 1.0
 		else:
+			_impact(hit["position"], hit["normal"])
 			_finish()
+
+func _impact(at: Vector2, normal: Vector2) -> void:
+	var host := get_tree().current_scene
+	if host is HeistFloor:
+		host.fx.spark(at, normal, Palette.PLAYER_BULLET)
+		host.fx.bullet_hole(at - normal * 2.0)
 
 func _try_hit(target: Node) -> void:
 	if _spent or not is_instance_valid(target) or target == _shooter:
@@ -70,9 +84,17 @@ func _try_hit(target: Node) -> void:
 	_hit_ids.append(target.get_instance_id())
 	if target is CollisionObject2D:
 		_excluded.append(target.get_rid())
+	var host := get_tree().current_scene
+	if host is HeistFloor:
+		host.fx.damage_number(global_position, damage, Palette.GOLD_PALE if damage >= 3 else Palette.PAPER)
+		if target.is_in_group("enemies"):
+			host.fx.blood(global_position, _dir)
+		else:
+			host.fx.spark(global_position, -_dir, Palette.NEON_CYAN)
 	target.take_damage(damage)
-	if knockback > 0.0 and target is CharacterBody2D and not target is AuditorBoss:
-		target.velocity += _dir * knockback
+	var push := knockback if knockback > 0.0 else 45.0
+	if target is CharacterBody2D and not target is AuditorBoss and is_instance_valid(target) and target.is_inside_tree():
+		target.velocity += _dir * push
 		target.move_and_slide()
 	if target.is_in_group("enemies") and is_instance_valid(_shooter) and _shooter.has_method("register_hit_landed"):
 		_shooter.register_hit_landed()

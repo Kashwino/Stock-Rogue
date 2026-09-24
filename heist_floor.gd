@@ -170,6 +170,9 @@ func _build_floor() -> void:
 	_ensure_prompt()
 	_spawn_car()
 	_dress_outside()
+	var cross := Crosshair.new()
+	cross.player = player
+	add_child(cross)
 	_assign_guard_roles()
 	director.refresh()
 	var terminal := MarketTerminal.new()
@@ -225,6 +228,7 @@ func _setup_market_and_hud() -> void:
 	add_child(live)
 	live.setup(RunState.market, player, RunState.character_profile)
 	player.live_stock = live
+	live.player_moved.connect(_on_player_moved_market)
 
 	var hud_scene = load("res://hud.tscn")
 	if hud_scene:
@@ -448,7 +452,8 @@ func _on_enemy_died(e) -> void:
 		player.health = mini(player.health + 1, player.max_health)
 		player.health_changed.emit(player.health, player.max_health)
 	RunFlow.total_kills += 1
-	fx.shake(3.0)
+	fx.add_trauma(0.2)
+	fx.hit_stop(0.065)
 	if live:
 		live.report_kill()
 
@@ -468,6 +473,7 @@ func _on_room_cleared(room) -> void:
 
 	if room.has_meta("is_boss") and not marked:
 		_become_marked()
+		fx.slow_mo(0.9, 0.25)
 
 func _become_marked() -> void:
 	marked = true
@@ -483,9 +489,18 @@ func _process(delta: float) -> void:
 	if _extracting or player == null or not is_instance_valid(player):
 		return
 
-	# Camera follows the player.
+	# Camera follows the player, leaning a little toward where they aim.
 	camera.global_position = camera.global_position.lerp(
 		player.global_position, clampf(delta * 8.0, 0.0, 1.0))
+	var want := Vector2.ZERO
+	if TouchInput.touch_active and Settings.values["touch_mode"] != 2:
+		want = TouchInput.aim * (60.0 if TouchInput.firing else 20.0)
+	elif TouchInput.pad_aim() != Vector2.ZERO:
+		want = TouchInput.pad_aim() * 70.0
+	else:
+		want = (get_global_mouse_position() - player.global_position).limit_length(460.0) * 0.16
+	fx.lead = fx.lead.lerp(want, clampf(delta * 4.0, 0.0, 1.0))
+	_tick_market_chip(delta)
 	_status_clock -= delta
 	if _status_clock <= 0.0:
 		_status_clock = 0.15
@@ -703,6 +718,29 @@ func _extract() -> void:
 func _on_results_continued() -> void:
 	RunFlow.on_heist_finished()
 
+var _chip_accum := 0.0
+var _chip_clock := 0.0
+
+## Your actions move the venue: gather small moves for a beat, then pop a
+## "+2.3%" chip by the player and flash the ticker.
+func _on_player_moved_market(pct: float) -> void:
+	_chip_accum += pct
+	if _chip_clock <= 0.0:
+		_chip_clock = 0.35
+
+func _tick_market_chip(delta: float) -> void:
+	if _chip_clock <= 0.0:
+		return
+	_chip_clock -= delta
+	if _chip_clock > 0.0:
+		return
+	if absf(_chip_accum) >= 0.001 and is_instance_valid(player):
+		var col := Palette.UP if _chip_accum > 0.0 else Palette.DOWN
+		fx.chip(player.global_position, "%s %+.1f%%" % [Venues.ticker(_venue), _chip_accum * 100.0], col)
+		if hud and hud.get("ticker"):
+			hud.ticker.flash(col)
+	_chip_accum = 0.0
+
 func _on_player_health(current: int, maximum: int) -> void:
 	if post_fx:
 		post_fx.set_health(current, maximum)
@@ -756,7 +794,7 @@ func _scatter_loot(room) -> void:
 		pickup.value = _rng.randi_range(per_min, per_max)
 		room.add_child(pickup)
 		pickup.position = pos
-		pickup.collected.connect(_on_loot_collected)
+		pickup.collected.connect(_on_loot_collected.bind(pickup))
 
 ## A floor position inset from the walls, spaced from other loot.
 func _loot_slot(size: Vector2, placed: Array, room: BuildingRoom = null) -> Vector2:
@@ -779,9 +817,11 @@ func _loot_slot(size: Vector2, placed: Array, room: BuildingRoom = null) -> Vect
 			return candidate
 	return candidate
 
-func _on_loot_collected(value: int) -> void:
+func _on_loot_collected(value: int, pickup: Node2D = null) -> void:
 	var paid := roundi(value * loot_multiplier() * (1.25 if RunState.has_perk(&"scavenger") else 1.0))
 	loot_banked += paid
+	if pickup and is_instance_valid(pickup) and hud and hud.has_method("fly_gold"):
+		hud.fly_gold(pickup.get_global_transform_with_canvas().origin, paid)
 	RunEconomy.add_bonus(paid)
 	Sfx.play_sound("pickup")
 	if hud and hud.has_method("flash_gold"):
@@ -992,6 +1032,7 @@ func _dress_outside() -> void:
 	lighting = HeistLighting.new()
 	add_child(lighting)
 	lighting.setup(env, generator.rooms, player, modifier == &"blackout")
+	fx.lighting = lighting
 	var occluders: Array = []
 	for walls: RoomArt.WallArt in wall_art:
 		for r: Rect2 in walls.rects:

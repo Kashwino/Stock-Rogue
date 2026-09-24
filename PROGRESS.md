@@ -65,7 +65,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       hideout before every heist → quota gates → stage bosses)
 - [x] Phase 1 — visual foundation (theme, fonts, sprite kit, stage art, props,
       lighting, street, post-fx, transitions, HUD, case wall, hideout, menus)
-- [ ] Phase 2 — game feel
+- [x] Phase 2 — game feel (shake, hit-stop, slow-mo, knockback, damage numbers,
+      muzzle/casings/sparks/holes, crosshair, recoil + lead, loot magnet, market chips)
 - [ ] Phase 3 — audio
 - [ ] Phase 4 — enemies & security
 - [ ] Phase 5 — bosses

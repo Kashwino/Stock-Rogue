@@ -35,6 +35,12 @@ var _dead: bool = false
 
 # --- Grade-relevant run stats (read by the grader at level end) ---
 var hits_taken: int = 0
+## Set by whatever hits us (bullets, blasts) just before take_damage.
+var last_hit_dir := Vector2.ZERO
+var _knock := Vector2.ZERO
+## Recent-fire bloom for the crosshair (0..1).
+var bloom := 0.0
+var _ghost_clock := 0.0
 var shots_fired: int = 0
 var shots_hit: int = 0
 
@@ -81,6 +87,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_mercy_timer = maxf(_mercy_timer - delta, 0.0)
+	bloom = maxf(bloom - delta * 2.5, 0.0)
 	_fire_timer = maxf(_fire_timer - delta, 0.0)
 	_dodge_cd_timer = maxf(_dodge_cd_timer - delta, 0.0)
 
@@ -92,6 +99,9 @@ func _physics_process(delta: float) -> void:
 		_try_dodge()
 		_try_fire()
 
+	if _knock.length() > 1.0:
+		velocity += _knock
+		_knock = _knock.lerp(Vector2.ZERO, clampf(delta * 12.0, 0.0, 1.0))
 	move_and_slide()
 
 func _process_move() -> void:
@@ -168,12 +178,16 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 		if "speed" in b:
 			b.speed = bspeed
 	shots_fired += pellets
+	bloom = minf(bloom + 0.35, 1.0)
 	if kit:
 		kit.kick(0.5 + 0.12 * pellets + 0.15 * dmg)
 	var host := get_tree().current_scene
 	if host is HeistFloor:
-		host.fx.muzzle(muzzle.global_position, aim)
-		host.fx.shake(2.0 if pellets <= 1 else 4.0)
+		var heft := clampf(0.05 + dmg * 0.025 + pellets * 0.018, 0.05, 0.3)
+		host.fx.muzzle(muzzle.global_position, aim, pellets > 1 or dmg >= 3)
+		host.fx.add_trauma(heft)
+		host.fx.recoil(aim, 4.0 + heft * 30.0)
+		host.fx.casing(global_position + aim * 10.0, aim)
 	Sfx.play_sound("shot")
 	# Every shot is heard across the floor.
 	if has_node("/root/Noise"):
@@ -190,6 +204,8 @@ func _try_dodge() -> void:
 		_invulnerable = true
 		_dodge_timer = dodge_time
 		_dodge_dir = dir
+		_ghost_clock = 0.0
+		_dust_puff()
 		# Diving across a room is audible, but only close by.
 		if has_node("/root/Noise") and not RunState.has_perk(&"quiet_shoes"):
 			get_node("/root/Noise").sprint(global_position)
@@ -197,6 +213,10 @@ func _try_dodge() -> void:
 func _process_dodge(delta: float) -> void:
 	_dodge_timer -= delta
 	velocity = _dodge_dir * dodge_speed
+	_ghost_clock -= delta
+	if _ghost_clock <= 0.0 and kit and not Settings.values["low_effects"]:
+		_ghost_clock = 0.045
+		_spawn_afterimage()
 	if _dodge_timer <= 0.0:
 		_dodging = false
 		_invulnerable = false
@@ -214,8 +234,11 @@ func take_damage(amount: int = 1) -> void:
 	hits_taken += amount
 	var host := get_tree().current_scene
 	if host is HeistFloor:
-		host.fx.shake(9.0)
+		host.fx.add_trauma(0.45)
+		host.fx.hit_stop(0.05)
+		host.fx.blood(global_position, last_hit_dir)
 		host.on_player_hurt()
+	_knock = last_hit_dir * 260.0
 	if kit:
 		kit.flash()
 	Sfx.play_sound("hit")
@@ -258,3 +281,43 @@ func register_hit_landed() -> void:
 
 func accuracy() -> float:
 	return 0.0 if shots_fired == 0 else minf(float(shots_hit) / float(shots_fired), 1.0)
+
+
+## A fading gold copy of the character left behind during a dodge roll.
+func _spawn_afterimage() -> void:
+	var host := get_parent()
+	if host == null:
+		return
+	var ghost := Node2D.new()
+	ghost.global_position = global_position
+	ghost.rotation = sprite.global_rotation
+	ghost.z_index = 9
+	host.add_child(ghost)
+	var copy := SpriteKit.new()
+	copy.apply(kit.spec)
+	copy.modulate = Color(1.0, 0.85, 0.4, 0.45)
+	ghost.add_child(copy)
+	copy.set_process(false)
+	var tw := ghost.create_tween()
+	tw.tween_property(ghost, "modulate:a", 0.0, 0.22)
+	tw.tween_callback(ghost.queue_free)
+
+func _dust_puff() -> void:
+	if Settings.values["low_effects"] or get_parent() == null:
+		return
+	for i in 4:
+		var puff := Polygon2D.new()
+		var pts := PackedVector2Array()
+		for k in 8:
+			pts.append(Vector2.from_angle(TAU * k / 8.0) * randf_range(4, 7))
+		puff.polygon = pts
+		puff.color = Color(0.7, 0.68, 0.62, 0.4)
+		puff.z_index = -1
+		get_parent().add_child(puff)
+		puff.global_position = global_position + Vector2(randf_range(-10, 10), randf_range(-10, 10))
+		var drift := -_dodge_dir * randf_range(10, 30) + Vector2(randf_range(-8, 8), randf_range(-8, 8))
+		var tw := puff.create_tween().set_parallel(true)
+		tw.tween_property(puff, "position", puff.position + drift, 0.4)
+		tw.tween_property(puff, "scale", Vector2(2.2, 2.2), 0.4)
+		tw.tween_property(puff, "modulate:a", 0.0, 0.4)
+		tw.chain().tween_callback(puff.queue_free)

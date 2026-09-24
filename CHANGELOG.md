@@ -102,6 +102,31 @@
 - Tools: `tools/check.sh` (compile every script), `tools/screenshot.tscn`
   presets (home, select, map, hideout, heist, gallery, results, death).
 
+## Phase 2 — Game feel
+
+- `CombatFX` rebuilt as the feel hub: trauma-based camera shake (squared,
+  noise-driven offset and roll, scaled by the Settings shake slider), camera
+  recoil kick opposite each shot, a slight aim-lead offset toward the cursor /
+  stick, and a real-time-managed time scale (hit-stop 60–65 ms on kills and
+  hits, slow-motion on a room's last kill and on boss kills) that can never
+  stay stuck slow.
+- Per-weapon heft: shake, recoil and flash size scale with damage and pellets.
+- Hit flash on every character (kit), knockback on enemies (weapon value or a
+  small default) and on the player (pushed along the incoming bullet).
+- Pooled/capped effects: muzzle flash sprite + light, ejected brass casings
+  (40), impact sparks, bullet holes on walls and furniture (80), blood flecks,
+  floating damage numbers (Settings toggle).
+- Drawn crosshair at the cursor (or ahead of the player on a gamepad): the gap
+  widens with spread and firing bloom; a ring fills while reloading. The OS
+  cursor hides only while playing.
+- Loot has a short magnet, pops, and its value flies to the HUD gold counter,
+  which counts up.
+- Market feedback: player-caused venue moves are gathered for a beat and pop a
+  "BANK +2.3%" chip by the player while the ticker flashes green or red.
+- Dodge rolls leave gold afterimages and kick up dust.
+- Bullets restyled: gold/white tracers for the player, glowing orange-red
+  slugs for enemies, both unshaded so darkness never hides them.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -139,3 +164,5 @@
   fonts on the Web build).
 - **Getaway car** is parked alongside the door axis so the walk from the car
   to the main door is straight.
+- **Dodge tuning kept** (0.25 s i-frames, 0.6 s cooldown, sprint noise): the
+  roll already existed; only its feel changed.

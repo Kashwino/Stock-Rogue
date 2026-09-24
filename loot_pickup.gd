@@ -12,6 +12,7 @@ signal collected(value: int)
 
 var _kind := 0                 # 0 cash, 1 jewels, 2 briefcase, 3 artwork
 var _taken := false
+var _pull := 0.0
 var _bob_time := 0.0
 var _visual: LootArt
 
@@ -95,6 +96,21 @@ class LootArt extends Node2D:
 				draw_rect(Rect2(-12, -9, 24, 18), Color("2a4a6a"))
 				draw_circle(Vector2(-3, 1), 5, Color("e0a040"))
 				draw_rect(Rect2(-16, -13, 32, 26), Palette.GOLD_DIM, false, 1.5)
+
+## A short magnet: once you're close, the valuable slides into your hand.
+func _physics_process(delta: float) -> void:
+	if _taken:
+		return
+	var player := get_tree().get_first_node_in_group("player") as Node2D
+	if player == null:
+		return
+	var to := player.global_position - global_position
+	var d := to.length()
+	if d < 95.0 and d > 1.0:
+		_pull = minf(_pull + delta * 900.0, 520.0)
+		global_position += to / d * minf(_pull * delta, d)
+	else:
+		_pull = 0.0
 
 func _on_body_entered(body: Node) -> void:
 	_try_collect(body)

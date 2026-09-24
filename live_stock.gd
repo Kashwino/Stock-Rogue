@@ -12,6 +12,9 @@ signal price_updated(price: float, delta: float, direction: int)  # dir: +1/-1
 ## Fired when something noteworthy happens, so the comment feed can react.
 ## kind: &"kill", &"hit", &"damage", &"boss", &"grade", &"drift_up", &"drift_down"
 signal market_event(kind: StringName, magnitude: float)
+## A move caused by the player (hit, kill, damage, sabotage, shock): the
+## effective fraction after volatility. HUD chips and the ticker flash use it.
+signal player_moved(pct: float)
 
 @export var venue_asset_id: StringName = &""
 
@@ -90,6 +93,7 @@ func _apply(pct: float) -> void:
 	# momentum, so a good run builds a visible rally and a bad one bleeds out.
 	_momentum += pct * 0.35
 	_apply_raw(pct * _current_vol())
+	player_moved.emit(pct * _current_vol())
 
 ## Move the price by an already-scaled fraction, with no extra volatility pass.
 func _apply_raw(effective: float) -> void:
@@ -140,4 +144,5 @@ func report_sabotage() -> void:
 func report_shock(multiplier: float, kind: StringName = &"grade") -> void:
 	_momentum += (multiplier - 1.0) * 0.5
 	_apply_raw(multiplier - 1.0)
+	player_moved.emit(multiplier - 1.0)
 	market_event.emit(kind, absf(multiplier - 1.0))
