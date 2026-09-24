@@ -44,6 +44,8 @@ var _ghost_clock := 0.0
 var _step_clock := 0.0
 ## Ghost-style silent movement (no footstep sound, no movement noise).
 var silent_steps := false
+var _slow_timer := 0.0
+var _slow_mult := 1.0
 var shots_fired: int = 0
 var shots_hit: int = 0
 
@@ -99,6 +101,7 @@ func _physics_process(delta: float) -> void:
 	bloom = maxf(bloom - delta * 2.5, 0.0)
 	_fire_timer = maxf(_fire_timer - delta, 0.0)
 	_dodge_cd_timer = maxf(_dodge_cd_timer - delta, 0.0)
+	_slow_timer = maxf(_slow_timer - delta, 0.0)
 
 	if _dodging:
 		_process_dodge(delta)
@@ -115,7 +118,7 @@ func _physics_process(delta: float) -> void:
 
 func _process_move() -> void:
 	var dir := TouchInput.movement()
-	velocity = dir * move_speed
+	velocity = dir * move_speed * (_slow_mult if _slow_timer > 0.0 else 1.0)
 	if dir.length() > 0.2:
 		_step_clock -= get_physics_process_delta_time() * dir.length()
 		if _step_clock <= 0.0:
@@ -178,13 +181,11 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 	var bspeed := weapon.bullet_speed if weapon else 600.0
 
 	for i in pellets:
-		var b := bullet_scene.instantiate()
-		get_tree().current_scene.add_child(b)
+		var b := BulletPool.take(self, bullet_scene)
 		b.global_position = muzzle.global_position
 		var dir := aim
 		if spread > 0.0:
 			dir = aim.rotated(randf_range(-spread, spread))
-		b.setup(dir, self)
 		if weapon:
 			b.pierce = weapon.pierce
 			b.ricochets = weapon.ricochets
@@ -194,6 +195,7 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 			b.damage = dmg
 		if "speed" in b:
 			b.speed = bspeed
+		b.setup(dir, self)
 	shots_fired += pellets
 	bloom = minf(bloom + 0.35, 1.0)
 	if kit:
@@ -269,6 +271,19 @@ func take_damage(amount: int = 1) -> void:
 		_die()
 	else:
 		_brief_iframes()
+
+## Staggered by a heavy blow: move at `mult` speed for `seconds`.
+func apply_slow(mult: float, seconds: float) -> void:
+	_slow_mult = minf(mult, _slow_mult) if _slow_timer > 0.0 else mult
+	_slow_timer = maxf(_slow_timer, seconds)
+	if kit:
+		var tw := kit.create_tween()
+		tw.tween_property(kit, "modulate", Color(0.6, 0.75, 1.3), 0.05)
+		tw.tween_property(kit, "modulate", Color.WHITE, seconds)
+
+## A shove (shield bash, charge) that overrides the default hit knockback.
+func shove(push: Vector2) -> void:
+	_knock = push
 
 func _brief_iframes() -> void:
 	# Short mercy invulnerability after a hit so you don't get chain-melted.

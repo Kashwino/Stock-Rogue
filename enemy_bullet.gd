@@ -13,20 +13,35 @@ class_name EnemyBullet
 var _dir: Vector2 = Vector2.RIGHT
 var _shooter: Node = null
 var _spent := false
+## Set by BulletPool; spent rounds park there instead of being freed.
+var pool: BulletPool = null
+var _art: BulletArt
+var _base_lifetime := 3.0
 
 func setup(direction: Vector2, shooter: Node) -> void:
 	_dir = direction.normalized()
 	_shooter = shooter
 	rotation = _dir.angle()
+	if _art:
+		_art.length = clampf(speed * 0.03, 8.0, 22.0)
+		_art.queue_redraw()
+
+func revive() -> void:
+	_spent = false
+	lifetime = _base_lifetime
+	show()
+	set_physics_process(true)
+	set_deferred("monitoring", true)
 
 func _ready() -> void:
+	_base_lifetime = lifetime
 	var tracer := get_node_or_null("Tracer")
 	if tracer:
 		tracer.hide()
-	var art := BulletArt.new()
-	art.hostile = true
-	art.length = clampf(speed * 0.03, 8.0, 22.0)
-	add_child(art)
+	_art = BulletArt.new()
+	_art.hostile = true
+	_art.length = clampf(speed * 0.03, 8.0, 22.0)
+	add_child(_art)
 	# Walls (layer 1) + player (layer 4). NOT layer 2, so enemy bullets pass
 	# harmlessly through other enemies.
 	collision_mask = wall_mask | Layers.PLAYER
@@ -39,8 +54,7 @@ func _physics_process(delta: float) -> void:
 		return
 	lifetime -= delta
 	if lifetime <= 0.0:
-		_spent = true
-		queue_free()
+		_finish()
 		return
 	var step := _dir * speed * delta
 	var target := global_position + step
@@ -61,8 +75,7 @@ func _physics_process(delta: float) -> void:
 		if host is HeistFloor:
 			host.fx.spark(hit["position"], hit["normal"], Palette.ENEMY_BULLET)
 			host.fx.bullet_hole(hit["position"] - hit["normal"] * 2.0)
-		_spent = true
-		queue_free()
+		_finish()
 		return
 
 	global_position = target
@@ -77,8 +90,19 @@ func _try_hit(target: Node) -> void:
 	if _spent or target == _shooter:
 		return
 	if target.is_in_group("player") and target.has_method("take_damage"):
-		_spent = true
 		if "last_hit_dir" in target:
 			target.last_hit_dir = _dir
 		target.take_damage(damage)
+		_finish()
+
+func _finish() -> void:
+	if _spent:
+		return
+	_spent = true
+	if pool:
+		hide()
+		set_physics_process(false)
+		set_deferred("monitoring", false)
+		pool.park(self)
+	else:
 		queue_free()

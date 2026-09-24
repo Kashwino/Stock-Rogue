@@ -236,18 +236,33 @@ func _test_modifiers() -> void:
 
 func _test_security() -> void:
 	var devices := get_tree().get_nodes_in_group("security")
-	check(devices.size() == 14, "seven rooms have cameras and alarm panels")
-	var panel: SecurityDevice
+	var cameras := 0
+	var panels: Array = []
 	for device: SecurityDevice in devices:
 		if device.kind == SecurityDevice.Kind.ALARM:
-			panel = device
-			break
+			panels.append(device)
+		else:
+			cameras += 1
+	check(cameras == floor_scene.generator.rooms.size() - 1, "every room but the lobby has a camera")
+	check(panels.size() >= 1 and panels.size() <= 3, "one to three alarm panels per building")
+	var panel: SecurityDevice = panels[0]
 	var start_heat := floor_scene.heat
 	floor_scene.security_alert(panel.room, "Test radio", 10.0)
-	check(panel.armed and floor_scene.heat > start_heat, "witness report arms local alarm and adds heat")
-	panel.disable()
+	check(panel.armed and floor_scene.heat > start_heat, "witness report arms the nearest panel and adds heat")
+	var room_cameras := 0
+	for device: SecurityDevice in devices:
+		if device.kind == SecurityDevice.Kind.CAMERA and device.room == panel.room:
+			room_cameras += 1
+	var before_cut := floor_scene.security_disabled
+	# Holding USE next to the panel for 1.5 s cuts it.
+	floor_scene.player.global_position = panel.global_position + Vector2(-60, 0)
+	Input.action_press("interact")
+	panel._physics_process(0.8)
+	check(not panel.disabled and panel.hold > 0.0, "a short hold does not cut the panel")
+	panel._physics_process(0.8)
+	Input.action_release("interact")
 	var count := floor_scene.security_disabled
-	check(count == 2 and not panel.armed, "disabling panel also disables room camera")
+	check(panel.disabled and count == before_cut + 1 + room_cameras and not panel.armed, "holding USE cuts the panel and its room cameras")
 	panel.take_damage(999)
 	check(floor_scene.security_disabled == count, "disabled security cannot be farmed")
 	for device: SecurityDevice in devices:
@@ -264,19 +279,119 @@ func _test_security() -> void:
 	guard._provoked = true
 	guard.health = 20
 	guard._radio_step(1.0, true)
-	check(guard.radio_progress > 0.0, "radio has interruptible windup")
+	check(guard.radio_progress > 0.0 and guard.overhead.radio > 0.0, "radio call shows a progress bar")
 	guard.take_damage(1)
-	check(guard.radio_progress == 0.0 and guard.radio_cooldown > 0.0, "damage interrupts a radio call")
-	guard.radio_cooldown = 0.0
-	guard._radio_step(2.0, true)
-	check(floor_scene.heat > 0.0, "completed guard radio call creates heat")
+	check(is_equal_approx(guard.radio_progress, 0.5), "a hit knocks the radio call back")
+	guard._radio_step(1.6, true)
+	check(floor_scene.heat > 0.0 and guard.radio_cooldown > 0.0, "completed guard radio call creates heat")
 	guard.queue_free()
+	await _test_enemies()
 	floor_scene.modifier = &"heavy_police"
 	check(floor_scene.loot_multiplier() == 2 and floor_scene.dispatch_threshold() == 8.0, "heavy police doubles loot and responds sooner")
 	var gold := RunEconomy.gold
 	floor_scene._on_loot_collected(10)
 	check(RunEconomy.gold == gold + 20, "heavy modifier doubles actual pickup payout")
 	floor_scene.modifier = &""
+
+## Every archetype builds, runs its brain and respects its rules.
+func _test_enemies() -> void:
+	var player := floor_scene.player
+	var origin: Vector2 = floor_scene.generator.start_room.center_position()
+	player.global_position = origin
+	var scene: PackedScene = load("res://enemy.tscn")
+	check(Enemy.Kind.size() >= 17, "seventeen guard archetypes")
+	var spawned: Array = []
+	for k in Enemy.Kind.values():
+		var e: Enemy = scene.instantiate()
+		e.position = origin + Vector2(260, 0).rotated(TAU * spawned.size() / 17.0)
+		floor_scene.add_child(e)
+		e.apply_archetype(k)
+		e.health = 999
+		e.max_health = 999
+		e.hunting = true
+		spawned.append(e)
+		check(e.kit != null and e.kind == k, "archetype dressed: " + e.kind_name())
+	var drone: Enemy = spawned[Enemy.Kind.DRONE]
+	check(drone.collision_layer == Layers.FLYERS and drone.collision_mask == Layers.WALLS, "drones fly over furniture")
+	for i in 40:
+		await get_tree().physics_frame
+	for e: Enemy in spawned:
+		check(is_instance_valid(e), "archetype survives its brain: " + e.kind_name())
+	# Riot shield: stops rounds from the front, not from behind.
+	var riot: Enemy = spawned[Enemy.Kind.RIOT]
+	riot.brain.state = 0
+	riot.brain.facing = 0.0
+	check(riot.deflects(Vector2.LEFT), "riot shield deflects frontal fire")
+	check(not riot.deflects(Vector2.RIGHT), "riot shield is open from behind")
+	# The handler brought his dog.
+	var handler: Enemy = spawned[Enemy.Kind.HANDLER]
+	check(is_instance_valid(handler.brain.dog) and handler.brain.dog.kind == Enemy.Kind.DOG, "K9 handler deploys a dog")
+	for e: Enemy in spawned:
+		e.set_physics_process(false)
+		e.queue_free()
+	if is_instance_valid(handler.brain.dog):
+		handler.brain.dog.queue_free()
+	await get_tree().process_frame
+	# Elites: shielded bubble eats hits, then the body takes them.
+	var elite: Enemy = scene.instantiate()
+	elite.position = origin + Vector2(2000, 2000)
+	floor_scene.add_child(elite)
+	elite.apply_archetype(Enemy.Kind.ENFORCER)
+	elite.make_elite(&"shielded")
+	check(elite.elite and elite.max_health == 8 and elite.elite_tag.begins_with("SHIELDED"), "elite gets health and a name tag")
+	for i in Enemy.SHIELD_MAX:
+		elite.take_damage(1)
+	check(elite.health == elite.max_health, "shield bubble absorbs hits")
+	elite.take_damage(1)
+	check(elite.health == elite.max_health - 1, "hits land once the bubble is down")
+	elite.take_damage(999)
+	await get_tree().process_frame
+	check(floor_scene.find_children("*", "LootPickup", true, false).size() > 0, "elites drop a valuable")
+	# Blasts hurt guards too.
+	var victim: Enemy = scene.instantiate()
+	victim.position = origin + Vector2(3000, 0)
+	floor_scene.add_child(victim)
+	victim.apply_archetype(Enemy.Kind.BRUTE)
+	var hp := victim.health
+	Blast.detonate(floor_scene, victim.global_position + Vector2(30, 0), 90.0, 2, 3)
+	check(victim.health == hp - 3, "grenade blasts hurt guards")
+	victim.queue_free()
+	# A security tech reaching a panel raises the alarm and calls a van.
+	var panel := floor_scene._add_device(floor_scene.generator.rooms[1], SecurityDevice.Kind.ALARM, Vector2(300, 200))
+	var tech: Enemy = scene.instantiate()
+	tech.position = panel.position + Vector2(-40, 0)
+	floor_scene.add_child(tech)
+	tech.apply_archetype(Enemy.Kind.TECH)
+	var alarms := floor_scene.alarms_raised
+	var heat := floor_scene.heat
+	tech._provoked = true
+	check(tech.brain.running and tech.overhead.alarm, "provoked tech runs for the alarm")
+	tech.brain._run(0.016)
+	check(floor_scene.alarms_raised == alarms + 1 and floor_scene.heat > heat, "tech at the panel raises the alarm")
+	tech.queue_free()
+	panel.queue_free()
+	# Civilians: killing one is heat, a venue crash and a grade penalty.
+	var civ := Civilian.new()
+	civ.position = origin + Vector2(-3000, 0)
+	floor_scene.add_child(civ)
+	heat = floor_scene.heat
+	civ.take_damage(5)
+	check(floor_scene.civilians_killed == 1 and floor_scene.heat > heat, "civilian death is heat and a grade penalty")
+	var clean := HeistGrader.grade_heist({"hits_taken": 0, "shots_fired": 10, "shots_hit": 10, "kills": 5, "enemies_total": 5, "time_seconds": 10.0, "par_time": 60.0})
+	var dirty := HeistGrader.grade_heist({"hits_taken": 0, "shots_fired": 10, "shots_hit": 10, "kills": 5, "enemies_total": 5, "time_seconds": 10.0, "par_time": 60.0, "civilians": 2})
+	check(dirty["score"] < clean["score"], "civilian kills lower the grade")
+	floor_scene.civilians_killed = 0
+	# Bullets are pooled: a spent round is reused.
+	var pool := floor_scene.bullet_pool
+	var created := pool.created
+	var b: Node = BulletPool.take(player, player.bullet_scene)
+	b.global_position = origin
+	b.setup(Vector2.RIGHT, player)
+	b._finish()
+	var again: Node = BulletPool.take(player, player.bullet_scene)
+	check(again == b and pool.created <= created + 1, "spent bullets return to the pool")
+	again._finish()
+	floor_scene.heat = 0.0
 
 func _test_lockdown() -> void:
 	RunFlow.pending_heist.modifier = &"lockdown"

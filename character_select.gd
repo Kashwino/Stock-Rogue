@@ -295,7 +295,7 @@ class DossierCard extends Button:
 		tw.tween_property(self, "scale", Vector2(1.04, 1.04) if up else Vector2.ONE, 0.12)
 		var audio := get_node_or_null("/root/Audio")
 		if up and audio:
-			audio.play_ui("hover")
+			audio.play_ui("ui_hover")
 
 	func _draw() -> void:
 		var r := Rect2(Vector2(0, 18), size - Vector2(0, 18))

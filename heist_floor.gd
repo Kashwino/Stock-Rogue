@@ -80,10 +80,18 @@ var lighting: HeistLighting
 var post_fx: PostFX
 var building_bounds := Rect2()
 var wall_art: Array = []
+var bullet_pool: BulletPool
+var _stage := 0
+## Heat-log bookkeeping read by objectives and the grade.
+var civilians_killed := 0
+var alarms_raised := 0
+var _alarm_quiet_until := -1.0
 
 func _ready() -> void:
 	director = EnemyDirector.new()
 	add_child(director)
+	bullet_pool = BulletPool.new()
+	add_child(bullet_pool)
 	add_child(PauseMenu.new())
 	camera = get_node_or_null("Camera2D")
 	if camera == null:
@@ -106,6 +114,7 @@ func _build_floor() -> void:
 	# The building corresponds to the heist chosen on the map.
 	var stage: int = RunState.run_map.current_stage if RunState.run_map else 0
 	var heist_index: int = RunState.run_map.current_step if RunState.run_map else 0
+	_stage = stage
 	if RunFlow.pending_heist != null:
 		_rarity = RunFlow.pending_heist.room_rarity
 		_venue = RunFlow.pending_heist.venue_id
@@ -177,6 +186,7 @@ func _build_floor() -> void:
 	cross.player = player
 	add_child(cross)
 	_assign_guard_roles()
+	_spawn_civilians()
 	director.refresh()
 	var terminal := MarketTerminal.new()
 	terminal.position = generator.start_room.position + Vector2(430, 270)
@@ -320,6 +330,7 @@ func _assign_guard_roles() -> void:
 				guards.append(c)
 
 		var room_rect := Rect2(room.global_position, room.get("room_size"))
+		var has_radio := false
 		for c in guards:
 			if c is AuditorBoss:
 				c.set_guard_room(room_rect)
@@ -327,7 +338,11 @@ func _assign_guard_roles() -> void:
 			# Archetype first: rarity raises the odds of the nastier kinds.
 			c.apply_archetype(_pick_archetype(room, guards_loot))
 			c.set_guard_room(room_rect)
-			c.radio_carrier = c == guards[0]
+			# One radio per room, carried by someone who can actually talk.
+			if not has_radio and c.kind not in NO_RADIO:
+				c.radio_carrier = true
+				has_radio = true
+			_maybe_elite(c, room)
 
 			if guards_loot:
 				# Treasure guards: rooted, watchful, never leave the prize.
@@ -341,6 +356,28 @@ func _assign_guard_roles() -> void:
 				door_i += 1
 			else:
 				c.role = Enemy.Role.PATROL
+
+## Archetypes that never carry the radio.
+const NO_RADIO := [Enemy.Kind.TECH, Enemy.Kind.DOG, Enemy.Kind.DRONE, Enemy.Kind.TURRET]
+## Archetypes that never roll an elite affix.
+const NO_ELITE := [Enemy.Kind.DOG, Enemy.Kind.DRONE, Enemy.Kind.TURRET, Enemy.Kind.TECH]
+var _elite_budget := -1
+
+## Elites from the City onward (and on rare Town jobs): a small per-building
+## budget, likelier in treasure and boss rooms and on rarer jobs.
+func _maybe_elite(c: Enemy, room) -> void:
+	if c.kind in NO_ELITE:
+		return
+	if _elite_budget < 0:
+		_elite_budget = (0 if _rarity < 4 else 1) if _stage == 0 else 1 + _stage + int(_rarity >= 3)
+	if _elite_budget <= 0:
+		return
+	var chance := 0.05 + 0.045 * _stage + 0.02 * _rarity
+	if room.has_meta("chest_kind") or room.has_meta("is_boss"):
+		chance *= 2.0
+	if _rng.randf() < chance:
+		c.make_elite(Enemy.AFFIXES[_rng.randi() % Enemy.AFFIXES.size()])
+		_elite_budget -= 1
 
 ## World-space positions just inside each of a room's open doorways.
 func _doorway_posts(room) -> Array:
@@ -359,37 +396,67 @@ func _doorway_posts(room) -> Array:
 	out.shuffle()
 	return out
 
-## Weighted archetype pick. Treasure rooms and rarer heists skew dangerous.
+## Per-stage archetype pools: {kind: weight} for ordinary rooms, treasure
+## rooms and boss rooms. Town is guards, dogs and bouncers; the City brings
+## techs, riot shields and laser sights; the World adds grenadiers and
+## drones; the Exchange fields everything.
+static func stage_pools(stage: int) -> Dictionary:
+	match stage:
+		0:
+			return {
+				"room": {Enemy.Kind.GRUNT: 10.0, Enemy.Kind.SHOTGUNNER: 2.0, Enemy.Kind.BOUNCER: 1.8, Enemy.Kind.HANDLER: 1.4, Enemy.Kind.TECH: 1.2,
+					Enemy.Kind.SPRINTER: 1.0, Enemy.Kind.ENFORCER: 0.8, Enemy.Kind.RIOT: 0.7, Enemy.Kind.MARKSMAN: 0.6, Enemy.Kind.GRENADIER: 0.3},
+				"treasure": {Enemy.Kind.SHOTGUNNER: 3.0, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.BOUNCER: 2.0, Enemy.Kind.TURRET: 1.5, Enemy.Kind.MARKSMAN: 1.5},
+				"boss": {Enemy.Kind.BRUTE: 2.0, Enemy.Kind.ENFORCER: 2.0, Enemy.Kind.SHOTGUNNER: 2.0, Enemy.Kind.BOUNCER: 1.5, Enemy.Kind.MEDIC: 1.2, Enemy.Kind.HANDLER: 1.0},
+			}
+		1:
+			return {
+				"room": {Enemy.Kind.GRUNT: 7.0, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.TECH: 1.6, Enemy.Kind.SNIPER: 1.3, Enemy.Kind.RIOT: 1.5, Enemy.Kind.MARKSMAN: 1.0,
+					Enemy.Kind.GRENADIER: 0.9, Enemy.Kind.SHOTGUNNER: 1.0, Enemy.Kind.MEDIC: 0.8, Enemy.Kind.DRONE: 0.8, Enemy.Kind.SPRINTER: 0.8, Enemy.Kind.HANDLER: 0.6},
+				"treasure": {Enemy.Kind.RIOT: 2.5, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.TURRET: 2.0, Enemy.Kind.SNIPER: 1.5, Enemy.Kind.SHOTGUNNER: 1.5},
+				"boss": {Enemy.Kind.RIOT: 2.0, Enemy.Kind.ENFORCER: 2.0, Enemy.Kind.TURRET: 1.5, Enemy.Kind.MEDIC: 1.2, Enemy.Kind.SNIPER: 1.2, Enemy.Kind.DRONE: 1.0},
+			}
+		2:
+			return {
+				"room": {Enemy.Kind.GRUNT: 4.0, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 1.5, Enemy.Kind.SNIPER: 1.5, Enemy.Kind.BOUNCER: 1.5,
+					Enemy.Kind.HANDLER: 1.2, Enemy.Kind.TECH: 1.4, Enemy.Kind.DRONE: 1.2, Enemy.Kind.MEDIC: 1.0, Enemy.Kind.SPRINTER: 1.0, Enemy.Kind.SHOTGUNNER: 1.0, Enemy.Kind.TURRET: 0.5},
+				"treasure": {Enemy.Kind.RIOT: 2.5, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.BOUNCER: 2.0, Enemy.Kind.TURRET: 1.5, Enemy.Kind.SNIPER: 1.5},
+				"boss": {Enemy.Kind.BRUTE: 2.0, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 1.5, Enemy.Kind.MEDIC: 1.2, Enemy.Kind.BOUNCER: 1.5, Enemy.Kind.DRONE: 1.0},
+			}
+	return {
+		"room": {Enemy.Kind.GRUNT: 2.5, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.SNIPER: 2.0, Enemy.Kind.BOUNCER: 1.5,
+			Enemy.Kind.TECH: 1.5, Enemy.Kind.DRONE: 1.5, Enemy.Kind.MEDIC: 1.0, Enemy.Kind.BRUTE: 1.0, Enemy.Kind.SPRINTER: 1.0, Enemy.Kind.TURRET: 0.8, Enemy.Kind.SHOTGUNNER: 1.0, Enemy.Kind.HANDLER: 1.0},
+		"treasure": {Enemy.Kind.RIOT: 2.5, Enemy.Kind.SNIPER: 2.0, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.BRUTE: 1.5, Enemy.Kind.TURRET: 1.5},
+		"boss": {Enemy.Kind.BRUTE: 2.0, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.SNIPER: 1.5, Enemy.Kind.MEDIC: 1.5, Enemy.Kind.DRONE: 1.2},
+	}
+
+## Weighted archetype pick from this stage's pool. Rarer rooms trade grunts
+## for specialists.
 func _pick_archetype(room, guards_loot: bool) -> int:
 	var rarity: int = room.get("rarity")
-	var roll := _rng.randf()
+	var pools := stage_pools(_stage)
+	var pool: Dictionary = pools["room"]
 	if room.has_meta("is_boss"):
-		# The boss room can field a Medic to keep its guards topped up — killing
-		# it first is the smart play. Turrets watch the approach.
-		if roll < 0.22: return Enemy.Kind.BRUTE
-		if roll < 0.42: return Enemy.Kind.ENFORCER
-		if roll < 0.58: return Enemy.Kind.SHOTGUNNER
-		if roll < 0.74: return Enemy.Kind.TURRET
-		if roll < 0.88: return Enemy.Kind.MEDIC
-		return Enemy.Kind.SPRINTER
-	if guards_loot:
-		# TURRET fits treasure rooms perfectly: an emplacement watching the
-		# prize, forcing you to approach from an angle instead of walking in.
-		if roll < 0.25: return Enemy.Kind.SHOTGUNNER
-		if roll < 0.5: return Enemy.Kind.ENFORCER
-		if roll < 0.72: return Enemy.Kind.TURRET
-		return Enemy.Kind.MARKSMAN
-	# Ordinary rooms: mostly grunts early, more specialists as rarity climbs.
-	var specialist_chance := 0.15 + rarity * 0.09
-	if roll > specialist_chance:
-		return Enemy.Kind.GRUNT
-	var r2 := _rng.randf()
-	if r2 < 0.3: return Enemy.Kind.ENFORCER
-	if r2 < 0.54: return Enemy.Kind.SHOTGUNNER
-	if r2 < 0.72: return Enemy.Kind.MARKSMAN
-	if r2 < 0.87: return Enemy.Kind.SPRINTER
-	if r2 < 0.96: return Enemy.Kind.TURRET
-	return Enemy.Kind.BRUTE
+		pool = pools["boss"]
+	elif guards_loot:
+		pool = pools["treasure"]
+	return _weighted(pool, rarity)
+
+func _weighted(pool: Dictionary, rarity: int = 0) -> int:
+	var total := 0.0
+	var weights: Dictionary = {}
+	for k in pool:
+		var w: float = pool[k]
+		if k == Enemy.Kind.GRUNT:
+			w *= maxf(0.25, 1.0 - rarity * 0.15)
+		weights[k] = w
+		total += w
+	var roll := _rng.randf() * total
+	for k in weights:
+		roll -= weights[k]
+		if roll <= 0.0:
+			return k
+	return pool.keys()[0]
 
 func _exit_label(pos: Vector2, text: String, color: Color) -> void:
 	# There is no Label2D in Godot. A Label is a Control, but parenting it to a
@@ -598,16 +665,28 @@ func _spawn_reinforcements() -> void:
 	van.squad_deployed.connect(_on_squad_deployed)
 	add_child(van)
 
-## Two toughened specialists, escalating with heat. Always exactly 2 kinds —
-## the point is a readable duo, not a growing roster.
+## Two toughened specialists, escalating with heat and stage. Always exactly
+## two — the point is a readable duo, not a growing roster. Cleaners only
+## come for you in the World and beyond, once the heat is high.
 func _miniboss_archetypes() -> Array:
-	var tiers: Array = [Enemy.Kind.ENFORCER, Enemy.Kind.SHOTGUNNER]
+	var tiers: Array
+	var level := 0
 	if heat > 12.0:
-		tiers = [Enemy.Kind.ENFORCER, Enemy.Kind.MARKSMAN]
+		level = 1
 	if heat > 20.0:
-		tiers = [Enemy.Kind.SHOTGUNNER, Enemy.Kind.SPRINTER]
+		level = 2
 	if heat > 28.0 or marked:
-		tiers = [Enemy.Kind.BRUTE, Enemy.Kind.MEDIC]
+		level = 3
+	match _stage:
+		0:
+			tiers = [[Enemy.Kind.ENFORCER, Enemy.Kind.SHOTGUNNER], [Enemy.Kind.ENFORCER, Enemy.Kind.BOUNCER], [Enemy.Kind.SHOTGUNNER, Enemy.Kind.HANDLER], [Enemy.Kind.BRUTE, Enemy.Kind.MEDIC]][level]
+		1:
+			tiers = [[Enemy.Kind.ENFORCER, Enemy.Kind.RIOT], [Enemy.Kind.SNIPER, Enemy.Kind.ENFORCER], [Enemy.Kind.GRENADIER, Enemy.Kind.RIOT], [Enemy.Kind.BRUTE, Enemy.Kind.MEDIC]][level]
+		2:
+			tiers = [[Enemy.Kind.RIOT, Enemy.Kind.GRENADIER], [Enemy.Kind.SNIPER, Enemy.Kind.BOUNCER], [Enemy.Kind.CLEANER, Enemy.Kind.RIOT], [Enemy.Kind.CLEANER, Enemy.Kind.MEDIC]][level]
+		_:
+			tiers = [[Enemy.Kind.RIOT, Enemy.Kind.SNIPER], [Enemy.Kind.CLEANER, Enemy.Kind.GRENADIER], [Enemy.Kind.CLEANER, Enemy.Kind.BOUNCER], [Enemy.Kind.CLEANER, Enemy.Kind.BRUTE]][level]
+	tiers = tiers.duplicate()
 	tiers.shuffle()
 	return tiers
 
@@ -615,6 +694,12 @@ func _on_squad_deployed(enemies: Array) -> void:
 	for e in enemies:
 		_enemies_total += 1
 		e.died.connect(_on_enemy_died)
+		e.set_meta("hooked", true)
+	# Late, hot responses bring an elite along.
+	if not enemies.is_empty() and (_stage >= 1 or marked) and (heat > 20.0 or marked):
+		var lead: Enemy = enemies[0]
+		if lead.kind not in NO_ELITE:
+			lead.make_elite(Enemy.AFFIXES[_rng.randi() % Enemy.AFFIXES.size()])
 
 func _close_next_exit() -> void:
 	for g: Dictionary in generator.exits:
@@ -698,6 +783,7 @@ func _extract() -> void:
 		"enemies_total": maxi(_enemies_total, 1),
 		"time_seconds": elapsed,
 		"par_time": 15.0 * generator.rooms.size(),
+		"civilians": civilians_killed,
 	}
 	var result: Dictionary = HeistGrader.grade_heist(stats)
 	RunState.last_grade = result["grade_name"]
@@ -901,12 +987,15 @@ func add_heat(amount: float, source: String) -> void:
 	if was_quiet and heat >= dispatch_threshold():
 		_heat_timer = minf(_heat_timer, 4.0)
 
+## A witnessed intrusion (camera, radio call): heat now, and the nearest alarm
+## panel starts transmitting until someone cuts it.
 func security_alert(room: Node, source: String, amount: float) -> void:
 	add_heat(amount, source)
-	for device in get_tree().get_nodes_in_group("security"):
-		if device.room == room and device.kind == SecurityDevice.Kind.ALARM and not device.disabled:
-			device.armed = true
-			device.transmit_clock = maxf(device.transmit_clock, 2.0)
+	var at: Vector2 = room.center_position() if room and room.has_method("center_position") else player.global_position
+	var panel := nearest_alarm_panel(at)
+	if panel:
+		panel.armed = true
+		panel.transmit_clock = maxf(panel.transmit_clock, 2.0)
 
 func on_security_disabled(_device: SecurityDevice) -> void:
 	security_disabled += 1
@@ -917,17 +1006,184 @@ func on_security_disabled(_device: SecurityDevice) -> void:
 	Audio.play("shutter")
 	fx.add_trauma(0.15)
 
+## Cameras sweep most rooms. Alarm panels are rarer — 1 to 3 per building,
+## placed first where a security tech works, then spread far apart — so
+## cutting them is a real errand and a tech's sprint is a real threat.
 func _setup_security() -> void:
+	var rooms: Array = []
 	for room in generator.rooms:
-		if room == generator.start_room:
+		if room != generator.start_room:
+			rooms.append(room)
+	for room in rooms:
+		_add_device(room, SecurityDevice.Kind.CAMERA, CAMERA_SPOT)
+		if modifier == &"camera_network":
+			_add_device(room, SecurityDevice.Kind.CAMERA, Vector2(room.room_size.x - CAMERA_SPOT.x, CAMERA_SPOT.y))
+	var count := clampi(1 + int(_stage >= 1) + int(_stage >= 3 or _rarity >= 3), 1, 3)
+	var chosen: Array = []
+	for room in rooms:
+		if chosen.size() >= count:
+			break
+		for c in room.get_children():
+			if c is Enemy and c.kind == Enemy.Kind.TECH:
+				chosen.append(room)
+				break
+	var anchors: Array = [generator.start_room.center_position()]
+	for room in chosen:
+		anchors.append(room.center_position())
+	while chosen.size() < count and chosen.size() < rooms.size():
+		var best = null
+		var best_score := -1.0
+		for room in rooms:
+			if room in chosen:
+				continue
+			var nearest := INF
+			for a: Vector2 in anchors:
+				nearest = minf(nearest, a.distance_to(room.center_position()))
+			nearest += _rng.randf() * 120.0
+			if nearest > best_score:
+				best_score = nearest
+				best = room
+		chosen.append(best)
+		anchors.append(best.center_position())
+	for room in chosen:
+		_add_device(room, SecurityDevice.Kind.ALARM, Vector2(room.room_size.x - 65, room.room_size.y - 100))
+
+const CAMERA_SPOT := Vector2(55, 70)
+
+func _add_device(room, kind: int, local: Vector2) -> SecurityDevice:
+	var device := SecurityDevice.new()
+	device.kind = kind
+	device.floor_host = self
+	device.room = room
+	device.position = room.position + local
+	add_child(device)
+	return device
+
+func stage_index() -> int:
+	return _stage
+
+## The closest alarm panel still online, or null.
+func nearest_alarm_panel(pos: Vector2) -> SecurityDevice:
+	var best: SecurityDevice = null
+	var best_d := INF
+	for device in get_tree().get_nodes_in_group("security"):
+		if device.kind != SecurityDevice.Kind.ALARM or device.disabled:
 			continue
-		for kind in [SecurityDevice.Kind.CAMERA, SecurityDevice.Kind.ALARM]:
-			var device := SecurityDevice.new()
-			device.kind = kind
-			device.floor_host = self
-			device.room = room
-			device.position = room.position + (Vector2(55, 70) if kind == SecurityDevice.Kind.CAMERA else Vector2(room.room_size.x - 65, room.room_size.y - 100))
-			add_child(device)
+		var d: float = device.global_position.distance_squared_to(pos)
+		if d < best_d:
+			best_d = d
+			best = device
+	return best
+
+## Someone reached a panel: heat spike, every panel transmits, and a van is
+## sent right now.
+func raise_alarm(source: String, panel: SecurityDevice = null) -> void:
+	if _extracting:
+		return
+	alarms_raised += 1
+	# While a response is already rolling, another pull only adds heat.
+	var now := active_elapsed
+	if now < _alarm_quiet_until:
+		add_heat(5.0, source)
+		return
+	_alarm_quiet_until = now + 25.0
+	add_heat(14.0, source)
+	for device in get_tree().get_nodes_in_group("security"):
+		if device.kind == SecurityDevice.Kind.ALARM and not device.disabled:
+			device.armed = true
+			device.transmit_clock = maxf(device.transmit_clock, 3.0)
+	Audio.play("alert")
+	fx.add_trauma(0.25)
+	if is_instance_valid(panel):
+		fx.chip(panel.global_position, "ALARM RAISED", Palette.DANGER)
+	_spawn_reinforcements()
+	_heat_timer = maxf(_heat_timer, 14.0)
+
+## A companion that arrives with its owner: a handler's dog, a tech's drone.
+func spawn_companion(owner: Enemy, kind: int, offset: Vector2) -> Enemy:
+	var scene: PackedScene = load(ENEMY_SCENE_PATH)
+	var parent := owner.get_parent()
+	if scene == null or parent == null or not owner.is_inside_tree():
+		return null
+	var e: Enemy = scene.instantiate()
+	e.position = _free_spot(parent, owner.position, offset)
+	if parent is BuildingRoom:
+		parent.adopt(e)
+	else:
+		parent.add_child(e)
+	e.apply_archetype(kind)
+	if owner._has_guard_rect:
+		e.set_guard_room(owner._guard_rect)
+	e.set_post(e.global_position)
+	e.set_meta("hooked", true)
+	_enemies_total += 1
+	e.died.connect(_on_enemy_died)
+	return e
+
+## `base + offset` in `parent` space, nudged until it is clear of walls/props.
+func _free_spot(parent: Node, base: Vector2, offset: Vector2) -> Vector2:
+	var space := get_world_2d().direct_space_state
+	var xf: Transform2D = parent.global_transform if parent is Node2D else Transform2D.IDENTITY
+	for i in 8:
+		var local := base + offset.rotated(TAU * i / 8.0)
+		var query := PhysicsPointQueryParameters2D.new()
+		query.position = xf * local
+		query.collision_mask = Layers.SOLID
+		if space.intersect_point(query, 1).is_empty():
+			return local
+	return base
+
+## A valuable dropped in the world (elite kills).
+func drop_loot(at: Vector2, value: int) -> void:
+	var pickup := LootPickup.new()
+	pickup.value = value
+	pickup.position = to_local(at)
+	pickup.collected.connect(_on_loot_collected.bind(pickup))
+	add_child.call_deferred(pickup)
+
+## Where a fleeing civilian heads: the nearest way out of the building.
+func nearest_way_out(pos: Vector2) -> Vector2:
+	var best := _outside_position()
+	var best_d := pos.distance_to(best)
+	for g: Dictionary in generator.exits:
+		if not g.get("open", false):
+			continue
+		var wall: Vector2 = g["room"].to_global(g["wall_pos"])
+		var out: Vector2 = wall + (wall - g["inside_pos"]).normalized() * 80.0
+		if pos.distance_to(out) < best_d:
+			best_d = pos.distance_to(out)
+			best = out
+	return best
+
+func on_civilian_killed(civ: Node2D, player_caused: bool) -> void:
+	if player_caused:
+		civilians_killed += 1
+		add_heat(14.0, "Civilian down")
+		if live:
+			live.report_shock(0.88, &"civilian")
+	else:
+		add_heat(6.0, "Civilian casualty")
+	fx.chip(civ.global_position, "CIVILIAN DOWN", Palette.DANGER)
+
+## Bystanders in some ordinary rooms (never the boss room or treasure rooms).
+func _spawn_civilians() -> void:
+	var rooms_with := 0
+	for room in generator.rooms:
+		if room == generator.start_room or room.has_meta("is_boss") or room.has_meta("chest_kind"):
+			continue
+		if boss_heist or _rng.randf() > 0.34:
+			continue
+		rooms_with += 1
+		var placed: Array = []
+		for i in _rng.randi_range(1, 2):
+			var civ := Civilian.new()
+			civ.stage = _stage
+			civ.look_seed = _rng.randi()
+			civ.runner = _rng.randf() < 0.3
+			var pos := _loot_slot(room.room_size, placed, room)
+			placed.append(pos)
+			civ.position = pos
+			room.add_child(civ)
 
 func _setup_tactics() -> void:
 	var layer := CanvasLayer.new()
@@ -1051,6 +1307,7 @@ func _dress_building() -> void:
 		for marker in room.get_node("SpawnPoints").get_children() if room.has_node("SpawnPoints") else []:
 			keepouts.append([marker.position, 46.0])
 		keepouts.append([Vector2(55, 70), 50.0])                                        # camera
+		keepouts.append([Vector2(room.room_size.x - 55, 70), 50.0])                     # second camera
 		keepouts.append([Vector2(room.room_size.x - 65, room.room_size.y - 100), 56.0])  # alarm panel
 		if room == generator.start_room:
 			keepouts.append([Vector2(430, 270), 70.0])                                   # market terminal

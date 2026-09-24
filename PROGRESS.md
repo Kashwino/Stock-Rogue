@@ -44,8 +44,11 @@ on a 600×450 module grid (open gaps, sealed perimeter, gold main entrance, gree
 fire exits) or loads an authored layout. Player starts outside at the
 `GetawayCar`; all guards (`enemy.gd`, archetypes, PATROL/SENTRY, provoke gate)
 spawn at build time; `EnemyDirector` distance-sleeps them and buckets them for
-separation. Heat comes from `SecurityDevice` cameras/alarm panels, guard radio
-calls and market moves; above the dispatch threshold `CargoVan`s drop miniboss
+separation. Newer archetypes run an `EnemyBrain` (`enemy_brains.gd`); elites
+carry an affix; per-stage pools live in `HeistFloor.stage_pools`. `Civilian`s
+wander ordinary rooms. Bullets come from the heist's `BulletPool`. Heat comes
+from `SecurityDevice` cameras/alarm panels, guard radio calls, techs and
+civilians reaching panels, and market moves; above the dispatch threshold `CargoVan`s drop miniboss
 pairs. `LiveStock` moves the venue price in real time; `HeistGrader` grades the
 job at extraction and shocks the venue. `MarketTerminal` in the lobby offers one
 market operation per heist (`MarketOps`, `ShortBook`).
@@ -70,7 +73,9 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       muzzle/casings/sparks/holes, crosshair, recoil + lead, loot magnet, market chips)
 - [x] Phase 3 — audio (Audio autoload, generated SFX + 6 music loops, layered
       heist music, hooks everywhere, volume/shake/display settings)
-- [ ] Phase 4 — enemies & security
+- [x] Phase 4 — enemies & security (9 new archetypes via EnemyBrain, elites,
+      stage pools, civilians, sparse alarm panels with hold-to-cut, radio bar,
+      bullet pooling)
 - [ ] Phase 5 — bosses
 - [ ] Phase 6 — market mechanics
 - [ ] Phase 7 — objectives & map modifiers

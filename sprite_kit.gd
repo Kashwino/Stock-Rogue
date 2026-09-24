@@ -517,7 +517,7 @@ func _paint_head(c: Node2D) -> void:
 			c.draw_arc(Vector2(-3, 0), r - 1.5, PI * 0.45, PI * 1.55, 14, hair, 6.0, true)
 		Head.VISOR:
 			c.draw_circle(Vector2(-3, 0), r, hat)
-			c.draw_arc(Vector2(-2, 0), r - 1.5, -0.9, 0.9, 10, Color("58d0ff"), 3.0, true)
+			c.draw_arc(Vector2(-2, 0), r - 1.5, -0.9, 0.9, 10, _c("visor", Color("58d0ff")), 3.0, true)
 		Head.SLICKED:
 			var slick := _c("hair", Color("121212"))
 			c.draw_arc(Vector2(-4, 0), r - 2.0, PI * 0.35, PI * 1.65, 16, slick, 7.0, true)

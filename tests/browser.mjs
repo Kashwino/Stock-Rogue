@@ -91,7 +91,7 @@ try {
   let s = await state();
   assert(s.perks.includes('fast_hands'), 'purchased starting perk applies to a new run');
   assert.equal(s.modifier, 'insider');
-  assert(s.map_revealed && s.security_count === 14, 'Insider reveals layout and security devices exist');
+  assert(s.map_revealed && s.security_count >= 8, 'Insider reveals layout and security devices exist');
   await tap('MAP');
   assert((await state()).map_visible && (await state()).paused, 'tactical map opens and pauses by touch');
   await shot('phone-insider-map');

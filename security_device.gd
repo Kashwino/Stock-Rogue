@@ -1,6 +1,10 @@
 extends StaticBody2D
 class_name SecurityDevice
-## Cameras scan at 5 Hz; panels only transmit after a witnessed intrusion.
+## Cameras sweep and scan at 5 Hz: holding you in the cone for 1.6 s reports
+## you (heat) and arms the nearest alarm panel. Shoot one to kill it.
+## Alarm panels transmit heat while armed; hold interact for 1.5 s next to one
+## to cut it (and every camera in its room). Security techs and brave
+## civilians run for panels to raise the full alarm.
 enum Kind { CAMERA, ALARM }
 var kind: Kind = Kind.CAMERA
 var floor_host: Node
@@ -13,7 +17,12 @@ var detected := 0.0
 var clock := 0.0
 var transmit_clock := 0.0
 var caption: Label
+var hold := 0.0
 const RANGE := 450.0
+const HOLD_TIME := 1.5
+const HOLD_REACH := 110.0
+const SPOT_HEAT := 6.0
+const TRANSMIT_HEAT := 3.0
 
 func _ready() -> void:
 	add_to_group("security")
@@ -39,9 +48,22 @@ func _physics_process(delta: float) -> void:
 	if disabled or not is_instance_valid(floor_host.player) or floor_host.player.is_dead():
 		return
 	var p: Player = floor_host.player
-	if kind == Kind.ALARM and global_position.distance_squared_to(p.global_position) < 10000.0 and Input.is_action_just_pressed("interact"):
-		disable()
-		return
+	if kind == Kind.ALARM:
+		var near := global_position.distance_squared_to(p.global_position) < HOLD_REACH * HOLD_REACH
+		var was := hold
+		if near and Input.is_action_pressed("interact"):
+			if hold == 0.0:
+				Audio.play("beep", global_position)
+			hold += delta
+			if hold >= HOLD_TIME:
+				hold = 0.0
+				disable()
+				return
+		else:
+			hold = maxf(hold - delta * 2.0, 0.0)
+		if hold != was:
+			queue_redraw()
+		caption.visible = near or armed
 	clock += delta
 	if clock < 0.2:
 		return
@@ -52,7 +74,7 @@ func _physics_process(delta: float) -> void:
 			transmit_clock -= elapsed
 			if transmit_clock <= 0.0:
 				transmit_clock = 6.0
-				floor_host.add_heat(4.0, "Alarm panel transmitting")
+				floor_host.add_heat(TRANSMIT_HEAT, "Alarm panel transmitting")
 	else:
 		# Distant cameras do no ray queries or redraws.
 		if global_position.distance_squared_to(p.global_position) > 1000000.0:
@@ -70,9 +92,10 @@ func _physics_process(delta: float) -> void:
 		transmit_clock = maxf(0.0, transmit_clock - elapsed)
 		if detected >= 1.6 and transmit_clock <= 0.0:
 			transmit_clock = 8.0
-			floor_host.security_alert(room, "Camera spotted you", 8.0)
+			floor_host.security_alert(room, "Camera spotted you", SPOT_HEAT)
 	_update_caption()
-	caption.visible = global_position.distance_squared_to(p.global_position) < 260.0 * 260.0 or detected > 0.0
+	if kind == Kind.CAMERA:
+		caption.visible = global_position.distance_squared_to(p.global_position) < 260.0 * 260.0 or detected > 0.0
 	queue_redraw()
 
 func take_damage(amount: int = 1) -> void:
@@ -105,7 +128,7 @@ func _update_caption() -> void:
 	if disabled:
 		caption.text = "SECURITY OFFLINE"
 	elif kind == Kind.ALARM:
-		caption.text = ("ALARM TRANSMITTING" if armed else "ALARM PANEL") + "\nUSE / E to disable room"
+		caption.text = ("ALARM TRANSMITTING" if armed else "ALARM PANEL") + "\nHOLD USE / E  —  CUT THE LINE"
 	else:
 		caption.text = "CAMERA  ·  SHOOT TO DISABLE" if detected <= 0 else "DETECTING  %d%%" % int(detected / 1.6 * 100)
 
@@ -129,3 +152,8 @@ func _draw() -> void:
 			draw_circle(Vector2(13, y), 2, color)
 	if armed and not disabled:
 		draw_arc(Vector2.ZERO, 30, 0, TAU, 20, Color(1, 0.2, 0.15), 3)
+	if kind == Kind.ALARM and not disabled:
+		# Big enough to read on a phone; fills while the player holds USE.
+		draw_arc(Vector2.ZERO, 40, 0, TAU, 32, Color(1, 1, 1, 0.18), 3)
+		if hold > 0.0:
+			draw_arc(Vector2.ZERO, 40, -PI * 0.5, -PI * 0.5 + TAU * hold / HOLD_TIME, 32, Palette.GOLD, 5, true)

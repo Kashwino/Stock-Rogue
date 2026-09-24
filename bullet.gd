@@ -12,6 +12,10 @@ var _shooter: Node = null
 var _spent := false
 var _hit_ids: Array[int] = []
 var _excluded: Array[RID] = []
+## Set by BulletPool; spent rounds park there instead of being freed.
+var pool: BulletPool = null
+var _art: BulletArt
+var _base_lifetime := 2.0
 
 func setup(direction: Vector2, shooter: Node) -> void:
 	_dir = direction.normalized()
@@ -19,14 +23,31 @@ func setup(direction: Vector2, shooter: Node) -> void:
 	rotation = _dir.angle()
 	if is_instance_valid(shooter) and shooter is CollisionObject2D:
 		_excluded.append(shooter.get_rid())
+	if _art:
+		_art.length = clampf(speed * 0.028, 12.0, 34.0)
+		_art.queue_redraw()
+
+## Back from the pool: a fresh round.
+func revive() -> void:
+	_spent = false
+	lifetime = _base_lifetime
+	pierce = 0
+	ricochets = 0
+	knockback = 0.0
+	_hit_ids.clear()
+	_excluded.clear()
+	show()
+	set_physics_process(true)
+	set_deferred("monitoring", true)
 
 func _ready() -> void:
+	_base_lifetime = lifetime
 	var tracer := get_node_or_null("Tracer")
 	if tracer:
 		tracer.hide()
-	var art := BulletArt.new()
-	art.length = clampf(speed * 0.028, 12.0, 34.0)
-	add_child(art)
+	_art = BulletArt.new()
+	_art.length = clampf(speed * 0.028, 12.0, 34.0)
+	add_child(_art)
 	collision_layer = 0
 	collision_mask = wall_mask | Layers.ENEMIES | Layers.SECURITY | Layers.FLYERS
 	body_entered.connect(_try_hit)
@@ -53,7 +74,14 @@ func _physics_process(delta: float) -> void:
 		remaining -= global_position.distance_to(hit["position"])
 		global_position = hit["position"]
 		var body: Node = hit["collider"]
-		if body.is_in_group("enemies") or body.is_in_group("security"):
+		if body.is_in_group("enemies") and body.has_method("deflects") and body.deflects(_dir):
+			# Riot shield: sparks, a ping, and the round is gone.
+			Audio.play("deflect", hit["position"])
+			var host := get_tree().current_scene
+			if host is HeistFloor:
+				host.fx.spark(hit["position"], -_dir, Palette.NEON_CYAN)
+			_finish()
+		elif body.is_in_group("enemies") or body.is_in_group("security") or body.is_in_group("civilians"):
 			_try_hit(body)
 			global_position += _dir * 0.5
 			remaining -= 0.5
@@ -78,7 +106,9 @@ func _impact(at: Vector2, normal: Vector2) -> void:
 func _try_hit(target: Node) -> void:
 	if _spent or not is_instance_valid(target) or target == _shooter:
 		return
-	if not (target.is_in_group("enemies") or target.is_in_group("security")) or not target.has_method("take_damage"):
+	if not (target.is_in_group("enemies") or target.is_in_group("security") or target.is_in_group("civilians")) or not target.has_method("take_damage"):
+		return
+	if target.has_method("deflects") and target.deflects(_dir):
 		return
 	if target.get_instance_id() in _hit_ids:
 		return
@@ -88,14 +118,14 @@ func _try_hit(target: Node) -> void:
 	var host := get_tree().current_scene
 	if host is HeistFloor:
 		host.fx.damage_number(global_position, damage, Palette.GOLD_PALE if damage >= 3 else Palette.PAPER)
-		if target.is_in_group("enemies"):
+		if target.is_in_group("enemies") or target.is_in_group("civilians"):
 			host.fx.blood(global_position, _dir)
 			Audio.play("impact_body", global_position)
 		else:
 			host.fx.spark(global_position, -_dir, Palette.NEON_CYAN)
 	target.take_damage(damage)
 	var push := knockback if knockback > 0.0 else 45.0
-	if target is CharacterBody2D and not target is AuditorBoss and is_instance_valid(target) and target.is_inside_tree():
+	if target is CharacterBody2D and not target.is_in_group("boss") and is_instance_valid(target) and target.is_inside_tree():
 		target.velocity += _dir * push
 		target.move_and_slide()
 	if target.is_in_group("enemies") and is_instance_valid(_shooter) and _shooter.has_method("register_hit_landed"):
@@ -106,5 +136,13 @@ func _try_hit(target: Node) -> void:
 		_finish()
 
 func _finish() -> void:
+	if _spent and pool:
+		return
 	_spent = true
-	queue_free()
+	if pool:
+		hide()
+		set_physics_process(false)
+		set_deferred("monitoring", false)
+		pool.park(self)
+	else:
+		queue_free()

@@ -119,6 +119,14 @@ func _markers() -> Array:
 				out.append(c)
 	return out
 
+## Take in a guard that arrives later (a handler's dog, a tech's drone): the
+## room is not clear until it falls too.
+func adopt(e: Node) -> void:
+	add_child(e)
+	if e.has_signal("died"):
+		e.died.connect(_on_enemy_died)
+	_alive += 1
+
 func _on_enemy_died(_e) -> void:
 	_alive -= 1
 	if _alive <= 0 and not _cleared:

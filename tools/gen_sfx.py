@@ -4,7 +4,9 @@
 Standard library only (wave, struct, math, random, array). Deterministic:
 the same seed always produces the same files.
 
-    python3 tools/gen_sfx.py            # writes assets/audio/sfx + music
+    python3 tools/gen_sfx.py            # writes any missing sfx + music files
+    python3 tools/gen_sfx.py sfx        # regenerates every sound effect
+    python3 tools/gen_sfx.py music      # regenerates every music loop
 
 Output: 22.05 kHz, 16-bit mono WAV. Music loops are rendered into circular
 buffers so every note tail wraps around and the loop point is seamless.
@@ -305,6 +307,17 @@ def sfx_bank():
     n = secs(0.4)
     s["door_bang"] = mix((mul(lowpass(noise(n), 350), env(n, 0.001, 0.1, release=0.05)), 1.0),
                          (mul(tone(60, n), env(n, 0.001, 0.12, release=0.05)), 1.0))
+    n = secs(0.3)
+    s["throw"] = mul(highpass(lowpass(noise(n), 2400), 500), env(n, 0.06, 0.12, release=0.08))
+    n = secs(0.25)
+    s["punch"] = drive(mix((mul(lowpass(noise(n), 450), env(n, 0.0008, 0.05, release=0.03)), 1.0),
+                           (mul(tone(75, n, "sine", sweep_to=45), env(n, 0.0008, 0.07, release=0.03)), 1.0)), 2.2)
+    n = secs(0.6)
+    s["cloak"] = mul(tone(1800, n, "sine", sweep_to=500, vibrato=0.05, vib_rate=28), env(n, 0.02, 0.3, release=0.1))
+    n = secs(0.7)
+    s["scream"] = drive(mul(tone(760, n, "saw", sweep_to=520, vibrato=0.05, vib_rate=7), env(n, 0.02, 0.35, release=0.15)), 1.6)
+    n = secs(0.09)
+    s["beep"] = mul(tone(1400, n, "square"), env(n, 0.001, 0.04, release=0.02))
     return s
 
 
@@ -538,9 +551,13 @@ def main():
     os.makedirs(SFX_DIR, exist_ok=True)
     os.makedirs(MUSIC_DIR, exist_ok=True)
     only = sys.argv[1] if len(sys.argv) > 1 else "all"
+    random.seed(1977)
     if only in ("all", "sfx"):
         for name, buf in sfx_bank().items():
-            write(os.path.join(SFX_DIR, name + ".wav"), buf)
+            path = os.path.join(SFX_DIR, name + ".wav")
+            if only == "all" and os.path.exists(path):
+                continue    # keep existing takes; "sfx" regenerates every file
+            write(path, buf)
         print("sfx written")
     if only in ("all", "music"):
         tracks = {
@@ -549,6 +566,8 @@ def main():
             "boss": song_boss, "ending": song_ending,
         }
         for name, fn in tracks.items():
+            if only == "all" and os.path.exists(os.path.join(MUSIC_DIR, name + ".wav")):
+                continue
             write(os.path.join(MUSIC_DIR, name + ".wav"), fn(), 0.8)
             print("music", name)
 

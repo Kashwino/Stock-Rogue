@@ -150,6 +150,49 @@
 - `build/` and `artifacts/` carry `.gdignore` so Godot never imports test
   output.
 
+## Phase 4 — Enemies & security
+
+- Nine new archetypes (17 in total), each with its own silhouette and a
+  readable telegraph, all behind the provoke gate and the existing collision
+  and separation rules. Their behaviour lives in `EnemyBrain` plug-ins
+  (`enemy_brain.gd`, `enemy_brains.gd`):
+  - **Riot Shield** — frontal ~100° shield deflects rounds with sparks; turns
+    slowly (flank him); telegraphed shield bash drops the guard.
+  - **Grenadier** — lobs grenades with a filling landing ring (0.9 s); blasts
+    hurt everyone in the radius, guards included, and ignore furniture.
+  - **K9 Handler + Dog** — the dog waits at heel, is released when the handler
+    is provoked (or loses him), and lunges after a shown crouch.
+  - **Security Tech** — when provoked runs for the nearest alarm panel (a
+    red "!" over his head); reaching it raises the alarm: +14 heat and a van
+    right now. From the City on he also launches a **Drone**.
+  - **Laser Sniper** — a laser tracks you for 1.2 s (the last beat locks and
+    turns white), then a heavy shot; breaking line of sight cancels it.
+  - **Bouncer** — fists; a telegraphed charge lane; hits slow you briefly.
+  - **Drone** — flies on its own physics layer over furniture (walls still
+    stop it), orbits and fires 3-round bursts.
+  - **Cleaner** — World+ at high heat: shimmer-cloaked until he fires.
+- **Elite affixes** (City onward, rare Town jobs, and hot late vans): Armored,
+  Volatile (blast 0.6 s after death), Hasted (afterimages), Shielded
+  (regenerating bubble), Veteran (+1 damage). Elites glow, wear a name tag and
+  drop a valuable.
+- **Per-stage pools** (`HeistFloor.stage_pools`) for ordinary, treasure and boss
+  rooms, and per-stage van pairs escalating with heat (still exactly two).
+- **Civilians** in about a third of ordinary rooms (never boss or treasure
+  rooms): gunfire makes them cower, flee for the street or (the brave ones)
+  run for an alarm panel. Holding your aim on a runner for a second makes
+  them drop. Killing one: +14 heat, the venue drops 12%, and a grade penalty.
+- **Security**: cameras sweep every room but the lobby (spotting you = +6 heat
+  and arms the nearest panel). Alarm panels are now 1–3 per building, placed
+  first where a tech works; hold USE 1.5 s beside one to cut it (a gold ring
+  fills) along with its room's cameras. Guard radio calls show a radio icon
+  and a 2 s bar; hits knock the bar back, only a kill stops it. Every source
+  lands in the heat log ("CAMERA SPOTTED YOU +6").
+- **Performance**: bullets are pooled (`BulletPool`); guards and techs keep
+  the distance-sleeping director and its spatial buckets.
+- New shared pieces: `Telegraph` (lasers, lanes, landing rings), `Blast`,
+  `Grenade`, `EnemyOverhead` (tags, radio bar, alarm icon, shield bubble),
+  `Civilian`; new generated sounds (throw, punch, cloak, scream, beep).
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -194,3 +237,12 @@
   overrides.
 - **Heist music is layered, not switched,** so heat changes never restart the
   track.
+- **"Stage 2+" for elites** is read as the second stage (the City) onward;
+  Town only sees an elite on its rarest jobs.
+- **Radio calls**: a hit knocks the call back half a second instead of
+  cancelling it, so only a kill reliably stops the heat (per the brief).
+- **Alarm panels are sparse** (1–3 per building instead of one per room), so
+  a witnessed intrusion arms the *nearest* panel. A second full alarm within
+  25 s only adds heat, so several techs cannot chain vans.
+- **Civilian deaths** caused by guards' grenades still add heat (+6) but do
+  not count against the crew's grade or the venue.

@@ -20,6 +20,7 @@ enum LootTier { JUNK, STORAGE_UNIT, WEAPON_CASE, VAULT }
 ##     "enemies_total": int,      # for kill completeness
 ##     "time_seconds": float,
 ##     "par_time": float,         # target time for full marks on speed
+##     "civilians": int,          # bystanders the crew killed (penalty)
 ##   }
 static func grade_heist(stats: Dictionary) -> Dictionary:
 	var hits: int = stats.get("hits_taken", 0)
@@ -49,6 +50,9 @@ static func grade_heist(stats: Dictionary) -> Dictionary:
 		+ acc * 0.20
 		+ time_score * 0.15
 		+ kill_score * 0.20)
+	# Every civilian the crew kills costs a full grade step.
+	var civilians: int = stats.get("civilians", 0)
+	score = maxf(score - civilians * 0.12, 0.0)
 
 	var grade := _score_to_grade(score)
 	return {
@@ -60,6 +64,7 @@ static func grade_heist(stats: Dictionary) -> Dictionary:
 		"breakdown": {
 			"hit_score": hit_score, "accuracy": acc,
 			"time_score": time_score, "kill_score": kill_score,
+			"civilians": civilians,
 		},
 	}
 
