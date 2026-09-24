@@ -7,6 +7,10 @@ class_name Bullet
 var pierce := 0
 var ricochets := 0
 var knockback := 0.0
+## The weapon that fired this round (traits and mods act on hit).
+var weapon: WeaponItem = null
+## Stopping Power: a hit guard loses his next shot.
+var stagger := false
 var _dir := Vector2.RIGHT
 var _shooter: Node = null
 var _spent := false
@@ -37,6 +41,8 @@ func revive() -> void:
 	pierce = 0
 	ricochets = 0
 	knockback = 0.0
+	weapon = null
+	stagger = false
 	_hit_ids.clear()
 	_excluded.clear()
 	show()
@@ -123,18 +129,20 @@ func _try_hit(target: Node) -> void:
 	_hit_ids.append(target.get_instance_id())
 	if target is CollisionObject2D:
 		_excluded.append(target.get_rid())
+	var dmg := _damage_against(target)
 	var host := get_tree().current_scene
 	if host is HeistFloor:
-		host.fx.damage_number(global_position, damage, Palette.GOLD_PALE if damage >= 3 else Palette.PAPER)
+		host.fx.damage_number(global_position, dmg, Palette.GOLD_PALE if dmg >= 3 else Palette.PAPER)
 		if target.is_in_group("enemies") or target.is_in_group("civilians"):
 			host.fx.blood(global_position, _dir)
 			Audio.play("impact_body", global_position)
 		else:
 			host.fx.spark(global_position, -_dir, Palette.NEON_CYAN)
 	if target.is_in_group("civilians") and target.has_method("take_blast"):
-		target.take_blast(damage, _shooter is Player)
+		target.take_blast(dmg, _shooter is Player)
 	else:
-		target.take_damage(damage)
+		target.take_damage(dmg)
+	_after_hit(target, host)
 	var push := knockback if knockback > 0.0 else 45.0
 	if target is CharacterBody2D and not target.is_in_group("boss") and is_instance_valid(target) and target.is_inside_tree():
 		target.velocity += _dir * push
@@ -145,6 +153,45 @@ func _try_hit(target: Node) -> void:
 		pierce -= 1
 	else:
 		_finish()
+
+## Weapon traits and mods that change what one hit is worth.
+func _damage_against(target: Node) -> int:
+	var dmg := damage
+	if weapon == null:
+		return dmg
+	var enemy := target as Enemy
+	match weapon.trait_id:
+		&"assassin":
+			if enemy and not enemy._provoked and not enemy._dead:
+				dmg *= 3
+		&"elite_hunter":
+			if enemy and (enemy.elite or enemy.lieutenant or enemy is Boss):
+				dmg *= 2
+		&"fries_electronics":
+			if target.is_in_group("security") or (enemy and enemy.kind == Enemy.Kind.DRONE):
+				dmg = maxi(dmg, 99)
+	if enemy and weapon.has_mod(&"hollow_points"):
+		dmg = maxi(1, dmg + (-1 if enemy.armored else 1))
+	return dmg
+
+func _after_hit(target: Node, host: Node) -> void:
+	var enemy := target as Enemy
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	if stagger and not enemy._dead:
+		enemy._fire_timer += 0.35
+	if weapon == null:
+		return
+	if weapon.has_mod(&"incendiary") and not enemy._dead:
+		enemy.ignite(3.0)
+	match weapon.trait_id:
+		&"red_mark":
+			enemy.red_marked = true
+		&"paying_pellets":
+			RunEconomy.add_bonus(1)
+		&"gavel":
+			if enemy._dead and host is HeistFloor and host.live:
+				host.live.report_shock(0.98 if host.live.inverted() else 1.02, &"gavel")
 
 func _finish() -> void:
 	if _spent and pool:

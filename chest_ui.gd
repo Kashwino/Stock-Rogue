@@ -237,8 +237,13 @@ func _stats_text(item) -> String:
 		if not item.uses_ammo:
 			parts.append("Infinite ammo")
 		else:
-			parts.append("Mag %d" % item.mag_size)
-		return "  -  ".join(parts)
+			parts.append("Mag %d" % item.eff_mag())
+		var text := "  -  ".join(parts)
+		if item.trait_text() != "":
+			text += "\nTRAIT: " + item.trait_text()
+		return text
+	elif item is RelicItem:
+		return "RELIC: " + item.description
 	elif item is UpgradeItem:
 		return item.description
 	return ""

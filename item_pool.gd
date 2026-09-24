@@ -83,6 +83,14 @@ static func weapons() -> Array:
 	for weapon: WeaponItem in out:
 		if weapon.id == &"silenced9mm":
 			weapon.noise_radius = 230.0
+		# Stat-shaped signature traits.
+		match weapon.id:
+			&"handcannon":
+				weapon.pierce = maxi(weapon.pierce, 1)
+			&"shotgun":
+				weapon.knockback = 180.0
+			&"combatshotgun":
+				weapon.ricochets = 1
 
 	# Boss uniques: only ever dropped by the stage boss who carried them.
 	var eviction := _wpn(&"eviction_notice", "Eviction Notice", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
@@ -166,6 +174,7 @@ static func _wpn(id: StringName, name: String, rarity: int, slot: int,
 	w.spread = spread; w.pellets = pellets
 	w.uses_ammo = uses_ammo; w.mag_size = mag; w.max_reserve = reserve
 	w.ammo_type = ammo_type
+	w.trait_id = WeaponTraits.FOR_WEAPON.get(id, &"")
 	return w
 
 static func _upg(id: StringName, name: String, desc: String, rarity: int,

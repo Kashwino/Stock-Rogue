@@ -83,6 +83,11 @@ func _open() -> void:
 	# Weapon chests exclude the starter pistol -- every player already has it.
 	var pool: Array = ItemPool.rewardable_weapons() if kind == Kind.WEAPON else ItemPool.upgrades()
 	var items := LootRoller.roll_items(pool, tier, reveal_count, rng) if fixed_items.is_empty() else fixed_items.duplicate()
+	# Upgrade chests always hold one relic among the upgrades.
+	if fixed_items.is_empty() and kind == Kind.UPGRADE and not items.is_empty():
+		var relic := Relics.roll(rng, 1)
+		if relic:
+			items[items.size() - 1] = relic
 	if items.is_empty():
 		push_warning("WorldChest: loot roll returned nothing — pool size "
 			+ str(pool.size()) + ". Falling back to the raw pool.")

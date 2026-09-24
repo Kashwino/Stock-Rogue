@@ -106,6 +106,11 @@ func _ready() -> void:
 	boss_bar = BossBar.new()
 	root.add_child(boss_bar)
 
+	var relic_row := HudWidgets.RelicTokens.new()
+	relic_row.position = Vector2(14, 248)
+	relic_row.size = Vector2(318, 30)
+	root.add_child(relic_row)
+
 	weapon_panel = HudWidgets.WeaponPanel.new()
 	weapon_panel.position = Vector2(430, 638)
 	weapon_panel.size = Vector2(400, 72)

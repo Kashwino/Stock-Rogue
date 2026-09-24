@@ -69,6 +69,11 @@ func _setup(shot: String) -> Node:
 			if args.has("stage"):
 				RunState.run_map.current_stage = int(args["stage"])
 				RunState.run_map.current_step = int(args.get("step", "1"))
+			if args.has("relics"):
+				for r in String(args["relics"]).split(","):
+					RunState.add_relic(StringName(r))
+			if args.has("gold"):
+				RunEconomy.gold = int(args["gold"])
 			path = {"map": "res://map_ui_screen.tscn", "hideout": "res://hideout_room.tscn", "heist": "res://heist_floor.tscn"}[shot]
 			if shot == "heist":
 				var step = RunState.run_map.current()

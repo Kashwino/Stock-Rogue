@@ -571,24 +571,28 @@ func _render_offer_rows() -> void:
 	for c in _offers_col.get_children():
 		c.queue_free()
 	for entry: Dictionary in _current_offers:
-		_item_row(_offers_col, entry["name"], entry["desc"], entry["price"],
+		_item_row(_offers_col, entry["name"], entry["desc"], _price(int(entry["price"])),
 			entry["accent"], entry["cb"])
+
+## Fence's Discount: every hideout price -15%.
+static func _price(base: int) -> int:
+	return roundi(base * 0.85) if RunState.has_relic(&"fences_discount") else base
 
 func _update_reroll_button() -> void:
 	if _reroll_button:
-		_reroll_button.text = "Reroll stock ($%d)" % _reroll_cost
+		_reroll_button.text = "Reroll stock ($%d)" % _price(_reroll_cost)
 
 ## Rerolling costs gold and gets pricier each use THIS visit -- resets to
 ## base cost next time you walk in. A real decision, not a free retry loop.
 func _on_reroll_offers() -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
-	if econ == null or not econ.can_afford(_reroll_cost):
+	if econ == null or not econ.can_afford(_price(_reroll_cost)):
 		_reroll_button.modulate = RED
 		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(_reroll_button, "modulate", Color.WHITE, 0.4)
 		return
-	econ.spend(_reroll_cost)
+	econ.spend(_price(_reroll_cost))
 	_refresh_gold_label()
 	_reroll_cost += REROLL_STEP
 	_current_offers = _offer_generator.call()
@@ -618,7 +622,7 @@ func _build_weapon_dealer() -> CanvasLayer:
 
 	var qb: int = RunState.run_map.quota_block if RunState.run_map else 0
 	_case_tier = _case_tier_for_quota(qb)
-	_case_price = _case_price_for_quota(qb)
+	_case_price = _price(_case_price_for_quota(qb))
 	_case_opened = [false, false, false]
 	_case_results = [null, null, null]
 	_spin_active = false
@@ -692,10 +696,15 @@ func _make_sealed_card(index: int) -> Button:
 	var icon_wrap := CenterContainer.new()
 	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(icon_wrap)
-	var icon := Label.new()
-	icon.text = "\u25A3"
-	icon.add_theme_font_size_override("font_size", 46)
-	icon.add_theme_color_override("font_color", edge)
+	# A drawn case (font glyphs are not guaranteed on every platform).
+	var icon := Control.new()
+	icon.custom_minimum_size = Vector2(80, 66)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var case_art := PropArt.new()
+	case_art.kind = "chest"
+	case_art.tone = edge
+	case_art.position = Vector2(40, 36)
+	icon.add_child(case_art)
 	icon_wrap.add_child(icon)
 
 	var name_l := Label.new()
@@ -715,7 +724,7 @@ func _make_sealed_card(index: int) -> Button:
 
 func _make_result_card(w: WeaponItem) -> PanelContainer:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(150, 210)
+	card.custom_minimum_size = Vector2(176, 246)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.09, 0.09, 0.12)
 	sb.border_color = w.rarity_color()
@@ -728,27 +737,35 @@ func _make_result_card(w: WeaponItem) -> PanelContainer:
 	col.add_theme_constant_override("separation", 6)
 	card.add_child(col)
 
-	var icon := Label.new()
-	icon.text = "\u2726"
-	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon.add_theme_font_size_override("font_size", 40)
-	icon.add_theme_color_override("font_color", w.rarity_color())
+	var icon := HudWidgets.WeaponIcon.new()
+	icon.gun = SpriteKit.gun_for(w)
+	icon.tint = w.rarity_color()
+	icon.custom_minimum_size = Vector2(150, 44)
 	col.add_child(icon)
 
 	var name_l := Label.new()
 	name_l.text = w.display_name
 	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_l.add_theme_font_size_override("font_size", 13)
+	name_l.add_theme_font_size_override("font_size", 16)
 	name_l.add_theme_color_override("font_color", w.rarity_color())
 	col.add_child(name_l)
 
 	var stats_l := Label.new()
-	stats_l.text = "%s\ndmg %d" % [w.rarity_name(), w.damage]
+	stats_l.text = "%s  ·  dmg %d" % [w.rarity_name(), w.damage]
 	stats_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stats_l.add_theme_font_size_override("font_size", 10)
+	stats_l.add_theme_font_size_override("font_size", 13)
 	stats_l.add_theme_color_override("font_color", INK_SOFT)
 	col.add_child(stats_l)
+
+	var trait_l := Label.new()
+	trait_l.text = w.trait_text()
+	trait_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	trait_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	trait_l.custom_minimum_size = Vector2(160, 0)
+	trait_l.add_theme_font_size_override("font_size", 13)
+	trait_l.add_theme_color_override("font_color", Palette.GOLD_PALE)
+	col.add_child(trait_l)
 
 	var tag := Label.new()
 	tag.text = "EQUIPPED"
@@ -951,7 +968,7 @@ func _fence_offer_generator() -> Array:
 		[&"quiet_shoes", "Quiet Shoes", "Dodge rolls make no noise.", 180],
 		[&"cool_head", "Cool Head", "Heat builds 25% slower over time.", 240],
 		[&"scavenger", "Scavenger", "+25% gold from floor valuables.", 260],
-		[&"golden_parachute", "Golden Parachute", "30% less stock loss when you take damage.", 280]
+		[&"golden_parachute", "Stop-Loss Order", "30% less stock loss when you take damage.", 280]
 	]
 	for perk: Array in perks:
 		if not RunState.has_perk(perk[0]):
@@ -1027,6 +1044,25 @@ func _black_market_offer_generator() -> Array:
 		{"name": "Filed Trigger", "desc": "Fire 12% faster, this run",
 			"price": int(260 * scale), "accent": Color(0.6, 0.4, 0.85), "cb": _buy_filed_trigger},
 	]
+	# Two relics and a weapon mod rotate through the stock.
+	var relic_rng := RandomNumberGenerator.new()
+	relic_rng.randomize()
+	var relics_on_offer: Array = []
+	for i in 2:
+		var r := Relics.roll(relic_rng)
+		if r and r.id not in relics_on_offer:
+			relics_on_offer.append(r.id)
+			pool.append({"name": r.display_name, "desc": "RELIC — " + r.description, "price": Relics.price_of(r, scale),
+				"accent": r.rarity_color(), "cb": _buy_relic.bind(r.id)})
+	var mod_ids: Array = WeaponMods.DATA.keys()
+	mod_ids.shuffle()
+	for m in mod_ids:
+		var target := WeaponMods.target_for(m)
+		if target:
+			var d: Array = WeaponMods.DATA[m]
+			pool.append({"name": d[0], "desc": "MOD for your %s — %s" % [target.display_name, d[1]], "price": int(d[2] * scale),
+				"accent": Palette.NEON_CYAN, "cb": _buy_weapon_mod.bind(m)})
+			break
 	# Case-specific stock: whatever the next leads' modifiers call for.
 	var gear := {
 		&"blackout": [&"night_vision", "Night-Vision Goggles", "Next job: the dark is less dark, and your flashlight reaches further."],
@@ -1060,6 +1096,12 @@ func _black_market_offer_generator() -> Array:
 		gear_pool.shuffle()
 		picks.append(gear_pool.pop_back())
 	return picks + _sample_pool(pool + gear_pool, 3 - picks.size())
+
+func _buy_relic(id: StringName) -> void:
+	RunState.add_relic(id)
+
+func _buy_weapon_mod(id: StringName) -> void:
+	WeaponMods.install(id)
 
 func _buy_job_gear(id: StringName) -> void:
 	if id not in RunState.job_gear:

@@ -203,7 +203,7 @@ class WeaponPanel extends Control:
 		var mono := VisualTheme.font("mono")
 		draw_string(f, Vector2(136, 28), weapon.display_name.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, size.x - 150, 21, weapon.rarity_color())
 		var pip_area := size.x - 150.0
-		var n := maxi(weapon.mag_size, 1)
+		var n := maxi(weapon.eff_mag(), 1)
 		var pw := clampf(pip_area / n - 2.0, 2.0, 9.0)
 		for i in n:
 			var r := Rect2(136 + i * (pw + 2.0), 40, pw, 14)
@@ -212,6 +212,9 @@ class WeaponPanel extends Control:
 				draw_rect(Rect2(r.position, Vector2(r.size.x, 3)), Palette.GOLD_PALE)
 			else:
 				draw_rect(r, Color(1, 1, 1, 0.1))
+		if not weapon.mods.is_empty():
+			var tags: Array = weapon.mods.map(func(m): return WeaponMods.tag_of(m))
+			draw_string(mono, Vector2(14, size.y - 4), " ".join(tags), HORIZONTAL_ALIGNMENT_LEFT, 116, 12, Palette.NEON_CYAN)
 		var readout := "%d / %s" % [mag, "∞" if reserve < 0 else str(reserve)]
 		draw_string(mono, Vector2(size.x - 104, 26), readout, HORIZONTAL_ALIGNMENT_RIGHT, 92, 18, Palette.PAPER)
 		if reload_t > 0.0:
@@ -283,3 +286,44 @@ class Minimap extends Control:
 			var pp: Vector2 = origin + (floor_host.player.global_position - bounds.position) * k
 			draw_circle(pp, 4.0, Color.WHITE)
 			draw_arc(pp, 6.5, 0, TAU, 12, Palette.GOLD, 1.5)
+
+
+class RelicTokens extends Control:
+	## A row of owned relics as small gold-rimmed medallions with their marks.
+	var _clock := 0.0
+	var _count := -1
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_clock -= delta
+		if _clock <= 0.0:
+			_clock = 0.5
+			if RunState.relics.size() != _count:
+				_count = RunState.relics.size()
+				queue_redraw()
+
+	func _draw() -> void:
+		var f := VisualTheme.font("heading_bold")
+		var x := 12.0
+		var seen: Dictionary = {}
+		for id in RunState.relics:
+			if seen.has(id):
+				continue
+			seen[id] = true
+			var r := Relics.make(id)
+			if r == null:
+				continue
+			var c := Vector2(x, size.y * 0.5)
+			var col := r.rarity_color()
+			draw_circle(c, 12.0, Color(0.06, 0.06, 0.07, 0.9))
+			draw_arc(c, 12.0, 0.0, TAU, 20, col, 2.0, true)
+			var w := f.get_string_size(r.mark, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			draw_string(f, c + Vector2(-w * 0.5, 4.5), r.mark, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
+			var stack := RunState.relic_count(id)
+			if stack > 1:
+				draw_string(f, c + Vector2(8, 13), "x%d" % stack, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.PAPER)
+			x += 28.0
+			if x > size.x - 12.0:
+				break

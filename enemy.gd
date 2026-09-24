@@ -198,6 +198,7 @@ func apply_archetype(k: Kind) -> void:
 			hearing_multiplier = 0.8
 		_:
 			pass
+	armored = k in [Kind.RIOT, Kind.ENFORCER, Kind.BRUTE, Kind.CLEANER, Kind.TURRET]
 	brain = _make_brain(k)
 	if brain:
 		brain.e = self
@@ -504,6 +505,7 @@ func _physics_process(delta: float) -> void:
 	if brain:
 		brain.tick(delta)
 	_tick_elite(delta)
+	_tick_burn(delta)
 	_retarget(delta)
 	if not is_instance_valid(_player):
 		return
@@ -810,6 +812,8 @@ func take_damage(amount: int = 1) -> void:
 		return
 	# A hit knocks the radio call back; only a kill stops it for good.
 	radio_progress = maxf(radio_progress - 0.5, 0.0)
+	if red_marked:
+		amount += 1
 	health -= amount
 	if brain:
 		brain.on_hurt()
@@ -967,6 +971,30 @@ func make_elite(a: StringName) -> void:
 		overhead.bubble = 1.0 if shield_hp > 0 else 0.0
 	material = StreetArt._unshaded()
 	queue_redraw()
+
+## The Red Pen's mark: +1 damage from every source.
+var red_marked := false
+var _burn_left := 0.0
+var _burn_clock := 0.0
+
+## Incendiary rounds: 1 damage a second while it lasts.
+func ignite(seconds: float) -> void:
+	if _burn_left <= 0.0:
+		_burn_clock = 1.0
+	_burn_left = maxf(_burn_left, seconds)
+
+func _tick_burn(delta: float) -> void:
+	if _burn_left <= 0.0:
+		return
+	_burn_left -= delta
+	_burn_clock -= delta
+	if kit and not Settings.values["low_effects"]:
+		kit.modulate = Color(1.4, 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.02), 0.5)
+	if _burn_clock <= 0.0:
+		_burn_clock = 1.0
+		take_damage(1)
+	if _burn_left <= 0.0 and kit and not _dead:
+		kit.modulate = Color.WHITE
 
 ## A named elite who runs an ordinary job's boss room: double an elite's
 ## health, bigger, with his name over his head.

@@ -90,7 +90,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       multiplier, repeat-venue decay, news wire and rumors)
 - [x] Phase 7 — objectives & map modifiers (6 objectives, 8 modifiers with icons,
       rival crews, strangers' tips, modifier-aware Black Market gear)
-- [ ] Phase 8 — build identity (relics, mods, traits)
+- [x] Phase 8 — build identity (20 relics with RelicHooks, 6 weapon mods, a trait
+      for every weapon)
 - [ ] Phase 9 — characters & meta progression
 - [ ] Phase 10 — story & endings
 - [ ] Phase 11 — menus, pause, onboarding, settings

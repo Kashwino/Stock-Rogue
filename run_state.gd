@@ -35,6 +35,23 @@ var rumors: Array = []
 ## night_vision, signal_jammer, police_scanner, bolt_cutters, body_armor,
 ## duffel_bag. Cleared when that job ends.
 var job_gear: Array = []
+## Relic ids owned this run (a stacking relic appears once per copy).
+var relics: Array = []
+## Golden Parachute fires once per run.
+var parachute_used := false
+
+func has_relic(id: StringName) -> bool:
+	return id in relics
+
+func relic_count(id: StringName) -> int:
+	return relics.count(id)
+
+func add_relic(id: StringName) -> void:
+	var r := Relics.make(id)
+	if r == null:
+		return
+	if r.stacks or id not in relics:
+		relics.append(id)
 
 func has_job_gear(id: StringName) -> bool:
 	return id in job_gear
@@ -62,6 +79,8 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	news.clear()
 	rumors.clear()
 	job_gear.clear()
+	relics.clear()
+	parachute_used = false
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
 
 	# Fresh loadout with the starter Sidearm.
@@ -211,6 +230,8 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"news": news.duplicate(true),
 		"rumors": rumors.duplicate(true),
 		"job_gear": job_gear.map(func(g): return String(g)),
+		"relics": relics.map(func(r): return String(r)),
+		"parachute_used": parachute_used,
 	}
 
 func _serialize_market() -> Dictionary:
@@ -237,7 +258,7 @@ func _serialize_loadout() -> Dictionary:
 	var small_ids := []
 	for w in loadout.small:
 		small_ids.append(String(w.id) if w != null else "")
-	return {"big": big_ids, "small": small_ids, "active": loadout.active_slot}
+	return {"big": big_ids, "small": small_ids, "active": loadout.active_slot, "mods": loadout.mods_by_slot()}
 
 ## Rebuild run state from a saved Dictionary. Returns the map seed so the caller
 ## can regenerate the map and jump to the saved position.
@@ -253,6 +274,11 @@ func deserialize(data: Dictionary) -> void:
 	job_gear.clear()
 	for g in data.get("job_gear", []):
 		job_gear.append(StringName(g))
+	relics.clear()
+	for r in data.get("relics", []):
+		if Relics.DATA.has(StringName(r)):
+			relics.append(StringName(r))
+	parachute_used = bool(data.get("parachute_used", false))
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))
 
@@ -316,3 +342,4 @@ func _deserialize_loadout(data: Dictionary) -> void:
 			loadout.equip(by_id[id])
 	if data.has("active"):
 		loadout.active_slot = data["active"]
+	loadout.restore_mods(data.get("mods", {}))

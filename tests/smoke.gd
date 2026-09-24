@@ -191,6 +191,7 @@ func _run() -> void:
 	await _test_projectiles()
 	await _test_bosses()
 	await _test_objectives()
+	await _test_build()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
@@ -604,6 +605,121 @@ func _test_objectives() -> void:
 	job.player.take_damage(1)
 	check(job.player.health == hp and job.player.armor_charges == 0, "body armor absorbs the first hit")
 	RunState.job_gear.clear()
+	job.queue_free()
+	await get_tree().process_frame
+
+## Relics, weapon mods and weapon traits.
+func _test_build() -> void:
+	check(Relics.DATA.size() >= 20 and Relics.all().size() == Relics.DATA.size(), "twenty relics in the catalog")
+	for w: WeaponItem in ItemPool.weapons():
+		check(w.trait_text() != "", "signature trait: " + w.display_name)
+	RunState.relics.clear()
+	RunState.add_relic(&"laundered_cash")
+	RunState.add_relic(&"laundered_cash")
+	RunState.add_relic(&"hedge_fund")
+	RunState.add_relic(&"hedge_fund")
+	check(RunState.relic_count(&"laundered_cash") == 2 and RunState.relic_count(&"hedge_fund") == 1, "stacking relics stack, others don't")
+	var job := await _job(&"loot")
+	check(is_equal_approx(job.loot_multiplier(), 1.15 * 1.15), "laundered cash compounds loot")
+	RunState.relics.clear()
+	var p := job.player
+	var lo := RunState.loadout
+	# Weapon mods: fit to the active weapon, change its numbers, and are saved.
+	lo.set_active("small", 0)
+	var sidearm := lo.get_active()
+	sidearm.mods.clear()
+	check(WeaponMods.install(&"extended_mag") == sidearm and sidearm.eff_mag() == int(ceil(sidearm.mag_size * 1.5)), "extended mag fits the active weapon (+50%)")
+	check(not sidearm.can_take_mod(&"laser_sight"), "small weapons take a single mod")
+	var saved := RunState.serialize(1, 0, 0, 0)
+	sidearm.mods.clear()
+	lo.restore_mods(saved["loadout"]["mods"])
+	check(sidearm.has_mod(&"extended_mag"), "mods are saved with the weapon")
+	sidearm.mods = [&"suppressor"]
+	check(is_equal_approx(sidearm.eff_noise(), sidearm.noise_radius * 0.4), "suppressor cuts noise")
+	sidearm.mods.clear()
+	# Blood Ledger refunds a round on a kill; Hair Trigger doubles the next shot.
+	RunState.add_relic(&"blood_ledger")
+	lo.consume_round()
+	var mag_before := int(lo._active_ammo()["mag"])
+	job.hooks.kill.emit(null)
+	check(int(lo._active_ammo()["mag"]) == mag_before + 1, "blood ledger puts a round back")
+	RunState.add_relic(&"hair_trigger")
+	job.hooks.reload.emit()
+	check(p.hair_trigger, "hair trigger arms on reload")
+	# Golden Parachute catches one lethal hit per run.
+	RunState.add_relic(&"golden_parachute")
+	p._invulnerable = false
+	p._mercy_timer = 0.0
+	p.health = 1
+	p.take_damage(3)
+	check(p.health == 1 and RunState.parachute_used and not p.is_dead(), "golden parachute leaves you at 1 HP")
+	p._mercy_timer = 0.0
+	RunState.add_relic(&"adrenaline_futures")
+	var w := lo.get_active()
+	check(p.effective_fire_interval(w) < w.fire_rate, "adrenaline futures fires faster at 1 HP")
+	p._invulnerable = true
+	p.health = p.max_health
+	# Positional and passive relics.
+	RunState.add_relic(&"back_door_man")
+	RunState.add_relic(&"market_maker")
+	check(job.fire_exit_limit() == 20.0, "back door man keeps fire exits open to heat 20")
+	check(Positions.slots() == 3 and is_equal_approx(Positions.leverage(), 2.5), "market maker adds a slot and leverage")
+	RunState.add_relic(&"fences_discount")
+	check(HideoutRoom._price(100) == 85, "fence's discount takes 15% off")
+	RunState.add_relic(&"second_wind")
+	p.health = p.max_health - 1
+	job.hooks.room_cleared.emit(job.generator.rooms[1])
+	job.hooks.room_cleared.emit(job.generator.rooms[1])
+	check(p.health == p.max_health, "second wind heals once per job")
+	RunState.add_relic(&"paper_trail")
+	var bank := RunState.market.get_asset(&"bank_job")
+	var price := bank.current_price
+	job.hooks.extract.emit({"grade_name": "A"})
+	check(is_equal_approx(bank.current_price, price * 1.02), "paper trail lifts every venue on an A")
+	RunState.add_relic(&"insider_wire")
+	job._show_vision_cones()
+	var coned := get_tree().get_nodes_in_group("enemies").filter(func(e): return e.sprite and e.sprite.has_node("VisionCone"))
+	check(not coned.is_empty(), "insider wire shows vision cones")
+	# Traits and mods on the bullet.
+	var guard: Enemy = load("res://enemy.tscn").instantiate()
+	guard.position = p.global_position + Vector2(4000, 4000)
+	job.add_child(guard)
+	guard.apply_archetype(Enemy.Kind.GRUNT)
+	guard.health = 50
+	var b: Bullet = load("res://bullet.tscn").instantiate()
+	job.add_child(b)
+	b.damage = 2
+	b.weapon = ItemPool.weapons().filter(func(x): return x.id == &"rifle")[0]
+	check(b._damage_against(guard) == 6, "the marksman rifle crits an unprovoked guard x3")
+	guard._provoked = true
+	check(b._damage_against(guard) == 2, "no crit once he's onto you")
+	b.weapon.mods = [&"hollow_points"]
+	check(b._damage_against(guard) == 3, "hollow points +1 against the unarmoured")
+	guard.armored = true
+	check(b._damage_against(guard) == 1, "hollow points -1 against armour")
+	guard.ignite(3.0)
+	var hp := guard.health
+	guard._tick_burn(1.05)
+	check(guard.health == hp - 1, "incendiary rounds burn")
+	guard.red_marked = true
+	hp = guard.health
+	guard.take_damage(1)
+	check(guard.health == hp - 2, "the red pen's mark adds +1 to every hit")
+	b.queue_free()
+	guard.queue_free()
+	# Burst carbine: one pull, three rounds.
+	var carbine: WeaponItem = ItemPool.weapons().filter(func(x): return x.id == &"burstcarbine")[0]
+	lo.equip(carbine)
+	var fired := p.shots_fired
+	p._fire_timer = 0.0
+	Input.action_press("fire")
+	p._try_fire()
+	Input.action_release("fire")
+	for i in 20:
+		p._tick_burst(0.05)
+	check(p.shots_fired - fired == 3, "the burst carbine fires three-round bursts")
+	RunState.relics.clear()
+	RunState.parachute_used = false
 	job.queue_free()
 	await get_tree().process_frame
 

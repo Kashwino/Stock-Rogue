@@ -23,6 +23,14 @@ func _draw() -> void:
 			draw_rect(Rect2(start + Vector2(44, 9), Vector2(24, 10)), Color("506f70"))
 		for i in 4:
 			draw_line(start + Vector2(10 + i * 8, 3), start + Vector2(10 + i * 8, 9), Color("2a3c47"), 2)
+	elif item is RelicItem:
+		# A relic: a gold-rimmed medallion stamped with its mark.
+		draw_circle(c, 34, Color("1c1a16"))
+		draw_arc(c, 34, 0, TAU, 40, accent, 4, true)
+		draw_arc(c, 27, 0, TAU, 40, Color(accent, 0.45), 1.5, true)
+		var f := VisualTheme.font("heading_bold")
+		var w := f.get_string_size(item.mark, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
+		draw_string(f, c + Vector2(-w * 0.5, 11), item.mark, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, accent)
 	else:
 		var shield := PackedVector2Array([c + Vector2(-26, -23), c + Vector2(26, -23), c + Vector2(22, 17), c + Vector2(0, 34), c + Vector2(-22, 17)])
 		draw_colored_polygon(shield, Color("35545b"))

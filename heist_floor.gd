@@ -86,6 +86,8 @@ var post_fx: PostFX
 var building_bounds := Rect2()
 var wall_art: Array = []
 var bullet_pool: BulletPool
+## Relic event switchboard (kill, hit_taken, reload, room_cleared, ...).
+var hooks: RelicHooks
 var _stage := 0
 ## Heat-log bookkeeping read by objectives and the grade.
 var civilians_killed := 0
@@ -119,6 +121,9 @@ func _ready() -> void:
 	add_child(director)
 	bullet_pool = BulletPool.new()
 	add_child(bullet_pool)
+	hooks = RelicHooks.new()
+	hooks.floor_host = self
+	add_child(hooks)
 	add_child(PauseMenu.new())
 	camera = get_node_or_null("Camera2D")
 	if camera == null:
@@ -243,6 +248,9 @@ func _build_floor() -> void:
 	_setup_tactics()
 
 	_show_intro_card()
+	hooks.heist_start.emit()
+	if RunState.has_relic(&"insider_wire"):
+		_show_vision_cones()
 	Audio.music_layers("heist_stealth", "heist_combat")
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
@@ -298,6 +306,8 @@ func _setup_market_and_hud() -> void:
 	live.player_moved.connect(_on_player_moved_market)
 	if RunState.has_job_gear(&"body_armor"):
 		player.armor_charges = 1
+	if RunState.loadout:
+		RunState.loadout.reload_finished.connect(_on_reload_finished)
 
 	var hud_scene = load("res://hud.tscn")
 	if hud_scene:
@@ -365,6 +375,8 @@ func _spawn_car() -> void:
 		var e: Dictionary = generator.entrance
 		var outward: Vector2 = (e["room"].to_global(e["wall_pos"]) - e["inside_pos"]).normalized()
 		car.facing = Vector2(-outward.y, outward.x)
+	if RunState.has_relic(&"getaway_driver"):
+		car.escape_duration = 2.0
 	add_child(car)
 	car.bind_player(player)
 	car.extracted.connect(_extract)
@@ -578,6 +590,7 @@ func _hook_room_enemies(room) -> void:
 			c.died.connect(_on_enemy_died)
 
 func _on_enemy_died(e) -> void:
+	hooks.kill.emit(e)
 	_kills += 1
 	_kill_streak += 1
 	if RunState.has_perk(&"blood_dividend") and _kill_streak % 8 == 0 and player.health > 0:
@@ -602,6 +615,7 @@ func _on_room_cleared(room) -> void:
 	# Empty treasure rooms also emit cleared on activation; only actual kills get the beat.
 	if room.get("spawn_count") > 0:
 		fx.last_kill()
+		hooks.room_cleared.emit(room)
 
 	if room.has_meta("is_boss") and not marked and not boss_heist:
 		_become_marked()
@@ -663,7 +677,7 @@ func _process(delta: float) -> void:
 	_heat_timer = maxf(0.0, _heat_timer - delta)
 	if heat >= dispatch_threshold() and _heat_timer <= 0.0:
 		_spawn_reinforcements()
-		_heat_timer = (12.0 if has_mod(&"heavy_police") else 24.0) * (1.3 if RunState.has_job_gear(&"police_scanner") else 1.0)
+		_heat_timer = (12.0 if has_mod(&"heavy_police") else 24.0) * (1.3 if RunState.has_job_gear(&"police_scanner") else 1.0) * (1.25 if RunState.has_relic(&"riot_insurance") else 1.0)
 
 	_tick_objective(delta)
 
@@ -885,6 +899,7 @@ func _extract() -> void:
 			asset.current_price = maxf(asset.current_price * delta, 0.01)
 
 	result["objective"] = _resolve_objective()
+	hooks.extract.emit(result)
 	RunState.job_gear.clear()
 	# The wire's rumors land, then every Fence position settles at today's prices.
 	result["rumors"] = MarketNews.resolve_rumors()
@@ -928,7 +943,11 @@ func _on_player_health(current: int, maximum: int) -> void:
 		post_fx.set_health(current, maximum)
 
 ## Damage feedback shared by every hit on the player.
+func _on_reload_finished() -> void:
+	hooks.reload.emit()
+
 func on_player_hurt() -> void:
+	hooks.hit_taken.emit(1)
 	if post_fx:
 		post_fx.hit(1.0)
 
@@ -1029,6 +1048,13 @@ func _on_item_claimed(item) -> void:
 	if item is WeaponItem:
 		if RunState.loadout:
 			RunState.loadout.equip(item)
+	elif item is RelicItem:
+		RunState.add_relic(item.id)
+		fx.chip(player.global_position, item.display_name.to_upper(), item.rarity_color())
+		if item.id == &"insider_wire":
+			_show_vision_cones()
+		if item.id == &"getaway_driver" and car:
+			car.escape_duration = 2.0
 	elif item is UpgradeItem:
 		var add: float = item.amount if item.mode == UpgradeItem.ApplyMode.ADD else 0.0
 		var mult: float = item.amount if item.mode == UpgradeItem.ApplyMode.MULTIPLY else 1.0
@@ -1054,10 +1080,11 @@ func loot_multiplier() -> float:
 		m *= 0.7
 	if RunState.has_job_gear(&"duffel_bag"):
 		m *= 1.15
+	m *= pow(1.15, RunState.relic_count(&"laundered_cash"))
 	return m
 
 func fire_exit_limit() -> float:
-	return fire_exit_heat_limit
+	return 20.0 if RunState.has_relic(&"back_door_man") else fire_exit_heat_limit
 
 ## Live loot multiplier: floor valuables are worth more while the venue trades
 ## above its listing price (Phase 6 wires the pickups to it).
@@ -1699,6 +1726,7 @@ func on_boss_down(b: Boss) -> void:
 	Audio.set_intensity(1.0)
 	if not RunFlow.practice:
 		Meta.record_boss(b.boss_id, false)
+	_pump_and_dump()
 	if b.boss_id == &"chairman":
 		# The last trade: the heist wraps itself up and the ending plays.
 		RunEconomy.add_bonus(_rng.randi_range(400, 600))
@@ -1752,7 +1780,11 @@ func _drop_boss_reward(b: Boss) -> void:
 	var chest = scene.instantiate()
 	chest.set("kind", 0)
 	chest.set("tier", LootRoller.ChestTier.AIRDROP)
-	chest.fixed_items = [weapon]
+	# The boss's unique weapon or one of his relics: your pick.
+	var relic_rng := RandomNumberGenerator.new()
+	relic_rng.randomize()
+	var relic := Relics.roll(relic_rng, 3)
+	chest.fixed_items = [weapon, relic] if relic else [weapon]
 	chest.position = to_local(b.global_position)
 	spawn_deferred(chest)
 
@@ -1773,6 +1805,34 @@ func debug_kill_boss() -> void:
 	b._transition = 0.0
 	b.take_damage(999999)
 
+## Pump & Dump: a big kill moves the venue 15% more, whichever way it runs.
+func _pump_and_dump() -> void:
+	if RunState.has_relic(&"pump_and_dump") and live:
+		live.report_shock(0.85 if live.inverted() else 1.15, &"pump")
+
+## Insider Wire: every guard's line of sight, drawn faintly on the floor.
+func _show_vision_cones() -> void:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e is Enemy and e.sprite and not e.sprite.has_node("VisionCone"):
+			var cone := VisionCone.new()
+			cone.name = "VisionCone"
+			cone.reach = e.sight_range
+			e.sprite.add_child(cone)
+
+class VisionCone extends Node2D:
+	var reach := 420.0
+	func _ready() -> void:
+		z_index = -1
+		show_behind_parent = true
+		material = StreetArt._unshaded()
+		queue_redraw()
+	func _draw() -> void:
+		var pts := PackedVector2Array([Vector2.ZERO])
+		for i in 13:
+			pts.append(Vector2.from_angle(-0.6 + i * 0.1) * reach)
+		draw_colored_polygon(pts, Color(1.0, 0.25, 0.2, 0.03))
+		draw_polyline(pts + PackedVector2Array([Vector2.ZERO]), Color(1.0, 0.3, 0.25, 0.14), 1.0)
+
 ## Ordinary jobs: the lieutenant gets a bar once he joins the fight.
 func _watch_lieutenant() -> void:
 	if _lieutenant_shown or not is_instance_valid(lieutenant) or lieutenant._dead:
@@ -1785,6 +1845,7 @@ func _on_lieutenant_down(e) -> void:
 	if hud and hud.boss_bar and hud.boss_bar.boss == e:
 		hud.boss_bar.clear()
 	fx.chip(e.global_position, "LIEUTENANT DOWN", Palette.GOLD)
+	_pump_and_dump()
 	if not RunFlow.practice:
 		Meta.record_boss(&"lieutenant", true)
 
@@ -1867,7 +1928,7 @@ func _update_security_status() -> void:
 	_update_audio()
 	if hud and hud.has_method("set_heat"):
 		hud.set_heat(heat, dispatch_threshold(), fire_exit_limit(), _heat_timer)
-		hud.set_loot_multiplier(live_loot_multiplier())
+		hud.set_loot_multiplier(live_loot_multiplier() * loot_multiplier())
 
 ## Stage art for the whole building: themed floors, walls with height,
 ## furniture that doubles as cover. Runs right after generation, before crews.

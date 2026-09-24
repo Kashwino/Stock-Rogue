@@ -298,6 +298,37 @@
 - The screenshot tool takes `objective=`, `mods=`, `contract=` and
   `then=method:arg`.
 
+## Phase 8 — Build identity
+
+- **Relics** (`relic_item.gd`, `relics.gd`, `relic_hooks.gd`): twenty
+  run-long relics kept in `RunState.relics` (saved), sold at the Black Market,
+  found in every upgrade chest (one card of three) and offered by every stage
+  boss next to his unique weapon. A `RelicHooks` node in the heist carries the
+  kill / hit_taken / reload / room_cleared / heist_start / extract signals:
+  Blood Ledger, Hair Trigger, Silent Partner, Golden Parachute, Adrenaline
+  Futures, Hedge Fund, Pump & Dump, Insider Wire (vision cones), Laundered
+  Cash (stacks), Fence's Discount, Lucky Casing, Stopping Power, Cold Feet,
+  Getaway Driver, Back Door Man, Riot Insurance, Market Maker, Second Wind,
+  Tracer Rounds and Paper Trail. Owned relics show as medallions under the
+  HUD's objective panel.
+- **Weapon mods** (`weapon_mods.gd`): Suppressor, Extended Mag, Laser Sight
+  (with a visible laser), Hollow Points (armoured archetypes now flagged),
+  Quick Hands and Incendiary (burning). One slot on small weapons, two on big
+  ones; bought at the Black Market and fitted to the active weapon (or another
+  with room); saved with the loadout and listed on the HUD weapon panel.
+- **A signature trait for every weapon** (`weapon_traits.gd`), shown on the
+  dealer's reveal cards and the chest detail: the Tommy Gun tightens under
+  sustained fire, the Burst Carbine fires three-round bursts, the Snub .38's
+  last round hits ×3, the Silenced 9mm is suppressed, the Hand Cannon
+  pierces, the Squad LMG steadies but slows you, the Sawed-Off knocks back
+  hard, Combat Shotgun pellets ricochet, the Marksman Rifle crits unnoticed
+  guards ×3, the Street SMG reloads fast from empty — and the other fourteen
+  (boss uniques included) have one each.
+- The weapon dealer's reveal cards and sealed cases are drawn (no font glyphs);
+  the HUD's LOOT figure now includes modifier and relic multipliers.
+- The Fence's old "Golden Parachute" perk is shown as **Stop-Loss Order** so it
+  does not clash with the relic (its id is unchanged for saves).
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -372,3 +403,9 @@
   you for them.
 - **Next-job gear** is a stand-in for the relics that arrive in Phase 8; it is
   consumed by the job it was bought for.
+- **Relic stacking**: only Laundered Cash stacks, as the brief says; the rest
+  are unique per run and leave the pools once owned.
+- **Boss rewards**: the reward case offers the unique weapon and a relic of
+  Covert grade or better; you take one.
+- **Mods are fitted automatically** to the active weapon (or the first other
+  weapon with room) so buying one is a single tap on a phone.

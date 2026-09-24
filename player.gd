@@ -46,6 +46,16 @@ var _step_clock := 0.0
 var silent_steps := false
 ## Body Armor: hits absorbed before health is touched.
 var armor_charges := 0
+## Hair Trigger: the next shot deals double (set by RelicHooks on reload).
+var hair_trigger := false
+## Seconds the trigger has been held (Tommy Gun tightens, Squad LMG steadies).
+var _held_fire := 0.0
+## Seconds since the last shot (Cold Feet).
+var _since_shot := 99.0
+## Burst Carbine: rounds left in the current burst.
+var _burst_left := 0
+var _burst_clock := 0.0
+var _laser: Telegraph
 var _slow_timer := 0.0
 var _slow_mult := 1.0
 var shots_fired: int = 0
@@ -104,6 +114,8 @@ func _physics_process(delta: float) -> void:
 	_fire_timer = maxf(_fire_timer - delta, 0.0)
 	_dodge_cd_timer = maxf(_dodge_cd_timer - delta, 0.0)
 	_slow_timer = maxf(_slow_timer - delta, 0.0)
+	_since_shot += delta
+	_tick_burst(delta)
 
 	if _dodging:
 		_process_dodge(delta)
@@ -120,7 +132,7 @@ func _physics_process(delta: float) -> void:
 
 func _process_move() -> void:
 	var dir := TouchInput.movement()
-	velocity = dir * move_speed * (_slow_mult if _slow_timer > 0.0 else 1.0)
+	velocity = dir * move_speed * (_slow_mult if _slow_timer > 0.0 else 1.0) * _speed_factor()
 	if dir.length() > 0.2:
 		_step_clock -= get_physics_process_delta_time() * dir.length()
 		if _step_clock <= 0.0:
@@ -135,11 +147,48 @@ func aim_direction() -> Vector2:
 	return direction.normalized() if direction.length() > 1.0 else Vector2.RIGHT
 
 func effective_fire_interval(weapon: WeaponItem) -> float:
-	return maxf((weapon.fire_rate if weapon else 0.34) * fire_rate / 0.34, 0.035)
+	var interval := (weapon.fire_rate if weapon else 0.34) * fire_rate / 0.34
+	if health == 1 and RunState.has_relic(&"adrenaline_futures"):
+		interval /= 1.4
+	if weapon and weapon.trait_id == &"desperate" and health <= 2:
+		interval *= 0.7
+	return maxf(interval, 0.035)
+
+## Relics and traits that change how fast you move right now.
+func _speed_factor() -> float:
+	var f := 1.0
+	if health == 1 and RunState.has_relic(&"adrenaline_futures"):
+		f *= 1.15
+	if RunState.has_relic(&"cold_feet") and _since_shot > 1.0:
+		f *= 1.25
+	var w: WeaponItem = loadout.get_active() if loadout else null
+	if w and w.trait_id == &"steadies" and _held_fire > 0.0:
+		f *= 0.8
+	return f
 
 func _process_aim() -> void:
 	sprite.rotation = aim_direction().angle()
 	muzzle.position = aim_direction() * 28.0
+	_update_laser()
+
+## Laser Sight: a thin red line from the muzzle to whatever it would hit.
+func _update_laser() -> void:
+	var w: WeaponItem = loadout.get_active() if loadout else null
+	if w == null or not w.has_mod(&"laser_sight") or _dead:
+		if _laser:
+			_laser.clear()
+		return
+	if _laser == null:
+		_laser = Telegraph.new()
+		add_child(_laser)
+	var from := muzzle.global_position
+	var to := from + aim_direction() * 700.0
+	var query := PhysicsRayQueryParameters2D.create(from, to, Layers.SOLID)
+	var hit := get_world_2d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		to = hit["position"]
+	_laser.clear()
+	_laser.line(from, to, Color(1.0, 0.15, 0.15, 0.55), 1.0)
 
 func _try_fire() -> void:
 	# Swap weapon (Q) and reload (R) if a loadout exists.
@@ -151,6 +200,10 @@ func _try_fire() -> void:
 	if _fire_timer > 0.0:
 		return
 	var firing := TouchInput.firing if TouchInput.touch_active and Settings.values["touch_mode"] != 2 else Input.is_action_pressed("fire")
+	if firing:
+		_held_fire += get_physics_process_delta_time()
+	else:
+		_held_fire = 0.0
 	if not firing or bullet_scene == null:
 		return
 
@@ -164,23 +217,58 @@ func _try_fire() -> void:
 	var rate := effective_fire_interval(weapon)
 	_fire_timer = rate
 
-	# Ammo check + consume.
+	# Ammo check + consume (Lucky Casing: one in five shots is free).
+	var last_round := false
 	if loadout and weapon:
-		if not loadout.consume_round():
+		var free: bool = RunState.has_relic(&"lucky_casing") and randf() < 0.2 and int(loadout._active_ammo()["mag"]) > 0
+		if not free and not loadout.consume_round():
 			# Out of ammo in mag: auto-reload attempt, no shot this press.
 			if not loadout.reloading:
 				Audio.play("dry_fire", global_position)
 			loadout.reload()
 			return
+		last_round = int(loadout._active_ammo()["mag"]) == 0
+	_spawn_bullet(weapon, last_round)
+	# Burst Carbine: two more rounds follow on their own.
+	if weapon and weapon.trait_id == &"burst":
+		_burst_left = 2
+		_burst_clock = 0.07
+		_fire_timer += 0.14
 
+func _tick_burst(delta: float) -> void:
+	if _burst_left <= 0:
+		return
+	_burst_clock -= delta
+	if _burst_clock > 0.0:
+		return
+	_burst_clock = 0.07
+	_burst_left -= 1
+	var weapon: WeaponItem = loadout.get_active() if loadout else null
+	if weapon == null or weapon.trait_id != &"burst" or loadout.reloading or not loadout.consume_round():
+		_burst_left = 0
+		return
 	_spawn_bullet(weapon)
 
-func _spawn_bullet(weapon: WeaponItem = null) -> void:
+func _spawn_bullet(weapon: WeaponItem = null, last_round := false) -> void:
 	var aim := aim_direction()
 	var pellets := weapon.pellets if weapon else 1
-	var spread := (weapon.spread if weapon else 0.0) * spread_multiplier
-	var dmg := (weapon.damage if weapon else 1) + damage_bonus
+	var spread := (weapon.eff_spread() if weapon else 0.0) * spread_multiplier
+	var dmg := (weapon.eff_damage() if weapon else 1) + damage_bonus
 	var bspeed := weapon.bullet_speed if weapon else 600.0
+	if weapon:
+		match weapon.trait_id:
+			&"tightens":
+				if _held_fire > 0.5:
+					spread *= 0.4
+			&"steadies":
+				spread *= lerpf(1.0, 0.3, clampf(_held_fire / 1.5, 0.0, 1.0))
+			&"last_round":
+				if last_round:
+					dmg *= 3
+	if hair_trigger:
+		hair_trigger = false
+		dmg *= 2
+	_since_shot = 0.0
 
 	for i in pellets:
 		var b := BulletPool.take(self, bullet_scene)
@@ -189,9 +277,13 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 		if spread > 0.0:
 			dir = aim.rotated(randf_range(-spread, spread))
 		if weapon:
-			b.pierce = weapon.pierce
+			b.pierce = weapon.pierce + (1 if RunState.has_relic(&"tracer_rounds") else 0)
 			b.ricochets = weapon.ricochets
 			b.knockback = weapon.knockback
+			b.weapon = weapon
+		if RunState.has_relic(&"stopping_power"):
+			b.knockback = maxf(b.knockback, 45.0) * 1.8
+			b.stagger = true
 		# Apply weapon stats to the bullet if it supports them.
 		if "damage" in b:
 			b.damage = dmg
@@ -212,7 +304,10 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 	Audio.play(shot_sound(weapon), global_position)
 	# Every shot is heard across the floor.
 	if has_node("/root/Noise"):
-		get_node("/root/Noise").emit_noise(global_position, &"gunshot", weapon.noise_radius if weapon else 900.0)
+		var loud := weapon.eff_noise() if weapon else 900.0
+		if RunState.has_relic(&"silent_partner"):
+			loud *= 0.6
+		get_node("/root/Noise").emit_noise(global_position, &"gunshot", loud)
 
 func _try_dodge() -> void:
 	if _dodge_cd_timer > 0.0:
@@ -262,7 +357,17 @@ func take_damage(amount: int = 1) -> void:
 		return
 	# Practice jobs are rehearsals: every hit still costs gold, grade and
 	# stock, but nobody dies in a dry run.
-	health = maxi(health - amount, 1 if RunFlow.practice else 0)
+	var floor_hp := 1 if RunFlow.practice else 0
+	# Golden Parachute: once per run, a lethal hit leaves you at 1 HP.
+	if health - amount <= 0 and not RunFlow.practice and RunState.has_relic(&"golden_parachute") and not RunState.parachute_used:
+		RunState.parachute_used = true
+		floor_hp = 1
+		if live_stock:
+			live_stock.report_shock(0.8, &"parachute")
+		var host_p := get_tree().current_scene
+		if host_p is HeistFloor:
+			host_p.fx.chip(global_position, "GOLDEN PARACHUTE", Palette.GOLD)
+	health = maxi(health - amount, floor_hp)
 	hits_taken += amount
 	var host := get_tree().current_scene
 	if host is HeistFloor:

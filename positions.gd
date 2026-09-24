@@ -18,7 +18,7 @@ static func slots() -> int:
 	var n := BASE_SLOTS
 	if RunState.character_profile and RunState.character_profile.id == &"broker":
 		n = 3
-	if RunState.has_perk(&"market_maker"):
+	if RunState.has_relic(&"market_maker"):
 		n += 1
 	return n
 
@@ -26,7 +26,7 @@ static func leverage() -> float:
 	var lev := BASE_LEVERAGE
 	if RunState.character_profile and RunState.character_profile.id == &"broker":
 		lev = 3.0
-	if RunState.has_perk(&"market_maker"):
+	if RunState.has_relic(&"market_maker"):
 		lev += 0.5
 	return lev
 
