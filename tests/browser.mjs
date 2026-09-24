@@ -74,11 +74,11 @@ try {
   await page.evaluate(() => localStorage.setItem('stock-rogue-career-v1', JSON.stringify({intel: 30, unlocked_assets: [], extraction_receipts: {'browser-fixture':30}})));
   await page.reload();
   await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
-  await tap('NETWORK');
+  await tap('CONNECTIONS');
   await tap('BUY Circuit Thief · 12');
   await tap('BUY Fast Hands · 8');
   await tap('EQUIP Fast Hands');
-  assert.equal((await state()).intel, 10, 'career purchases deduct Intel through touch UI');
+  assert.equal((await state()).clout, 10, 'career purchases deduct Clout through touch UI');
   await shot('phone-network');
   await page.reload();
   await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));

@@ -113,8 +113,33 @@ func _show_case_files() -> void:
 		if first == null:
 			first = card
 	_back_button("< BACK TO THE STREET", _to_home)
+	var connections := Button.new()
+	connections.text = "CONNECTIONS"
+	connections.position = Vector2(940, 636)
+	connections.size = Vector2(300, 60)
+	connections.pressed.connect(_open_connections)
+	_phase_holder.add_child(connections)
 	if first:
 		first.grab_focus.call_deferred()
+
+## The Connections board over the case files.
+func _open_connections() -> void:
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.02, 0.03, 0.85)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.add_child(dim)
+	var panel := CareerPanel.new()
+	panel.add_theme_stylebox_override("panel", VisualTheme.panel(Palette.GOLD_DIM, 20))
+	center.add_child(panel)
+	_root.add_child(center)
+	panel.closed.connect(_close_connections.bind(center, dim))
+
+func _close_connections(center: Control, dim: Control) -> void:
+	center.queue_free()
+	dim.queue_free()
 
 func _to_home() -> void:
 	RunFlow.queue_scene("res://home_screen.tscn")
@@ -224,7 +249,7 @@ func _make_crew_card(c: Dictionary) -> Button:
 	else:
 		card.stamp_text = "LOCKED"
 		card.stamp_color = Palette.STAMP_RED
-		var how := VisualTheme.label(c.get("unlock", ""), "", 16, Palette.STAMP_RED)
+		var how := VisualTheme.label("%s  (%s)" % [c.get("unlock", ""), Meta.unlock_progress(c["id"])], "", 16, Palette.STAMP_RED)
 		how.add_theme_font_override("font", VisualTheme.font("type_bold"))
 		how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		how.custom_minimum_size = Vector2(200, 0)

@@ -578,23 +578,32 @@ func _render_offer_rows() -> void:
 static func _price(base: int) -> int:
 	return roundi(base * 0.85) if RunState.has_relic(&"fences_discount") else base
 
+var _free_reroll_used := false
+
 func _update_reroll_button() -> void:
 	if _reroll_button:
-		_reroll_button.text = "Reroll stock ($%d)" % _price(_reroll_cost)
+		if RunState.has_perk(&"fence_friend") and not _free_reroll_used:
+			_reroll_button.text = "Reroll stock (free today)"
+		else:
+			_reroll_button.text = "Reroll stock ($%d)" % _price(_reroll_cost)
 
 ## Rerolling costs gold and gets pricier each use THIS visit -- resets to
 ## base cost next time you walk in. A real decision, not a free retry loop.
 func _on_reroll_offers() -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
-	if econ == null or not econ.can_afford(_price(_reroll_cost)):
+	var free := RunState.has_perk(&"fence_friend") and not _free_reroll_used
+	if not free and (econ == null or not econ.can_afford(_price(_reroll_cost))):
 		_reroll_button.modulate = RED
 		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(_reroll_button, "modulate", Color.WHITE, 0.4)
 		return
-	econ.spend(_price(_reroll_cost))
+	if free:
+		_free_reroll_used = true           # Friend at the Fence: one on the house
+	else:
+		econ.spend(_price(_reroll_cost))
+		_reroll_cost += REROLL_STEP
 	_refresh_gold_label()
-	_reroll_cost += REROLL_STEP
 	_current_offers = _offer_generator.call()
 	_render_offer_rows()
 	_update_reroll_button()
@@ -945,7 +954,8 @@ func _build_stock_manipulation() -> CanvasLayer:
 ## Perks drop out of the pool once owned, so they naturally stop appearing.
 func _fence_offer_generator() -> Array:
 	var qb: int = RunState.run_map.quota_block if RunState.run_map else 0
-	var scale := pow(1.55, qb)
+	# The Broker gets the Fence's friends-and-family rate.
+	var scale := pow(1.55, qb) * (1.0 - float(RunState.profile_value("fence_discount", 0.0)))
 	var pool: Array = [
 		{"name": "Spread Rumors", "desc": "+25% to your weakest venue.",
 			"price": int(120 * scale), "accent": GOLD, "cb": _op_pump_weak},
@@ -1033,8 +1043,6 @@ func _black_market_offer_generator() -> Array:
 	var qb: int = RunState.run_map.quota_block if RunState.run_map else 0
 	var scale := pow(1.4, qb)
 	var pool: Array = [
-		{"name": "Patch Kit", "desc": "Restore 1 health",
-			"price": int(140 * scale), "accent": Color(0.85, 0.4, 0.4), "cb": _buy_patch_kit},
 		{"name": "Ammo Crate", "desc": "Refill reserve ammo for all weapons",
 			"price": int(90 * scale), "accent": Color(0.85, 0.4, 0.4), "cb": _buy_ammo_crate},
 		{"name": "Kevlar Lining", "desc": "+1 max health, this run",
@@ -1044,6 +1052,10 @@ func _black_market_offer_generator() -> Array:
 		{"name": "Filed Trigger", "desc": "Fire 12% faster, this run",
 			"price": int(260 * scale), "accent": Color(0.6, 0.4, 0.85), "cb": _buy_filed_trigger},
 	]
+	# No healing is ever sold to the Legend.
+	if not RunState.profile_value("no_healing", false):
+		pool.append({"name": "Patch Kit", "desc": "Restore 1 health",
+			"price": int(140 * scale), "accent": Color(0.85, 0.4, 0.4), "cb": _buy_patch_kit})
 	# Two relics and a weapon mod rotate through the stock.
 	var relic_rng := RandomNumberGenerator.new()
 	relic_rng.randomize()

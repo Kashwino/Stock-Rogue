@@ -15,7 +15,7 @@ Ships as a single-threaded Web build (phones in landscape) and desktop.
 **Autoloads** (project.godot, in load order):
 `Look` (visual_theme.gd — palette/theme bootstrap), `Settings` (settings.cfg +
 browser localStorage), `RunEconomy` (gold), `RunSave` (3 case-file slots + a
-practice slot), `Meta` (career save: unlocks, stats, currency), `RunState` (the
+practice slot), `Meta` (career save: Clout, Connections unlocks, career stats, specialists), `RunState` (the
 live run: loadout, health, market, perks, positions), `RunFlow` (route position +
 scene changes), `Noise` (AI hearing bus), `TouchInput` (virtual sticks + input
 map guard), `Audio` (audio.gd: SFX pools, loops, layered music), `Controls` (mobile_controls.gd touch overlay),
@@ -92,7 +92,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       rival crews, strangers' tips, modifier-aware Black Market gear)
 - [x] Phase 8 — build identity (20 relics with RelicHooks, 6 weapon mods, a trait
       for every weapon)
-- [ ] Phase 9 — characters & meta progression
+- [x] Phase 9 — characters & meta progression (specialist traits, career stats,
+      feat unlocks with NEW SPECIALIST cards, Clout, Connections board)
 - [ ] Phase 10 — story & endings
 - [ ] Phase 11 — menus, pause, onboarding, settings
 - [ ] Phase 12 — balance, performance, final QA

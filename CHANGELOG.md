@@ -329,6 +329,32 @@
 - The Fence's old "Golden Parachute" perk is shown as **Stop-Loss Order** so it
   does not clash with the relic (its id is unchanged for saves).
 
+## Phase 9 — Characters & meta progression
+
+- **All five specialists play as their cards say** (`CharacterProfile` gained
+  trait fields; the crew `.tres` files carry them): the **Ghost** (2 hearts,
+  silent movement and dodges, gunshots −40%, cameras half as fast, starts with
+  a Silenced 9mm), the **Wolf** (4 hearts, +25% damage with fractions rounded
+  by chance, getting hit makes a noise pulse), the **Broker** (2 hearts, every
+  stock swing ×1.5, three positions at leverage 3, Fence −25%), the **Legend**
+  (1 heart, never healed — no Patch Kits, Second Wind or Blood Dividend — gold
+  and favourable stock moves ×2, starts with a random Classified-or-better
+  gun). The Operator is unchanged.
+- **Career tracking** across all three case files: fire-exit escapes, bosses
+  killed (stage bosses and lieutenants), best index, runs won, heists, gold,
+  deaths. Specialists unlock exactly as printed — 5 fire-exit escapes, 3
+  bosses, index 350 in one run, a win — with progress on each locked card and
+  a **NEW SPECIALIST** mugshot card on the job report or the front page.
+- **Clout** replaces Intel and is earned at the end of every run (stages ×3,
+  stage bosses ×2, index / 60, +8 for retiring; once per run). Older saves'
+  Intel carries over as Clout.
+- **Connections** (the renamed NETWORK board, also on the case-file screen):
+  weapons for the reward pool, one starting perk — Fast Hands, Quiet Shoes,
+  Cool Head, Seed Money (+$50), Friend at the Fence (a free reroll every
+  hideout visit), Patch Kit (the first drop to 1 HP heals 1) — and four coat
+  colours, with a crew column tracking every feat.
+- The front page lists the Clout the run earned.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -409,3 +435,8 @@
   Covert grade or better; you take one.
 - **Mods are fitted automatically** to the active weapon (or the first other
   weapon with room) so buying one is a single tap on a phone.
+- **Clout replaces Intel entirely** (the brief's run-end currency); jobs no
+  longer pay a per-extraction meta currency. The beta's built "rooms" left the
+  catalog, but a player who built Crew Quarters keeps the Wolf and Broker.
+- **A met feat counts as hired** even before the NEW SPECIALIST card has been
+  shown (e.g. progress made by an older build).

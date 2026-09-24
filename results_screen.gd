@@ -106,7 +106,8 @@ func show_result(result: Dictionary, venue_name: String = "") -> void:
 	_add_row("Guards down", "%d / %d" % [stats.get("kills", 0), stats.get("enemies_total", 0)])
 	if result.has("loot"):
 		_add_row("Loot banked", "$%d" % int(result["loot"]))
-	_add_row("Intel banked", "+%d" % int(result.get("intel", 0)) if result.get("meta_saved", true) else "not saved on this device")
+	if not result.get("meta_saved", true):
+		_add_row("Career", "not saved on this device")
 	var short_result: Dictionary = result.get("short", {})
 	if not short_result.is_empty():
 		_add_row("Short settled", "$%d back (%+d)" % [short_result["payout"], short_result["profit"]])
@@ -139,6 +140,11 @@ func show_result(result: Dictionary, venue_name: String = "") -> void:
 	get_tree().paused = true
 	_stamp.slam(0.35)
 	_continue_button.grab_focus()
+	# A feat met on this job hires a specialist on the spot.
+	if not RunFlow.practice:
+		var fresh := Meta.check_unlocks()
+		if not fresh.is_empty():
+			SpecialistPopup.present(self, fresh)
 
 func _add_row(label: String, value: String) -> void:
 	var row := HBoxContainer.new()

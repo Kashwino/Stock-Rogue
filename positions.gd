@@ -15,17 +15,13 @@ const BASE_SLOTS := 2
 const STAKES := [50, 100, 250]
 
 static func slots() -> int:
-	var n := BASE_SLOTS
-	if RunState.character_profile and RunState.character_profile.id == &"broker":
-		n = 3
+	var n: int = RunState.profile_value("position_slots", BASE_SLOTS)
 	if RunState.has_relic(&"market_maker"):
 		n += 1
 	return n
 
 static func leverage() -> float:
-	var lev := BASE_LEVERAGE
-	if RunState.character_profile and RunState.character_profile.id == &"broker":
-		lev = 3.0
+	var lev: float = RunState.profile_value("position_leverage", BASE_LEVERAGE)
 	if RunState.has_relic(&"market_maker"):
 		lev += 0.5
 	return lev

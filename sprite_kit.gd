@@ -561,6 +561,10 @@ static func hero_spec(profile_id: StringName, gun: int = Gun.PISTOL) -> Dictiona
 			s.merge({"body": Body.COAT, "head": Head.FEDORA, "color": Color("d8d0bd"),
 				"trim": Color("8c7333"), "hat": Color("e8e2d0"), "band": Color("1a1a1a"),
 				"skin": SKIN[2], "acc": ["scar"]}, true)
+	# A coat from the Connections board overrides the specialist's own.
+	var coat: Color = Meta.coat_color()
+	if coat.a > 0.0:
+		s["color"] = coat
 	return s
 
 ## Map a weapon to the silhouette the character holds.

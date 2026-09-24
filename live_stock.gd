@@ -98,6 +98,7 @@ func _asset() -> CriminalAsset:
 ## Apply a percentage move to the venue price, scaled by current volatility.
 ## pct is the base move (e.g. +0.01). Positive = up, negative = down.
 func _apply(pct: float) -> void:
+	pct = _specialist(pct)
 	# A player action doesn't just move the price once — it pushes the market's
 	# momentum, so a good run builds a visible rally and a bad one bleeds out.
 	_momentum += pct * 0.35
@@ -152,7 +153,16 @@ func report_sabotage() -> void:
 	market_event.emit(&"sabotage", 0.035)
 
 ## A big scripted move (boss pump, grade payout at extraction).
+## The Broker swings everything x1.5; the Legend doubles moves in his favour.
+func _specialist(pct: float) -> float:
+	pct *= float(RunState.profile_value("swing_mult", 1.0))
+	var favourable := (pct > 0.0) != inverted()
+	if favourable:
+		pct *= float(RunState.profile_value("gain_mult", 1.0))
+	return pct
+
 func report_shock(multiplier: float, kind: StringName = &"grade") -> void:
+	multiplier = 1.0 + _specialist(multiplier - 1.0)
 	_momentum += (multiplier - 1.0) * 0.5
 	_apply_raw(multiplier - 1.0)
 	player_moved.emit(multiplier - 1.0)

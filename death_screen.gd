@@ -70,6 +70,9 @@ func _present(headline: Array, summary: Dictionary, victory: bool) -> void:
 	tw.parallel().tween_property(_paper, "position", Vector2(170, 20), 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(_paper, "rotation", -0.025, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_button, "modulate:a", 1.0, 0.25)
+	var fresh: Array = summary.get("new_specialists", [])
+	if not fresh.is_empty():
+		tw.tween_callback(SpecialistPopup.present.bind(self, fresh))
 	var audio := get_node_or_null("/root/Audio")
 	if audio:
 		audio.play_ui("paper")
@@ -154,6 +157,8 @@ class Newspaper extends Control:
 			"BOARD INDEX CLOSED ... %d" % roundi(float(summary.get("index", 1.0))),
 			"BODIES COUNTED ....... %d" % int(summary.get("kills", 0)),
 		]
+		if summary.has("clout"):
+			facts.append("CLOUT ON THE STREET .. +%d" % int(summary["clout"]))
 		var col := VisualTheme.label("\n".join(facts), "", 17, Palette.INK)
 		col.add_theme_font_override("font", VisualTheme.font("mono"))
 		col.position = Vector2(480, 470)

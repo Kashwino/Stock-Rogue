@@ -5,18 +5,40 @@ extends Node
 
 const SAVE_PATH := "user://meta.save"
 const WEB_KEY := "stock-rogue-career-v1"
+## The Connections board: spend Clout on weapons for the reward pool, one
+## starting perk, and a coat colour. Modest by design; nothing here wins a
+## quota on its own.
 const CATALOG := {
 	&"circuit_smg": {"name": "Circuit Thief", "cost": 12, "kind": "weapon", "detail": "Quiet SMG with piercing rounds. Enters cases and chests."},
-	&"margin_call": {"name": "Margin Call", "cost": 18, "kind": "weapon", "detail": "Heavy rail pistol. Pierces three guards. Enters the loot pool."},
+	&"margin_call": {"name": "Margin Call", "cost": 18, "kind": "weapon", "detail": "Heavy rail pistol. Pierces guards. Enters the loot pool."},
 	&"hostile_takeover": {"name": "Hostile Takeover", "cost": 24, "kind": "weapon", "detail": "Rapid shotgun with ricochets. Enters the loot pool."},
-	&"fast_hands": {"name": "Fast Hands", "cost": 8, "kind": "perk", "detail": "Start with faster reloads. Equip one starting perk."},
-	&"quiet_shoes": {"name": "Quiet Shoes", "cost": 8, "kind": "perk", "detail": "Start with quieter footsteps. Equip one starting perk."},
-	&"cool_head": {"name": "Cool Head", "cost": 10, "kind": "perk", "detail": "Incoming heat reduced by 25%. Equip one starting perk."},
-	&"room_armory": {"name": "Armory", "cost": 8, "kind": "room", "detail": "Build an armory to research permanent weapon unlocks."},
-	&"room_training": {"name": "Training Room", "cost": 8, "kind": "room", "detail": "Build a training room to buy and equip starting perks."},
-	&"room_crew": {"name": "Crew Quarters", "cost": 12, "kind": "room", "detail": "Build crew quarters to recruit the Wolf and Broker."},
+	&"fast_hands": {"name": "Fast Hands", "cost": 8, "kind": "perk", "detail": "Start runs with 25% faster reloads."},
+	&"quiet_shoes": {"name": "Quiet Shoes", "cost": 8, "kind": "perk", "detail": "Start runs with silent dodge rolls."},
+	&"cool_head": {"name": "Cool Head", "cost": 10, "kind": "perk", "detail": "Incoming heat reduced by 25%."},
+	&"seed_money": {"name": "Seed Money", "cost": 10, "kind": "perk", "detail": "Start runs with $50 more."},
+	&"fence_friend": {"name": "Friend at the Fence", "cost": 12, "kind": "perk", "detail": "One free reroll every hideout visit."},
+	&"patch_kit": {"name": "Patch Kit", "cost": 14, "kind": "perk", "detail": "The first time you drop to 1 HP in a run, heal 1."},
+	&"coat_crimson": {"name": "Crimson Coat", "cost": 6, "kind": "coat", "detail": "A coat the colour of a bad quarter.", "color": "7a1f24"},
+	&"coat_ivory": {"name": "Ivory Coat", "cost": 6, "kind": "coat", "detail": "Clean enough to lie in.", "color": "d8d0bd"},
+	&"coat_midnight": {"name": "Midnight Coat", "cost": 6, "kind": "coat", "detail": "Blue-black, for rooftops.", "color": "18203a"},
+	&"coat_emerald": {"name": "Emerald Coat", "cost": 6, "kind": "coat", "detail": "Old money green.", "color": "1f4a32"},
 }
-var intel := 0
+## Feats that unlock the specialists (career-wide, across all case files).
+const UNLOCKS := {
+	&"ghost": ["fire_exit_escapes", 5, "Slip out a fire exit 5 times"],
+	&"wolf": ["bosses_killed", 3, "Put down 3 bosses"],
+	&"broker": ["best_index", 350, "Reach Index 350 in one run"],
+	&"legend": ["runs_won", 1, "Retire — win a full run"],
+}
+## The meta currency, earned at the end of every run.
+var clout := 0
+## Legacy name, kept so older saves and tools still read the balance.
+var intel: int:
+	get:
+		return clout
+	set(v):
+		clout = v
+var coat: StringName = &""
 var starting_perk: StringName = &""
 var extraction_receipts: Dictionary = {}
 var last_save_ok := true
@@ -51,7 +73,8 @@ func save_meta() -> bool:
 		"runs_survived": runs_survived,
 		"tutorial_seen": tutorial_seen,
 		"total_profit": total_profit,
-		"intel": intel,
+		"clout": clout,
+		"coat": String(coat),
 		"starting_perk": String(starting_perk),
 		"extraction_receipts": extraction_receipts,
 		"specialists": specialists,
@@ -77,7 +100,8 @@ func load_meta() -> void:
 	var parsed = JSON.parse_string(content)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return
-	intel = maxi(0, int(parsed.get("intel", 0)))
+	clout = maxi(0, int(parsed.get("clout", parsed.get("intel", 0))))
+	coat = StringName(parsed.get("coat", ""))
 	starting_perk = StringName(parsed.get("starting_perk", ""))
 	extraction_receipts = parsed.get("extraction_receipts", {})
 	prestige = int(parsed.get("prestige", 0))
@@ -111,7 +135,15 @@ func is_specialist_unlocked(id: StringName) -> bool:
 		return true
 	if id in specialists:
 		return true
+	if feat_met(id):
+		return true
 	return id in [&"wolf", &"broker"] and &"room_crew" in unlocked_assets
+
+func feat_met(id: StringName) -> bool:
+	if not UNLOCKS.has(id):
+		return false
+	var feat: Array = UNLOCKS[id]
+	return float(stats.get(feat[0], 0)) >= float(feat[1])
 
 func purchase(id: StringName) -> String:
 	if not CATALOG.has(id):
@@ -119,15 +151,27 @@ func purchase(id: StringName) -> String:
 	if id in unlocked_assets:
 		return "Already unlocked."
 	var cost: int = CATALOG[id]["cost"]
-	if intel < cost:
-		return "Earn Intel by escaping after kills or sabotage."
-	intel -= cost
+	if clout < cost:
+		return "Earn Clout by finishing runs: the index you reach, stages cleared, bosses."
+	clout -= cost
 	unlocked_assets.append(id)
 	if not save_meta():
-		intel += cost
+		clout += cost
 		unlocked_assets.erase(id)
 		return "Could not save. Purchase cancelled."
 	return "Unlocked permanently."
+
+## Wear an owned coat ("" for the specialist's own).
+func equip_coat(id: StringName) -> bool:
+	if id != &"" and (id not in unlocked_assets or not CATALOG.has(id) or CATALOG[id]["kind"] != "coat"):
+		return false
+	coat = id
+	return save_meta()
+
+func coat_color() -> Color:
+	if coat != &"" and CATALOG.has(coat) and CATALOG[coat].has("color"):
+		return Color(CATALOG[coat]["color"])
+	return Color(0, 0, 0, 0)
 
 func equip_starting_perk(id: StringName) -> bool:
 	if id != &"" and (id not in unlocked_assets or not CATALOG.has(id) or CATALOG[id]["kind"] != "perk"):
@@ -139,20 +183,41 @@ func equip_starting_perk(id: StringName) -> bool:
 		return false
 	return true
 
-func award_extraction(receipt: String, kills: int, sabotaged: int, boss: bool) -> int:
-	# A checkpoint replay cannot award the same contract a second time.
-	if extraction_receipts.has(receipt):
+## Clout for a finished run: stages cleared, stage bosses, the best index,
+## and a bonus for retiring. A receipt stops a run paying twice.
+func award_run(run_id: String, stages_cleared: int, bosses: int, index: float, won: bool) -> int:
+	if run_id == "" or extraction_receipts.has(run_id):
 		return 0
-	var earned := mini(6, maxi(0, kills) / 2) + mini(4, maxi(0, sabotaged)) + (4 if boss else 0)
-	if earned <= 0:
-		return 0
-	extraction_receipts[receipt] = earned
-	intel += earned
+	var earned := stages_cleared * 3 + bosses * 2 + int(maxf(index, 0.0) / 60.0) + (8 if won else 0)
+	earned = maxi(earned, 1)
+	extraction_receipts[run_id] = earned
+	clout += earned
 	if not save_meta():
-		intel -= earned
-		extraction_receipts.erase(receipt)
+		clout -= earned
+		extraction_receipts.erase(run_id)
 		return 0
 	return earned
+
+## Specialists whose feat is now met but who were not yet hired. Hires them
+## and returns their ids (for the NEW SPECIALIST card).
+func check_unlocks() -> Array:
+	var fresh: Array = []
+	for id: StringName in UNLOCKS:
+		if id in specialists or (id in [&"wolf", &"broker"] and &"room_crew" in unlocked_assets):
+			continue
+		if feat_met(id):
+			specialists.append(id)
+			fresh.append(id)
+	if not fresh.is_empty():
+		save_meta()
+	return fresh
+
+## Progress toward a specialist, e.g. "3 / 5".
+func unlock_progress(id: StringName) -> String:
+	if not UNLOCKS.has(id):
+		return ""
+	var feat: Array = UNLOCKS[id]
+	return "%d / %d" % [mini(int(stats.get(feat[0], 0)), int(feat[1])), int(feat[1])]
 
 ## Add to a career stat and save.
 func record(stat: String, amount = 1) -> void:
@@ -165,10 +230,9 @@ func record_best(stat: String, value: float) -> void:
 		stats[stat] = value
 		save_meta()
 
-## A boss or lieutenant put down: counts toward the Wolf, and pays Intel.
+## A boss or lieutenant put down: counts toward the Wolf.
 func record_boss(boss_id: StringName, is_lieutenant: bool) -> void:
 	stats["bosses_killed"] = int(stats.get("bosses_killed", 0)) + 1
-	intel += 1 if is_lieutenant else 3
 	if not is_lieutenant and String(boss_id) not in bosses_seen:
 		bosses_seen.append(String(boss_id))
 	save_meta()
@@ -193,7 +257,8 @@ func mark_tutorial_seen() -> void:
 
 ## Wipe all progression (for a "reset progress" settings button).
 func reset() -> void:
-	intel = 0
+	clout = 0
+	coat = &""
 	starting_perk = &""
 	extraction_receipts.clear()
 	prestige = 0

@@ -129,6 +129,8 @@ func on_heist_finished() -> void:
 
 ## Quota gate outcome from the map's sit-down with the collector.
 func resolve_quota() -> bool:
+	if not practice:
+		Meta.record_best("best_index", RunState.empire_index())
 	var passed := RunState.run_map.check_quota_full(RunEconomy.gold, RunState.empire_index())
 	if passed:
 		RunState.run_map.advance_step()
@@ -165,6 +167,15 @@ func end_run(victory: bool, cause: String = "") -> void:
 		summary["stage"] = RunState.run_map.stage_name()
 	if RunState.market:
 		summary["index"] = RunState.empire_index()
+	# The career: stats, Clout for the run, and any specialist it unlocked.
+	if not practice:
+		Meta.stats["runs_won" if victory else "deaths"] = int(Meta.stats.get("runs_won" if victory else "deaths", 0)) + 1
+		Meta.record_best("best_index", float(summary["index"]))
+		var cleared: int = RunState.run_map.current_stage if RunState.run_map else 0
+		if victory:
+			cleared = 4
+		summary["clout"] = Meta.award_run(RunState.run_id, cleared, RunState.bosses_down.size(), float(summary["index"]), victory)
+		summary["new_specialists"] = Meta.check_unlocks()
 	practice = false
 	RunState.end_run(victory)
 	RunSave.delete_run()               # roguelike: run save gone at death/win

@@ -115,6 +115,7 @@ var _focus_point := Vector2.ZERO
 var _focus_until_msec := 0
 var _lieutenant_shown := false
 var _alarm_quiet_until := -1.0
+var _left_by_fire_exit := false
 
 func _ready() -> void:
 	director = EnemyDirector.new()
@@ -593,7 +594,7 @@ func _on_enemy_died(e) -> void:
 	hooks.kill.emit(e)
 	_kills += 1
 	_kill_streak += 1
-	if RunState.has_perk(&"blood_dividend") and _kill_streak % 8 == 0 and player.health > 0:
+	if RunState.has_perk(&"blood_dividend") and _kill_streak % 8 == 0 and player.health > 0 and not RunState.profile_value("no_healing", false):
 		player.health = mini(player.health + 1, player.max_health)
 		player.health_changed.emit(player.health, player.max_health)
 	RunFlow.total_kills += 1
@@ -826,6 +827,7 @@ func _check_extraction() -> void:
 	var remaining: float = maxf(fire_exit_hold - _fire_hold, 0.0)
 	_prompt.text = "SLIPPING OUT THE FIRE EXIT…  %.1f" % remaining
 	if _fire_hold >= fire_exit_hold:
+		_left_by_fire_exit = true
 		_extract()
 
 ## Nearest OPEN fire exit within reach, or {}.
@@ -852,8 +854,13 @@ func _extract() -> void:
 	Audio.play("cash_register")
 	# Settle at the combat price, before the extraction grade changes it.
 	var short_result := ShortBook.settle(true)
-	var receipt := "%s:%s:%s" % [RunState.run_id, RunState.run_map.current_stage if RunState.run_map else 0, RunState.run_map.current_step if RunState.run_map else 0]
-	var earned_intel := Meta.award_extraction(receipt, _kills, security_disabled, marked)
+	# Career stats (never from a practice job): the specialists unlock on these.
+	if not RunFlow.practice:
+		Meta.stats["heists_completed"] = int(Meta.stats.get("heists_completed", 0)) + 1
+		Meta.stats["total_gold"] = int(Meta.stats.get("total_gold", 0)) + loot_banked
+		if _left_by_fire_exit:
+			Meta.stats["fire_exit_escapes"] = int(Meta.stats.get("fire_exit_escapes", 0)) + 1
+		Meta.save_meta()
 	var elapsed: float = active_elapsed
 	var stats := {
 		"hits_taken": player.hits_taken,
@@ -869,8 +876,8 @@ func _extract() -> void:
 	RunState.last_grade = result["grade_name"]
 	if boss_heist and marked and boss_id not in RunState.bosses_down:
 		RunState.bosses_down.append(boss_id)
-	result["intel"] = earned_intel
 	result["short"] = short_result
+	result["fire_exit"] = _left_by_fire_exit
 	result["boss_id"] = String(boss_id)
 	result["loot"] = loot_banked
 	result["meta_saved"] = Meta.last_save_ok

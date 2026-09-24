@@ -88,7 +88,7 @@ func _physics_process(delta: float) -> void:
 			sees = get_world_2d().direct_space_state.intersect_ray(query).is_empty()
 		if sees and detected <= 0.0:
 			Audio.play("camera_spot", global_position)
-		var rate := 0.5 if RunState.has_job_gear(&"signal_jammer") else 1.0
+		var rate: float = (0.5 if RunState.has_job_gear(&"signal_jammer") else 1.0) * float(RunState.profile_value("camera_spot_rate", 1.0))
 		detected = minf(1.6, detected + elapsed * rate) if sees else maxf(0.0, detected - elapsed * 2.0)
 		transmit_clock = maxf(0.0, transmit_clock - elapsed)
 		if detected >= 1.6 and transmit_clock <= 0.0:

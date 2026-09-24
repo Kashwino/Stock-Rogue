@@ -38,7 +38,7 @@ func _on_reload() -> void:
 		floor_host.player.hair_trigger = true
 
 func _on_room_cleared(_room: Node) -> void:
-	if not RunState.has_relic(&"second_wind") or _second_wind_used:
+	if not RunState.has_relic(&"second_wind") or _second_wind_used or RunState.profile_value("no_healing", false):
 		return
 	var p: Player = floor_host.player if floor_host else null
 	if p == null or not is_instance_valid(p) or p.is_dead():

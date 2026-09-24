@@ -90,6 +90,11 @@ func _setup(shot: String) -> Node:
 					RunFlow.pending_heist.contract = StringName(args["contract"])
 		"gallery":
 			return _gallery()
+		"specialist":
+			var popup := SpecialistPopup.new()
+			popup.ids = [StringName(args.get("who", "ghost"))]
+			get_tree().root.add_child(popup)
+			return popup
 		"death", "victory":
 			RunState.start_run(load("res://main_character.tres"), 11)
 			var d = load("res://death_screen.tscn").instantiate()
@@ -104,7 +109,7 @@ func _setup(shot: String) -> Node:
 			RunState.start_run(load("res://main_character.tres"), 11)
 			var r = load("res://results_screen.tscn").instantiate()
 			get_tree().root.add_child(r)
-			r.show_result({"grade_name": args.get("grade", "A"), "stock_delta": 1.12, "intel": 3, "loot": 184,
+			r.show_result({"grade_name": args.get("grade", "A"), "stock_delta": 1.12, "loot": 184,
 				"stats": {"hits_taken": 1, "kills": 9, "enemies_total": 14, "time_seconds": 187.0},
 				"breakdown": {"accuracy": 0.62}, "short": {"payout": 140, "profit": 65}}, "bank_job")
 			return r

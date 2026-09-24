@@ -37,8 +37,9 @@ var rumors: Array = []
 var job_gear: Array = []
 ## Relic ids owned this run (a stacking relic appears once per copy).
 var relics: Array = []
-## Golden Parachute fires once per run.
+## Golden Parachute fires once per run; so does the Patch Kit.
 var parachute_used := false
+var patch_used := false
 
 func has_relic(id: StringName) -> bool:
 	return id in relics
@@ -81,6 +82,7 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	job_gear.clear()
 	relics.clear()
 	parachute_used = false
+	patch_used = false
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
 
 	# Fresh loadout with the starter Sidearm.
@@ -105,18 +107,38 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	if Meta.starting_perk != &"":
 		add_perk(Meta.starting_perk)
 
-	if profile and profile.id == &"ghost":
-		add_perk(&"quiet_shoes")
-	if profile and profile.id == &"wolf":
-		add_stat_mod(&"damage_bonus", 1.0, 1.0)
+	_equip_starting_weapon(profile)
 
 	# Reset gold for the run.
 	if has_node("/root/RunEconomy"):
 		get_node("/root/RunEconomy").reset()
+		if has_perk(&"seed_money"):
+			get_node("/root/RunEconomy").gold += 50
+			get_node("/root/RunEconomy").gold_changed.emit(get_node("/root/RunEconomy").gold)
 
 	active = true
 	run_started.emit()
 	health_changed.emit(health, max_health)
+
+## The Ghost brings a Silenced 9mm; the Legend a random Classified-or-better.
+func _equip_starting_weapon(profile: CharacterProfile) -> void:
+	if profile == null or loadout == null:
+		return
+	if profile.start_weapon != &"":
+		for w: WeaponItem in ItemPool.weapons():
+			if w.id == profile.start_weapon:
+				loadout.equip(w)
+				return
+	if profile.start_weapon_min_rarity >= 0:
+		var pool := ItemPool.rewardable_weapons().filter(func(w): return int(w.rarity) >= profile.start_weapon_min_rarity)
+		if not pool.is_empty():
+			loadout.equip(pool[randi() % pool.size()])
+
+## Specialist traits, with the Operator's numbers as the fallback.
+func profile_value(key: String, fallback: Variant) -> Variant:
+	if character_profile and key in character_profile:
+		return character_profile.get(key)
+	return fallback
 
 func end_run(victory: bool) -> void:
 	active = false
@@ -164,6 +186,8 @@ func set_health(v: int) -> void:
 	health_changed.emit(health, max_health)
 
 func heal(amount: int) -> void:
+	if profile_value("no_healing", false):
+		return                            # the Legend: no healing, ever
 	set_health(health + amount)
 
 func add_max_health(amount: int) -> void:
@@ -232,6 +256,7 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"job_gear": job_gear.map(func(g): return String(g)),
 		"relics": relics.map(func(r): return String(r)),
 		"parachute_used": parachute_used,
+		"patch_used": patch_used,
 	}
 
 func _serialize_market() -> Dictionary:
@@ -279,6 +304,7 @@ func deserialize(data: Dictionary) -> void:
 		if Relics.DATA.has(StringName(r)):
 			relics.append(StringName(r))
 	parachute_used = bool(data.get("parachute_used", false))
+	patch_used = bool(data.get("patch_used", false))
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))
 

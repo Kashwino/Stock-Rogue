@@ -100,6 +100,7 @@ func _on_reload_finished() -> void:
 
 func _ready() -> void:
 	_refresh_kit()
+	silent_steps = RunState.profile_value("silent", false)
 	z_index = 10
 	add_to_group("player")
 	# Player on layer 4; still collides with walls (layer 1) for movement.
@@ -268,6 +269,11 @@ func _spawn_bullet(weapon: WeaponItem = null, last_round := false) -> void:
 	if hair_trigger:
 		hair_trigger = false
 		dmg *= 2
+	# The Wolf hits 25% harder; a fraction rounds up by chance.
+	var mult: float = RunState.profile_value("damage_mult", 1.0)
+	if mult != 1.0:
+		var scaled := dmg * mult
+		dmg = int(scaled) + (1 if randf() < fmod(scaled, 1.0) else 0)
 	_since_shot = 0.0
 
 	for i in pellets:
@@ -304,7 +310,7 @@ func _spawn_bullet(weapon: WeaponItem = null, last_round := false) -> void:
 	Audio.play(shot_sound(weapon), global_position)
 	# Every shot is heard across the floor.
 	if has_node("/root/Noise"):
-		var loud := weapon.eff_noise() if weapon else 900.0
+		var loud: float = (weapon.eff_noise() if weapon else 900.0) * float(RunState.profile_value("gunshot_noise", 1.0))
 		if RunState.has_relic(&"silent_partner"):
 			loud *= 0.6
 		get_node("/root/Noise").emit_noise(global_position, &"gunshot", loud)
@@ -324,7 +330,7 @@ func _try_dodge() -> void:
 		_dust_puff()
 		Audio.play("dodge", global_position)
 		# Diving across a room is audible, but only close by.
-		if has_node("/root/Noise") and not RunState.has_perk(&"quiet_shoes"):
+		if has_node("/root/Noise") and not RunState.has_perk(&"quiet_shoes") and not silent_steps:
 			get_node("/root/Noise").sprint(global_position)
 
 func _process_dodge(delta: float) -> void:
@@ -384,6 +390,17 @@ func take_damage(amount: int = 1) -> void:
 		live_stock.report_damage_taken(amount)   # stock crashes (bigger at low HP)
 	health_changed.emit(health, max_health)
 	hit_taken.emit(health)
+	# The Wolf is loud about getting hurt: the whole floor hears it.
+	if RunState.profile_value("noisy_when_hit", false) and has_node("/root/Noise"):
+		get_node("/root/Noise").emit_noise(global_position, &"gunshot", 650.0)
+	# Patch Kit (Connections): the first drop to 1 HP in a run heals 1.
+	if health == 1 and max_health > 1 and RunState.has_perk(&"patch_kit") and not RunState.patch_used and not RunState.profile_value("no_healing", false):
+		RunState.patch_used = true
+		health = 2
+		health_changed.emit(health, max_health)
+		var host_k := get_tree().current_scene
+		if host_k is HeistFloor:
+			host_k.fx.chip(global_position, "PATCH KIT +1", Palette.UP)
 	if health <= 0:
 		_die()
 	else:

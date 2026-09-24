@@ -180,9 +180,9 @@ func _run() -> void:
 	check(get_tree().paused and floor_scene.results._shown, "extraction presents results while paused")
 	check(RunEconomy.gold == extraction_gold + 105 and RunState.short_position.is_empty(), "real extraction pays short before grade movement")
 	check(int(RunState.contract_counts.get("bank_job", 0)) == 1 and floor_scene.results._shown, "a finished CONTRACT counts toward repeat-venue decay")
-	check(Meta.intel == 11, "real extraction banks sabotage and boss Intel (+3 for the boss)")
+	check(int(Meta.stats["heists_completed"]) == 1 and int(Meta.stats["bosses_killed"]) >= 1, "extraction records the career")
 	floor_scene._extract()
-	check(RunEconomy.gold == extraction_gold + 105 and Meta.intel == 11, "duplicate extraction cannot duplicate gold or Intel")
+	check(RunEconomy.gold == extraction_gold + 105 and int(Meta.stats["heists_completed"]) == 1, "duplicate extraction cannot duplicate gold or career stats")
 	floor_scene.queue_free()
 	await get_tree().process_frame
 	get_tree().paused = false
@@ -192,6 +192,7 @@ func _run() -> void:
 	await _test_bosses()
 	await _test_objectives()
 	await _test_build()
+	_test_specialists()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
@@ -233,15 +234,32 @@ func _run() -> void:
 	get_tree().quit(0)
 
 func _test_progression() -> void:
-	check(Meta.award_extraction("empty-fixture", 0, 0, false) == 0, "empty extraction earns no Intel")
-	check(Meta.award_extraction("earned-fixture", 12, 4, true) == 14, "extraction awards capped combat and sabotage Intel")
-	check(Meta.award_extraction("earned-fixture", 12, 4, true) == 0 and Meta.intel == 14, "checkpoint replay cannot duplicate Intel")
-	check(Meta.purchase(&"circuit_smg") == "Unlocked permanently." and Meta.intel == 2, "weapon unlock spends Intel")
+	Meta.reset()
+	check(Meta.award_run("run-fixture", 2, 2, 130.0, false) == 12, "clout: stages x3 + bosses x2 + index / 60")
+	check(Meta.award_run("run-fixture", 2, 2, 130.0, false) == 0 and Meta.clout == 12, "a run pays its clout once")
+	check(Meta.award_run("won-fixture", 4, 4, 600.0, true) == 38, "retiring adds the win bonus")
+	Meta.clout = 14
+	check(Meta.purchase(&"circuit_smg") == "Unlocked permanently." and Meta.clout == 2, "weapon unlock spends Clout")
 	check(ItemPool.rewardable_weapons().size() == 17, "purchased weapon enters reward pool")
 	Meta.purchase(&"circuit_smg")
-	check(Meta.intel == 2, "duplicate unlock does not spend")
+	check(Meta.clout == 2, "duplicate unlock does not spend")
 	Meta.purchase(&"cool_head")
-	check(Meta.intel == 2 and &"cool_head" not in Meta.unlocked_assets, "unaffordable unlock is atomic")
+	check(Meta.clout == 2 and &"cool_head" not in Meta.unlocked_assets, "unaffordable unlock is atomic")
+	# Specialists unlock through career feats, exactly as the cards say.
+	check(Meta.check_unlocks().is_empty(), "no feats, no specialists")
+	Meta.stats["fire_exit_escapes"] = 5
+	Meta.stats["bosses_killed"] = 2
+	check(Meta.check_unlocks() == [&"ghost"] and Meta.is_specialist_unlocked(&"ghost"), "five fire-exit escapes hire the Ghost")
+	check(not Meta.is_specialist_unlocked(&"wolf") and Meta.unlock_progress(&"wolf") == "2 / 3", "the Wolf needs three bosses")
+	Meta.stats["best_index"] = 351.0
+	Meta.stats["runs_won"] = 1
+	var hired := Meta.check_unlocks()
+	check(&"broker" in hired and &"legend" in hired, "index 350 hires the Broker; a win hires the Legend")
+	Meta.clout = 6
+	Meta.purchase(&"coat_crimson")
+	check(Meta.equip_coat(&"coat_crimson") and Meta.coat_color().a > 0.0, "coats can be bought and worn")
+	Meta.load_meta()
+	check(Meta.coat == &"coat_crimson" and &"ghost" in Meta.specialists, "career survives a reload")
 	Meta.reset()
 
 func _test_modifiers() -> void:
@@ -736,10 +754,10 @@ func _test_bosses() -> void:
 	check(is_instance_valid(job.lieutenant) and job.lieutenant.lieutenant and job.lieutenant.elite, "ordinary jobs keep a titled lieutenant")
 	check(job.lieutenant.get_parent() == job.generator.boss_room and job.lieutenant.elite_tag.contains("\""), "the lieutenant runs the boss room under his name")
 	var lt := job.lieutenant
-	var intel_before := Meta.intel
+	var kills_before := int(Meta.stats["bosses_killed"])
 	lt.shield_hp = 0
 	lt.take_damage(99999)
-	check(Meta.intel == intel_before + 1 and Meta.stats["bosses_killed"] >= 1, "a lieutenant kill counts toward the career")
+	check(int(Meta.stats["bosses_killed"]) == kills_before + 1, "a lieutenant kill counts toward the career")
 	job.queue_free()
 	await get_tree().process_frame
 	for id: StringName in [&"landlord", &"ambassador", &"chairman"]:
@@ -776,6 +794,31 @@ func _test_bosses() -> void:
 		heist.queue_free()
 		await get_tree().process_frame
 		await get_tree().process_frame
+
+## The four specialists play as their cards say.
+func _test_specialists() -> void:
+	var ghost: CharacterProfile = load("res://crew_ghost.tres")
+	RunState.start_run(ghost, 77)
+	var weapons := (RunState.loadout.big + RunState.loadout.small).filter(func(w): return w != null).map(func(w): return w.id)
+	check(RunState.max_health == 2 and &"silenced9mm" in weapons, "the Ghost: two hearts and a Silenced 9mm")
+	check(RunState.profile_value("gunshot_noise", 1.0) == 0.6 and RunState.profile_value("camera_spot_rate", 1.0) == 0.5, "the Ghost: quieter shots, slower cameras")
+	var broker: CharacterProfile = load("res://crew_broker.tres")
+	RunState.start_run(broker, 77)
+	check(Positions.slots() == 3 and Positions.leverage() == 3.0, "the Broker: three positions at leverage 3")
+	var legend: CharacterProfile = load("res://crew_legend.tres")
+	RunState.start_run(legend, 77)
+	var best := (RunState.loadout.big + RunState.loadout.small).filter(func(w): return w != null and w.id != &"pistol")
+	check(RunState.max_health == 1 and not best.is_empty() and int(best[0].rarity) >= Rarity.Tier.CLASSIFIED, "the Legend: one heart and a Classified-or-better gun")
+	var gold := RunEconomy.gold
+	RunEconomy.add_bonus(50)
+	check(RunEconomy.gold == gold + 100, "the Legend doubles gold gains")
+	RunState.health = 1
+	RunState.heal(1)
+	check(RunState.health == 1, "the Legend is never healed")
+	var wolf: CharacterProfile = load("res://crew_wolf.tres")
+	RunState.start_run(wolf, 77)
+	check(RunState.max_health == 4 and RunState.profile_value("damage_mult", 1.0) == 1.25, "the Wolf: four hearts, +25% damage")
+	RunState.start_run(load("res://main_character.tres"), 4817)
 
 func _test_lockdown() -> void:
 	RunFlow.pending_heist.modifier = &"lockdown"

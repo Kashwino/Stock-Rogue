@@ -62,7 +62,7 @@ func _build_main_menu() -> Control:
 	if RunFlow.can_continue():
 		col.add_child(_button("CONTINUE", _on_continue))
 	col.add_child(_button("QUICK HEIST", RunFlow.start_quick_test))
-	col.add_child(_button("NETWORK", _on_network))
+	col.add_child(_button("CONNECTIONS", _on_network))
 	col.add_child(_button("SETTINGS", _on_open_settings))
 	if not OS.has_feature("web"):
 		col.add_child(_button("QUIT", _on_quit))
