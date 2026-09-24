@@ -455,26 +455,53 @@ class CaseFileCard extends Button:
 		if not node.is_boss():
 			# CONTRACT (green) pumps the venue; HIT (red) crashes it.
 			var chip := Label.new()
-			chip.text = " %s " % node.contract_label()
+			chip.text = " %s " % (node.contract_label() if node.known() else "???")
 			chip.add_theme_font_override("font", VisualTheme.font("heading_bold"))
 			chip.add_theme_font_size_override("font_size", 16)
 			chip.add_theme_color_override("font_color", Palette.PAPER)
-			chip.add_theme_stylebox_override("normal", VisualTheme.box(Palette.STAMP_RED if node.is_hit() else Palette.STAMP_GREEN, Color.TRANSPARENT, 0, 2, 3))
+			var chip_col := Palette.MUTED if not node.known() else (Palette.STAMP_RED if node.is_hit() else Palette.STAMP_GREEN)
+			chip.add_theme_stylebox_override("normal", VisualTheme.box(chip_col, Color.TRANSPARENT, 0, 2, 3))
 			chip.position = Vector2(26, 42)
 			chip.size = Vector2(110, 24)
 			chip.rotation = -0.05
 			chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			chip.tooltip_text = node.contract_detail()
 			add_child(chip)
-		var detail := VisualTheme.label(node.contract_detail() + "\n" + node.modifier_name(), "", 15, Color("3a2a12"))
+		# Objective, the contract's terms, then the modifiers as icons.
+		var known := node.known() or node.is_boss()
+		var obj_text := "OBJECTIVE: " + ("TAKE HIM DOWN" if node.is_boss() else (Objectives.title(node.objective) if known else "???"))
+		var obj := VisualTheme.label(obj_text, "", 15, Palette.STAMP_RED if node.is_boss() else Palette.INK)
+		obj.add_theme_font_override("font", VisualTheme.font("type_bold"))
+		obj.position = Vector2(16, 288)
+		add_child(obj)
+		var detail := VisualTheme.label("", "", 14, Color("3a2a12"))
 		detail.add_theme_font_override("font", VisualTheme.font("type"))
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		detail.position = Vector2(16, 290)
+		detail.position = Vector2(16, 308)
 		detail.custom_minimum_size = Vector2(size.x - 32, 0)
-		detail.size = Vector2(size.x - 32, 80)
 		if node.is_boss():
-			detail.text = Story.boss_title(node.boss_id) + "\nThe car won't leave while he stands."
+			detail.text = Story.boss_title(node.boss_id)
+		elif known:
+			detail.text = node.contract_detail()
+		else:
+			detail.text = "A stranger's tip. Details unknown."
 		add_child(detail)
+		detail.set_deferred("size", Vector2(size.x - 32, 0))
+		var icons := HBoxContainer.new()
+		icons.position = Vector2(16, size.y - 44)
+		icons.add_theme_constant_override("separation", 6)
+		icons.mouse_filter = Control.MOUSE_FILTER_PASS
+		add_child(icons)
+		if not node.is_boss():
+			var ids: Array = [node.objective] + node.modifiers if known else [&"?"]
+			for id in ids:
+				var icon := ModIcon.new()
+				icon.id = id
+				icon.size = Vector2(30, 30)
+				icons.add_child(icon)
+			if known and node.modifiers.is_empty():
+				icons.add_child(VisualTheme.label("STANDARD SECURITY", "", 13, Color("5a4a30")))
+		tooltip_text = _card_tooltip()
 		if node.is_boss() or node.is_valuable:
 			var stamp := StampArt.new()
 			stamp.text = "PRIORITY TARGET" if node.is_boss() else "HIGH VALUE"
@@ -483,5 +510,18 @@ class CaseFileCard extends Button:
 			add_child(stamp)
 			stamp.position = Vector2(size.x - stamp.size.x - 12, 150)
 		for child in get_children():
-			if child is Control:
+			if child is Control and child is not HBoxContainer:
 				child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# Icons keep their own tooltips and pass clicks through to the card.
+		for child in find_children("*", "ModIcon", true, false):
+			child.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	func _card_tooltip() -> String:
+		if node.is_boss():
+			return Story.boss_title(node.boss_id)
+		if not node.known():
+			return ModIcon.describe(&"?")
+		var lines: Array = [Objectives.title(node.objective) + ": " + Objectives.brief(node.objective), node.contract_detail()]
+		for m in node.modifiers:
+			lines.append(ModIcon.describe(m))
+		return "\n".join(lines)

@@ -266,6 +266,38 @@
 - The `Audio` autoload stops its players on shutdown (no leaked playbacks
   when the game quits mid-sound).
 
+## Phase 7 — Objectives & map modifiers
+
+- **Six objectives** (`objectives.gd`), weighted per stage, shown on the case
+  file (with an icon), the intro card and the HUD tracker; failing an
+  optional objective only costs its bonus:
+  - **Loot** — the default.
+  - **Assassination** — a named VIP (TARGET: "SAL" MORETTI) sits in a far
+    room, marked on the minimap; a bounty and a jolt to the venue.
+  - **Smash & Grab** — the alarm is ringing the moment you walk in; 2–3
+    marked jackpot rooms hold three big valuables each; a lockdown seals every
+    fire exit (never the main door) when its clock runs out.
+  - **Ghost Run** — no kills and no witnessed alarms: a big venue move and a fee.
+  - **Sabotage** — hold USE for 2 s at 2–3 marked points; each charge knocks
+    the venue, and all of them crash it on the way out (doubly likely on HITs).
+  - **The Package** — carry a case to the car at 85% speed.
+- **Eight map modifiers**, 0–2 per lead (more in later stages), drawn as
+  icons with tooltips on the case files and as chips on the intro card:
+  Heavy Response (vans twice as often, loot ×1.5 — was ×2), Lockdown (fire
+  exits sealed, grade swings ×1.5), Insider, Blackout (dark building, guards
+  see 40% less), Camera Network (two cameras per room), Payday (loot ×1.5,
+  guards ×1.3), Skeleton Crew (guards ×0.6, loot ×0.7) and **Rival Crew**:
+  3–4 masked rivals who fight the guards and you (guards and rivals now pick
+  targets by faction; no friendly fire within a side).
+- **Strangers' tips**: from the City on, some leads hide their objective,
+  contract and modifiers behind "???" unless you run a Recon Network.
+- **The Black Market reacts** to the next leads' modifiers with gear for that
+  job (always one slot when any applies): Night-Vision Goggles (Blackout),
+  Signal Jammer (Camera Network), Police Scanner (Heavy Response), Bolt Cutters
+  (Lockdown), Body Armor (Rival Crew), Duffel Bag (Payday).
+- The screenshot tool takes `objective=`, `mods=`, `contract=` and
+  `then=method:arg`.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -334,3 +366,9 @@
   immediately and mostly set the scene.
 - **Boss jobs are always CONTRACTs**; the boss's own shock follows the tape
   direction (inverted while a short targets the venue).
+- **"Alarms" for a Ghost Run** means any witnessed report: a camera spotting
+  you, a guard's radio call, or someone pulling an alarm panel.
+- **Rival crew kills are not paid or counted** toward the grade; nobody hired
+  you for them.
+- **Next-job gear** is a stand-in for the relics that arrive in Phase 8; it is
+  consumed by the job it was bought for.

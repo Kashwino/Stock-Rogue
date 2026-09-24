@@ -31,6 +31,13 @@ var contract_counts: Dictionary = {}
 ## The news wire (latest first) and rumors waiting to land (see MarketNews).
 var news: Array = []
 var rumors: Array = []
+## Gear bought for the NEXT job only (Black Market, reacting to its modifiers):
+## night_vision, signal_jammer, police_scanner, bolt_cutters, body_armor,
+## duffel_bag. Cleared when that job ends.
+var job_gear: Array = []
+
+func has_job_gear(id: StringName) -> bool:
+	return id in job_gear
 
 var max_health: int = 3
 var health: int = 3
@@ -54,6 +61,7 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	contract_counts.clear()
 	news.clear()
 	rumors.clear()
+	job_gear.clear()
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
 
 	# Fresh loadout with the starter Sidearm.
@@ -202,6 +210,7 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"contract_counts": contract_counts.duplicate(),
 		"news": news.duplicate(true),
 		"rumors": rumors.duplicate(true),
+		"job_gear": job_gear.map(func(g): return String(g)),
 	}
 
 func _serialize_market() -> Dictionary:
@@ -241,6 +250,9 @@ func deserialize(data: Dictionary) -> void:
 	contract_counts = Dictionary(data.get("contract_counts", {})).duplicate()
 	news = Array(data.get("news", [])).duplicate(true)
 	rumors = Array(data.get("rumors", [])).duplicate(true)
+	job_gear.clear()
+	for g in data.get("job_gear", []):
+		job_gear.append(StringName(g))
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))
 

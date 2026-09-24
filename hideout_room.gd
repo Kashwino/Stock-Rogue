@@ -1027,13 +1027,43 @@ func _black_market_offer_generator() -> Array:
 		{"name": "Filed Trigger", "desc": "Fire 12% faster, this run",
 			"price": int(260 * scale), "accent": Color(0.6, 0.4, 0.85), "cb": _buy_filed_trigger},
 	]
+	# Case-specific stock: whatever the next leads' modifiers call for.
+	var gear := {
+		&"blackout": [&"night_vision", "Night-Vision Goggles", "Next job: the dark is less dark, and your flashlight reaches further."],
+		&"camera_network": [&"signal_jammer", "Signal Jammer", "Next job: cameras take twice as long to spot you."],
+		&"heavy_police": [&"police_scanner", "Police Scanner", "Next job: vans arrive 30% later."],
+		&"lockdown": [&"bolt_cutters", "Bolt Cutters", "Next job: one fire exit stays open through a lockdown."],
+		&"rival_crew": [&"body_armor", "Body Armor", "Next job: the first hit you take is absorbed."],
+		&"payday": [&"duffel_bag", "Duffel Bag", "Next job: loot +15%."],
+	}
+	var offered: Array = []
+	var gear_pool: Array = []
+	if RunState.run_map:
+		for opt in RunState.run_map.peek_next_heist_options():
+			if not (opt is MapNode) or not opt.known():
+				continue
+			for m in opt.modifiers:
+				if gear.has(m) and m not in offered and not RunState.has_job_gear(gear[m][0]):
+					offered.append(m)
+					var g: Array = gear[m]
+					gear_pool.append({"name": g[1], "desc": g[2], "price": int(150 * scale),
+						"accent": Color(1.0, 0.65, 0.15), "cb": _buy_job_gear.bind(g[0])})
 	if _next_rarity >= 4:
 		var tier_names := ["Light", "Light", "Moderate", "Moderate", "Heavy", "Heavy", "Maximum"]
 		var tier_word: String = tier_names[clampi(_next_rarity, 0, tier_names.size() - 1)]
 		pool.append({"name": "Insider Blueprints",
 			"desc": "Advance intel on a %s job: +1 max health and +8%% fire rate." % tier_word.to_lower(),
 			"price": int(480 * scale), "accent": Color(1.0, 0.65, 0.15), "cb": _buy_blueprints})
-	return _sample_pool(pool, 3)
+	# One slot always goes to gear for the coming job when there is any.
+	var picks: Array = []
+	if not gear_pool.is_empty():
+		gear_pool.shuffle()
+		picks.append(gear_pool.pop_back())
+	return picks + _sample_pool(pool + gear_pool, 3 - picks.size())
+
+func _buy_job_gear(id: StringName) -> void:
+	if id not in RunState.job_gear:
+		RunState.job_gear.append(id)
 
 func _buy_patch_kit() -> void:
 	RunState.heal(1)

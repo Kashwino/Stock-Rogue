@@ -240,7 +240,13 @@ func _apply_archetype_visual() -> void:
 	if sprite == null:
 		return
 	sprite.modulate = Color.WHITE
-	kit = SpriteKit.dress(sprite, visual_spec())
+	var spec := visual_spec()
+	if faction == &"rival":
+		# The other crew: street clothes, masks, a green armband.
+		spec.merge({"body": SpriteKit.Body.HOODIE if spec.get("body") != SpriteKit.Body.DRONE else spec["body"],
+			"head": SpriteKit.Head.BALACLAVA, "color": Color("23302a"), "trim": Palette.NEON_GREEN,
+			"hat": Color("121814")}, true)
+	kit = SpriteKit.dress(sprite, spec)
 
 ## Silhouette first, colour second: every archetype gets its own body, head
 ## and weapon shape so a room reads at a glance.
@@ -403,6 +409,45 @@ func _acquire_player() -> void:
 	if players.size() > 0:
 		_player = players[0]
 
+## Guards and rival crews fight each other as well as the player. `_player`
+## is whoever this fighter is after right now (normally the player).
+var faction: StringName = &"guard"
+var _retarget_clock := 0.0
+static var _rival_round: PackedScene = null
+
+func _retarget(delta: float) -> void:
+	_retarget_clock -= delta
+	if _retarget_clock > 0.0:
+		return
+	_retarget_clock = 0.4
+	var host := heist()
+	if host == null or (faction == &"guard" and host.rivals_alive() == 0):
+		if not (_player is Player):
+			_acquire_player()
+		return
+	var real: Node2D = host.player
+	var best: Node2D = real
+	var best_d := INF
+	if is_instance_valid(real) and not real.is_dead():
+		best_d = global_position.distance_to(real.global_position)
+	for other in (host.director.neighbours(global_position, sight_range) if host.director else []):
+		if other == self or not is_instance_valid(other) or other._dead or other.faction == faction:
+			continue
+		var d := global_position.distance_to(other.global_position)
+		if d < best_d * 0.9:
+			best_d = d
+			best = other
+	if best:
+		_player = best
+
+## Rounds that can hit fighters: used when the target is not the player.
+func _round_for_target() -> PackedScene:
+	if _player is Player or _player == null:
+		return enemy_bullet_scene
+	if _rival_round == null:
+		_rival_round = load("res://bullet.tscn")
+	return _rival_round
+
 # --------------------------------------------------------------- hearing ----
 func _on_noise(pos: Vector2, radius: float, kind: StringName) -> void:
 	if _dead:
@@ -433,6 +478,8 @@ func _can_see_player() -> bool:
 		return false
 	if _player.has_method("is_dead") and _player.is_dead():
 		return false
+	if _player is Enemy and _player._dead:
+		return false
 	var to_player := _player.global_position - global_position
 	if to_player.length() > sight_range:
 		return false
@@ -457,6 +504,9 @@ func _physics_process(delta: float) -> void:
 	if brain:
 		brain.tick(delta)
 	_tick_elite(delta)
+	_retarget(delta)
+	if not is_instance_valid(_player):
+		return
 
 	# Sight only triggers hunting once the guard is PROVOKED — the player has
 	# entered its room, fired a shot it heard, or shot it. Until then a guard
@@ -717,7 +767,7 @@ func _shoot(dir: Vector2) -> void:
 func _fire_bullet(dir: Vector2, dmg: int, spd: float, loud := true) -> Node:
 	if enemy_bullet_scene == null or not is_inside_tree():
 		return null
-	var b := BulletPool.take(self, enemy_bullet_scene)
+	var b := BulletPool.take(self, _round_for_target())
 	b.damage = dmg
 	b.speed = spd
 	b.global_position = global_position + dir * 28.0

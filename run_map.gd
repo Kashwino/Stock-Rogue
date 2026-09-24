@@ -132,14 +132,21 @@ func _make_heist_option(stage: int, floor_rarity: int, venues: Array, heist_inde
 	node.room_rarity = floor_rarity + _rng.randi_range(0, 1)
 	node.venue_id = venues[_rng.randi() % venues.size()]
 	node.is_valuable = _rng.randf() < 0.3
-	# Modifiers come from an independent hash so later content passes can add
-	# roll types without reshuffling every other choice on a seed.
-	var tags: Array = [&"heavy_police", &"lockdown", &"insider"]
-	node.modifier = tags[(absi(hash(str(run_seed) + ":" + str(stage) + ":" + str(heist_index))) + option_index) % tags.size()]
-	# Roughly a third of leads are HITs, from their own hash for the same reason.
+	# Contract type, objective and modifiers each come from their own seeded
+	# roll, so adding content never reshuffles the rest of a seed's route.
+	var tag := ":" + str(run_seed) + ":" + str(stage) + ":" + str(heist_index) + ":" + str(option_index)
 	var roll := RandomNumberGenerator.new()
-	roll.seed = hash("hit:" + str(run_seed) + ":" + str(stage) + ":" + str(heist_index) + ":" + str(option_index))
+	roll.seed = hash("hit" + tag)
 	node.contract = &"hit" if roll.randf() < 0.34 else &"contract"
+	var obj := RandomNumberGenerator.new()
+	obj.seed = hash("objective" + tag)
+	node.objective = Objectives.pick(obj, stage, node.is_hit())
+	var mods := RandomNumberGenerator.new()
+	mods.seed = hash("modifiers" + tag)
+	node.modifiers = Objectives.pick_modifiers(mods, stage)
+	node.modifier = node.modifiers[0] if not node.modifiers.is_empty() else &""
+	# From the City on, some leads come from strangers: details unknown.
+	node.mystery = stage >= 1 and mods.randf() < 0.2
 	return node
 
 # --- Progression ---

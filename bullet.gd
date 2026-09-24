@@ -25,6 +25,9 @@ func setup(direction: Vector2, shooter: Node) -> void:
 		_excluded.append(shooter.get_rid())
 	if _art:
 		_art.length = clampf(speed * 0.028, 12.0, 34.0)
+		# Guards and rival crews shooting each other use these rounds too;
+		# they stay red so gold always means the player's fire.
+		_art.hostile = not (shooter is Player)
 		_art.queue_redraw()
 
 ## Back from the pool: a fresh round.
@@ -112,6 +115,11 @@ func _try_hit(target: Node) -> void:
 		return
 	if target.get_instance_id() in _hit_ids:
 		return
+	# No friendly fire between guards, or between rival crew members.
+	if is_instance_valid(_shooter) and "faction" in _shooter and "faction" in target and _shooter.faction == target.faction:
+		if target is CollisionObject2D:
+			_excluded.append(target.get_rid())
+		return
 	_hit_ids.append(target.get_instance_id())
 	if target is CollisionObject2D:
 		_excluded.append(target.get_rid())
@@ -123,7 +131,10 @@ func _try_hit(target: Node) -> void:
 			Audio.play("impact_body", global_position)
 		else:
 			host.fx.spark(global_position, -_dir, Palette.NEON_CYAN)
-	target.take_damage(damage)
+	if target.is_in_group("civilians") and target.has_method("take_blast"):
+		target.take_blast(damage, _shooter is Player)
+	else:
+		target.take_damage(damage)
 	var push := knockback if knockback > 0.0 else 45.0
 	if target is CharacterBody2D and not target.is_in_group("boss") and is_instance_valid(target) and target.is_inside_tree():
 		target.velocity += _dir * push

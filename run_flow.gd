@@ -214,6 +214,7 @@ func start_quick_test() -> void:
 	pending_heist.boss_id = &"auditor"
 	pending_heist.room_rarity = 1
 	pending_heist.modifier = &"insider"
+	pending_heist.modifiers = [&"insider"]
 	practice = true
 	_change(ARENA_SCENE)
 

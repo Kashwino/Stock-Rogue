@@ -272,6 +272,13 @@ class Minimap extends Control:
 		if floor_host.car:
 			var cp: Vector2 = origin + (floor_host.car.global_position - bounds.position) * k
 			draw_rect(Rect2(cp - Vector2(5, 3), Vector2(10, 6)), Palette.GOLD)
+		# Objective marks (VIP, jackpots, charges, the package) always show.
+		if floor_host.has_method("objective_points"):
+			var blink := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008)
+			for at: Vector2 in floor_host.objective_points():
+				var op: Vector2 = origin + (at - bounds.position) * k
+				draw_circle(op, 5.0, Palette.with_alpha(Palette.DANGER, blink))
+				draw_arc(op, 7.5, 0, TAU, 12, Palette.PAPER, 1.5)
 		if is_instance_valid(floor_host.player):
 			var pp: Vector2 = origin + (floor_host.player.global_position - bounds.position) * k
 			draw_circle(pp, 4.0, Color.WHITE)

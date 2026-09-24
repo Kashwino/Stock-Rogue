@@ -93,6 +93,7 @@ try {
   assert.equal(s.modifier, 'insider');
   assert(s.map_revealed && s.security_count >= 8, 'Insider reveals layout and security devices exist');
   await tap('MAP');
+  await wait(() => window.stockRogueQA?.map_visible && window.stockRogueQA?.paused);
   assert((await state()).map_visible && (await state()).paused, 'tactical map opens and pauses by touch');
   await shot('phone-insider-map');
   await tap('MAP');

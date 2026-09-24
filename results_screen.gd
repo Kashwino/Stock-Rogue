@@ -110,6 +110,9 @@ func show_result(result: Dictionary, venue_name: String = "") -> void:
 	var short_result: Dictionary = result.get("short", {})
 	if not short_result.is_empty():
 		_add_row("Short settled", "$%d back (%+d)" % [short_result["payout"], short_result["profit"]])
+	var obj: Dictionary = result.get("objective", {})
+	if not obj.is_empty():
+		_add_row(String(obj.get("title", "Objective")), String(obj.get("text", "")))
 	if result.has("contract"):
 		_add_row("Job", "HIT on %s" % Venues.ticker(venue) if result["contract"] == "HIT" else "CONTRACT for %s" % Venues.ticker(venue))
 	for story: Dictionary in result.get("rumors", []):

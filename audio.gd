@@ -274,6 +274,10 @@ func _process(delta: float) -> void:
 
 ## Quitting mid-sound would otherwise leave live playbacks behind at exit.
 func _exit_tree() -> void:
+	silence()
+
+## Stop everything now (call a frame or two before quitting).
+func silence() -> void:
 	for p in _pos + _flat + _ui:
 		p.stop()
 		p.stream = null

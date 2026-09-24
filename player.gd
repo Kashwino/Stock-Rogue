@@ -44,6 +44,8 @@ var _ghost_clock := 0.0
 var _step_clock := 0.0
 ## Ghost-style silent movement (no footstep sound, no movement noise).
 var silent_steps := false
+## Body Armor: hits absorbed before health is touched.
+var armor_charges := 0
 var _slow_timer := 0.0
 var _slow_mult := 1.0
 var shots_fired: int = 0
@@ -247,6 +249,16 @@ func take_damage(amount: int = 1) -> void:
 	# Once dead, nothing lands. Bullets already in flight would otherwise keep
 	# hitting the corpse, driving health negative and re-crashing the stock.
 	if _dead or _invulnerable or _mercy_timer > 0.0:
+		return
+	if armor_charges > 0:
+		armor_charges -= 1
+		Audio.play("deflect", global_position)
+		if kit:
+			kit.flash()
+		_brief_iframes()
+		var host := get_tree().current_scene
+		if host is HeistFloor:
+			host.fx.chip(global_position, "ARMOR", Palette.PAPER)
 		return
 	# Practice jobs are rehearsals: every hit still costs gold, grade and
 	# stock, but nobody dies in a dry run.

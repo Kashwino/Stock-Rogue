@@ -73,6 +73,16 @@ func _setup(shot: String) -> Node:
 			if shot == "heist":
 				var step = RunState.run_map.current()
 				RunFlow.pending_heist = RunState.run_map.first_heist_option() if RunState.run_map.has_method("first_heist_option") else MapNode.new()
+				if args.has("objective"):
+					RunFlow.pending_heist.objective = StringName(args["objective"])
+				if args.has("mods"):
+					var mods: Array = []
+					for m in String(args["mods"]).split(","):
+						mods.append(StringName(m))
+					RunFlow.pending_heist.modifiers = mods
+					RunFlow.pending_heist.modifier = mods[0]
+				if args.has("contract"):
+					RunFlow.pending_heist.contract = StringName(args["contract"])
 		"gallery":
 			return _gallery()
 		"death", "victory":

@@ -47,6 +47,8 @@ func _process(delta: float) -> void:
 		data["active_enemies"] = scene.director.active_count
 		data["all_enemies"] = scene.director.enemies.size()
 		data["modifier"] = String(scene.modifier)
+		data["modifiers"] = scene.modifiers.map(func(m): return String(m))
+		data["objective"] = String(scene.objective)
 		data["security_count"] = get_tree().get_nodes_in_group("security").size()
 		data["map_visible"] = scene.tactical_map.visible
 		data["map_revealed"] = scene.tactical_map.full_reveal

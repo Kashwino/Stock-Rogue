@@ -190,6 +190,7 @@ func _run() -> void:
 	await _test_lockdown()
 	await _test_projectiles()
 	await _test_bosses()
+	await _test_objectives()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
@@ -226,6 +227,8 @@ func _run() -> void:
 	await get_tree().process_frame
 	await get_tree().create_timer(2.0).timeout
 	print("TEST SUITE COMPLETE")
+	Audio.silence()
+	await get_tree().create_timer(0.3).timeout
 	get_tree().quit(0)
 
 func _test_progression() -> void:
@@ -246,15 +249,29 @@ func _test_modifiers() -> void:
 	a.generate(9182)
 	b.generate(9182)
 	var tags: Dictionary = {}
+	var goals: Dictionary = {}
+	for seed_value in [9182, 1234, 55, 8080]:
+		var m := RunMap.new()
+		m.generate(seed_value)
+		for s in m.stages.size():
+			for h in m.stages[s].size():
+				for node: MapNode in m.stages[s][h].options:
+					if node.is_boss():
+						continue
+					check(node.modifiers.size() <= 2, "at most two modifiers per lead")
+					for mod in node.modifiers:
+						tags[mod] = true
+					goals[node.objective] = true
 	for s in a.stages.size():
 		for h in a.stages[s].size():
 			for i in a.stages[s][h].options.size():
 				var node: MapNode = a.stages[s][h].options[i]
 				if node.is_boss():
 					continue
-				tags[node.modifier] = true
-				check(node.modifier == b.stages[s][h].options[i].modifier, "map modifier deterministic")
-	check(tags.size() == 3, "all three map modifiers appear")
+				var twin: MapNode = b.stages[s][h].options[i]
+				check(node.modifiers == twin.modifiers and node.objective == twin.objective and node.mystery == twin.mystery, "leads are deterministic per seed")
+	check(tags.size() == 8, "all eight map modifiers appear")
+	check(goals.size() == 6, "all six objectives appear")
 
 func _test_security() -> void:
 	var devices := get_tree().get_nodes_in_group("security")
@@ -308,12 +325,14 @@ func _test_security() -> void:
 	check(floor_scene.heat > 0.0 and guard.radio_cooldown > 0.0, "completed guard radio call creates heat")
 	guard.queue_free()
 	await _test_enemies()
-	floor_scene.modifier = &"heavy_police"
-	check(floor_scene.loot_multiplier() == 2 and floor_scene.dispatch_threshold() == 8.0, "heavy police doubles loot and responds sooner")
+	floor_scene.modifiers = [&"heavy_police"]
+	check(floor_scene.loot_multiplier() == 1.5 and floor_scene.dispatch_threshold() == 8.0, "heavy response: loot x1.5 and police respond sooner")
 	var gold := RunEconomy.gold
-	floor_scene._on_loot_collected(10)
-	check(RunEconomy.gold == gold + roundi(20 * floor_scene.live_loot_multiplier()), "heavy modifier doubles actual pickup payout")
-	floor_scene.modifier = &""
+	floor_scene._on_loot_collected(20)
+	check(RunEconomy.gold == gold + roundi(30 * floor_scene.live_loot_multiplier()), "heavy response raises the actual pickup payout")
+	floor_scene.modifiers = [&"payday", &"heavy_police"]
+	check(is_equal_approx(floor_scene.loot_multiplier(), 2.25), "loot modifiers stack")
+	floor_scene.modifiers = []
 	await _test_market()
 
 ## Contracts vs hits, Fence positions, the live loot multiplier, the wire.
@@ -494,6 +513,99 @@ func _test_enemies() -> void:
 	check(again == b and pool.created <= created + 1, "spent bullets return to the pool")
 	again._finish()
 	floor_scene.heat = 0.0
+
+## A regular job built for each objective and a few modifiers.
+func _job(objective: StringName, mods: Array = [], contract: StringName = &"contract") -> HeistFloor:
+	RunFlow.pending_heist = MapNode.new(MapNode.Type.HEIST)
+	RunFlow.pending_heist.venue_id = &"corner_racket"
+	RunFlow.pending_heist.room_rarity = 1
+	RunFlow.pending_heist.objective = objective
+	RunFlow.pending_heist.modifiers = mods
+	RunFlow.pending_heist.modifier = mods[0] if not mods.is_empty() else &""
+	RunFlow.pending_heist.contract = contract
+	var job: HeistFloor = load("res://heist_floor.tscn").instantiate()
+	get_tree().root.add_child(job)
+	get_tree().current_scene = job
+	await get_tree().physics_frame
+	job.player._invulnerable = true
+	return job
+
+func _test_objectives() -> void:
+	var job := await _job(&"assassination")
+	check(is_instance_valid(job.vip) and job.vip.elite_tag.begins_with("TARGET"), "assassination plants a named VIP")
+	check(job.objective_points().size() == 1 and not job.objective_success(), "the VIP is marked on the map")
+	job.vip.shield_hp = 0
+	job.vip.take_damage(99999)
+	check(job.objective_success(), "killing the VIP completes the job")
+	var paid := job._resolve_objective()
+	check(paid["success"] and int(paid["gold"]) > 0, "the bounty pays out")
+	job.queue_free()
+	await get_tree().process_frame
+	job = await _job(&"smash_grab")
+	check(job.jackpots.size() >= 2, "smash and grab marks jackpot rooms")
+	job._tick_objective(0.1)
+	check(job._smash_started and job.heat >= job.dispatch_threshold() and job._lockdown_clock > 0.0, "the alarm is already ringing on entry")
+	job._lockdown_clock = 0.01
+	job._tick_objective(0.1)
+	var open_exits := job.generator.exits.filter(func(g): return g.get("open", false))
+	check(open_exits.is_empty() and job.generator.entrance.get("open", true), "lockdown seals every fire exit, never the main door")
+	for m in job.jackpots:
+		for i in 3:
+			job._on_jackpot_piece(10, m)
+	check(job.objective_success(), "looting every jackpot room completes it")
+	job.queue_free()
+	await get_tree().process_frame
+	job = await _job(&"ghost", [&"blackout"])
+	check(job.objective_success(), "a ghost run starts clean")
+	var guard: Enemy = get_tree().get_nodes_in_group("enemies").filter(func(e): return e.get_parent() is BuildingRoom and e.kind == Enemy.Kind.GRUNT).front()
+	if guard:
+		check(guard.sight_range < 420.0, "blackout cuts guard sight")
+	job.security_alert(job.generator.rooms[1], "Test", 1.0)
+	check(not job.objective_success(), "one alarm blows a ghost run")
+	job.queue_free()
+	await get_tree().process_frame
+	job = await _job(&"sabotage", [], &"hit")
+	check(job.charges.size() >= 2 and job.hit_job, "sabotage places charges (a HIT)")
+	for c in job.charges:
+		c.done = true
+		c.planted.emit(c)
+	check(job.objective_success() and job.charges_planted == job.charges.size(), "planting every charge completes it")
+	job.queue_free()
+	await get_tree().process_frame
+	job = await _job(&"package", [&"payday"])
+	check(is_instance_valid(job.package), "the package waits in a far room")
+	var speed := job.player.move_speed
+	job.package.carried = true
+	job.package.picked_up.emit(job.package)
+	check(job.carrying_package and job.player.move_speed < speed, "carrying the package slows you")
+	check(job.objective_success(), "delivering the package is the job")
+	job.queue_free()
+	await get_tree().process_frame
+	job = await _job(&"loot", [&"rival_crew", &"camera_network"])
+	check(job.rivals.size() >= 3, "rival crew brings 3-4 rivals")
+	check(job.rivals.all(func(r): return r.faction == &"rival"), "rivals are their own faction")
+	var cams := get_tree().get_nodes_in_group("security").filter(func(d): return d.kind == SecurityDevice.Kind.CAMERA)
+	check(cams.size() == (job.generator.rooms.size() - 1) * 2, "camera network doubles the cameras")
+	var r: Enemy = job.rivals[0]
+	var g: Enemy = get_tree().get_nodes_in_group("enemies").filter(func(e): return e.faction == &"guard" and e.is_inside_tree()).front()
+	job.player.global_position = r.global_position + Vector2(0, 600)
+	g.global_position = r.global_position + Vector2(90, 0)
+	job.director.refresh()
+	r._retarget_clock = 0.0
+	r._retarget(0.1)
+	check(r._player == g, "rivals go after guards")
+	job.queue_free()
+	await get_tree().process_frame
+	# Gear for the next job: body armor eats the first hit.
+	RunState.job_gear = [&"body_armor"]
+	job = await _job(&"loot")
+	job.player._invulnerable = false
+	var hp := job.player.health
+	job.player.take_damage(1)
+	check(job.player.health == hp and job.player.armor_charges == 0, "body armor absorbs the first hit")
+	RunState.job_gear.clear()
+	job.queue_free()
+	await get_tree().process_frame
 
 ## Every stage boss: signature building, engagement, phases, death. And an
 ## ordinary job's titled lieutenant.

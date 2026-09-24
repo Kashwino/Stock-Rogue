@@ -63,7 +63,9 @@ devices, 16 props/cover, 32 flyers (drones). All set in code.
 empire index = mean price ratio mapped through `INDEX_SCALE`. Leads are
 CONTRACTs or HITs (`MapNode.contract`); Fence positions live in
 `RunState.positions` (`Positions`), news and rumors in `RunState.news` /
-`rumors` (`MarketNews`, rolled in `RunFlow.on_heist_finished`).
+`rumors` (`MarketNews`, rolled in `RunFlow.on_heist_finished`). Each lead
+also has an `objective` (`Objectives`), 0-2 `modifiers` and maybe `mystery`;
+the heist runs them in its objectives/rivals sections.
 
 **UI rule set:** every CanvasLayer UI has one full-rect Control root; UI built in
 code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
@@ -86,7 +88,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       signature buildings, shutters, intro card, boss bar, lieutenants, uniques)
 - [x] Phase 6 — market mechanics (CONTRACT/HIT, Fence positions, live loot
       multiplier, repeat-venue decay, news wire and rumors)
-- [ ] Phase 7 — objectives & map modifiers
+- [x] Phase 7 — objectives & map modifiers (6 objectives, 8 modifiers with icons,
+      rival crews, strangers' tips, modifier-aware Black Market gear)
 - [ ] Phase 8 — build identity (relics, mods, traits)
 - [ ] Phase 9 — characters & meta progression
 - [ ] Phase 10 — story & endings
