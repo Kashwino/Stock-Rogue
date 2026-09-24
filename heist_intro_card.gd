@@ -11,7 +11,7 @@ var sign_name := ""
 var security := 0
 var objective := "LOOT"
 var objective_detail := ""
-var modifiers: Array = []       # [[title, detail], ...]
+var modifiers: Array = []       # [[title, detail, optional chip colour], ...]
 var boss_title := ""
 var duration := 2.6
 var _root: Control
@@ -74,8 +74,9 @@ func _ready() -> void:
 		chip.text = "  %s  " % mod[0]
 		chip.add_theme_font_override("font", VisualTheme.font("heading"))
 		chip.add_theme_font_size_override("font_size", 18)
-		chip.add_theme_color_override("font_color", Palette.INK)
-		chip.add_theme_stylebox_override("normal", VisualTheme.box(Palette.GOLD, Color.TRANSPARENT, 0, 2, 4))
+		var tint: Color = mod[2] if mod.size() > 2 else Palette.GOLD
+		chip.add_theme_color_override("font_color", Palette.INK if tint.get_luminance() > 0.45 else Palette.PAPER)
+		chip.add_theme_stylebox_override("normal", VisualTheme.box(tint, Color.TRANSPARENT, 0, 2, 4))
 		chip.position = Vector2(x, y)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_root.add_child(chip)

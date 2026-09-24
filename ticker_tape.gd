@@ -37,9 +37,12 @@ func _rebuild() -> void:
 			var d := _demo_rng.randf_range(-0.12, 0.18)
 			_items.append(["%s %.2f   %.1f%%" % [Venues.ticker(id), _demo_rng.randf_range(4, 200), absf(d) * 100.0], Palette.change(d), id, signf(d)])
 	else:
+		var held := Positions.sides()
 		for a: CriminalAsset in assets:
 			var ratio := a.current_price / maxf(a.base_price, 0.01) - 1.0
-			_items.append(["%s %.2f   %.1f%%" % [Venues.ticker(a.id), a.current_price, absf(ratio) * 100.0], Palette.change(ratio), a.id, signf(ratio)])
+			var side: String = held.get(a.id, "")
+			var tag := "" if side == "" else ("L " if side == "long" else "S ")
+			_items.append([tag + "%s %.2f   %.1f%%" % [Venues.ticker(a.id), a.current_price, absf(ratio) * 100.0], Palette.change(ratio), a.id, signf(ratio), side])
 		if RunState.market:
 			var idx := RunState.empire_index()
 			_items.push_front(["BOARD INDEX %d" % roundi(idx), Palette.GOLD, &"__index", 0.0])
@@ -75,7 +78,14 @@ func _draw() -> void:
 				if item[2] == highlight and highlight != &"":
 					draw_rect(Rect2(x - 6, 3, w + 12, size.y - 6), Palette.with_alpha(Palette.GOLD, 0.16 + 0.3 * _flash))
 					draw_rect(Rect2(x - 6, 3, w + 12, size.y - 6), Palette.GOLD, false, 1.0)
+				var side: String = item[4] if item.size() > 4 else ""
+				if side != "":
+					# Open Fence position: a green L / red S chip on the venue.
+					var cw := f.get_string_size("L", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + 6.0
+					draw_rect(Rect2(x - 3, 4, cw, size.y - 8), Palette.UP if side == "long" else Palette.DOWN)
 				draw_string(f, Vector2(x, baseline), item[0], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, item[1])
+				if side != "":
+					draw_string(f, Vector2(x, baseline), "L" if side == "long" else "S", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.INK)
 				var dir: float = item[3]
 				if dir != 0.0:
 					# Arrow drawn as a shape: no glyph-coverage surprises on the Web.

@@ -179,6 +179,7 @@ func _run() -> void:
 	floor_scene._extract()
 	check(get_tree().paused and floor_scene.results._shown, "extraction presents results while paused")
 	check(RunEconomy.gold == extraction_gold + 105 and RunState.short_position.is_empty(), "real extraction pays short before grade movement")
+	check(int(RunState.contract_counts.get("bank_job", 0)) == 1 and floor_scene.results._shown, "a finished CONTRACT counts toward repeat-venue decay")
 	check(Meta.intel == 11, "real extraction banks sabotage and boss Intel (+3 for the boss)")
 	floor_scene._extract()
 	check(RunEconomy.gold == extraction_gold + 105 and Meta.intel == 11, "duplicate extraction cannot duplicate gold or Intel")
@@ -311,8 +312,88 @@ func _test_security() -> void:
 	check(floor_scene.loot_multiplier() == 2 and floor_scene.dispatch_threshold() == 8.0, "heavy police doubles loot and responds sooner")
 	var gold := RunEconomy.gold
 	floor_scene._on_loot_collected(10)
-	check(RunEconomy.gold == gold + 20, "heavy modifier doubles actual pickup payout")
+	check(RunEconomy.gold == gold + roundi(20 * floor_scene.live_loot_multiplier()), "heavy modifier doubles actual pickup payout")
 	floor_scene.modifier = &""
+	await _test_market()
+
+## Contracts vs hits, Fence positions, the live loot multiplier, the wire.
+func _test_market() -> void:
+	var asset := RunState.market.get_asset(&"bank_job")
+	# Live loot multiplier follows the venue's price at the moment of pickup.
+	asset.current_price = asset.base_price * 1.5
+	check(is_equal_approx(floor_scene.live_loot_multiplier(), 1.5), "loot is worth more while the venue trades high")
+	var gold := RunEconomy.gold
+	floor_scene._on_loot_collected(20)
+	check(RunEconomy.gold == gold + 30, "pickups pay value x live multiplier")
+	asset.current_price = asset.base_price * 5.0
+	check(floor_scene.live_loot_multiplier() == 2.0, "live multiplier clamps at 2.0")
+	asset.current_price = asset.base_price
+	# HIT jobs invert the tape.
+	var before := asset.current_price
+	floor_scene.live.hit_job = true
+	floor_scene.live.report_kill()
+	check(asset.current_price < before, "a kill on a HIT drives the venue down")
+	before = asset.current_price
+	floor_scene.live.report_damage_taken(1)
+	check(asset.current_price > before, "damage taken on a HIT softens the crash")
+	floor_scene.live.hit_job = false
+	asset.current_price = asset.base_price
+	# Map leads: roughly a third are HITs, deterministically per seed.
+	var map_a := RunMap.new()
+	map_a.generate(777)
+	var map_b := RunMap.new()
+	map_b.generate(777)
+	var hits := 0
+	var total := 0
+	for st in map_a.stages.size():
+		for h in map_a.stages[st].size():
+			for i in map_a.stages[st][h].options.size():
+				var node: MapNode = map_a.stages[st][h].options[i]
+				if node.is_boss():
+					continue
+				total += 1
+				hits += int(node.is_hit())
+				check(node.contract == map_b.stages[st][h].options[i].contract, "contract type deterministic")
+	check(hits > 0 and hits < total, "leads mix CONTRACTs and HITs")
+	# Positions: stake, leverage, settlement, slots, save.
+	RunEconomy.gold = 1000
+	RunState.positions.clear()
+	var short := Positions.open(&"bank_job", "short", 100)
+	check(short["ok"] and RunEconomy.gold == 900, "a short stakes gold at the Fence")
+	var casino := RunState.market.get_asset(&"casino_skim")
+	check(Positions.open(&"casino_skim", "long", 100)["ok"], "a long opens alongside")
+	check(not Positions.open(&"museum", "long", 100)["ok"] and RunEconomy.gold == 800, "two position slots, atomic refusal")
+	asset.current_price *= 0.8
+	casino.current_price *= 1.1
+	var saved := RunState.serialize(4817, 0, 0, 0)
+	check(saved["positions"].size() == 2, "positions are saved with the run")
+	var settled := Positions.settle_all()
+	var short_q: Dictionary = settled.filter(func(q): return q["side"] == "short")[0]
+	var long_q: Dictionary = settled.filter(func(q): return q["side"] == "long")[0]
+	check(short_q["value"] == 140 and long_q["value"] == 120, "payout = stake x (1 + 2 x move), inverted for shorts")
+	check(RunEconomy.gold == 1060 and RunState.positions.is_empty(), "settlement pays out and closes the book")
+	RunState.positions.clear()
+	Positions.open(&"bank_job", "long", 100)
+	asset.current_price *= 0.3
+	check(Positions.settle_all()[0]["value"] == 0, "a blown position is floored at zero")
+	asset.current_price = asset.base_price
+	casino.current_price = casino.base_price
+	# The wire: headlines move a venue now; rumors land at the end of the next job.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	RunState.news.clear()
+	RunState.rumors.clear()
+	for i in 12:
+		MarketNews.roll(rng)
+	check(not RunState.news.is_empty() and RunState.news.size() <= MarketNews.MAX_KEPT, "the wire keeps recent stories")
+	RunState.rumors.append({"venue": "museum", "move": 0.2, "real": true, "text": "RUMOR"})
+	var museum := RunState.market.get_asset(&"museum")
+	var m_before := museum.current_price
+	var resolved := MarketNews.resolve_rumors()
+	check(resolved.size() >= 1 and is_equal_approx(museum.current_price, m_before * 1.2) and RunState.rumors.is_empty(), "a true rumor lands at the end of the job")
+	for a: CriminalAsset in RunState.market.assets:
+		a.current_price = a.base_price
+	RunState.news.clear()
 
 ## Every archetype builds, runs its brain and respects its rules.
 func _test_enemies() -> void:
@@ -428,6 +509,7 @@ func _test_bosses() -> void:
 	check(job.lieutenant.get_parent() == job.generator.boss_room and job.lieutenant.elite_tag.contains("\""), "the lieutenant runs the boss room under his name")
 	var lt := job.lieutenant
 	var intel_before := Meta.intel
+	lt.shield_hp = 0
 	lt.take_damage(99999)
 	check(Meta.intel == intel_before + 1 and Meta.stats["bosses_killed"] >= 1, "a lieutenant kill counts toward the career")
 	job.queue_free()

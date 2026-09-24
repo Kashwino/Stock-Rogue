@@ -29,6 +29,12 @@ signal player_moved(pct: float)
 
 ## The Auditor's AUDIT window doubles the crash from damage.
 var damage_multiplier := 1.0
+## A HIT is against this venue: your hits and kills drive it DOWN and the
+## damage you take props it up (the same as holding the in-heist short).
+var hit_job := false
+
+func inverted() -> bool:
+	return hit_job or ShortBook.targets(venue_asset_id)
 
 var _market: CriminalMarket = null
 var _player: Player = null
@@ -114,7 +120,7 @@ func _apply_raw(effective: float) -> void:
 ## Player landed a bullet on an enemy.
 func report_hit_landed() -> void:
 	var base := _profile.gain_per_hit if _profile else 0.01
-	if ShortBook.targets(venue_asset_id):
+	if inverted():
 		base = -base
 	_apply(base)
 	market_event.emit(&"hit", base)
@@ -122,7 +128,7 @@ func report_hit_landed() -> void:
 ## Player killed an enemy.
 func report_kill() -> void:
 	var base := _profile.gain_per_kill if _profile else 0.05
-	if ShortBook.targets(venue_asset_id):
+	if inverted():
 		base = -base
 	_apply(base)
 	market_event.emit(&"kill", base)
@@ -135,7 +141,7 @@ func report_damage_taken(amount: int) -> void:
 	if RunState.hedge_charges > 0:
 		RunState.hedge_charges -= 1
 		base *= 0.5
-	_apply(base if ShortBook.targets(venue_asset_id) else -base)
+	_apply(base if inverted() else -base)
 	market_event.emit(&"damage", base)
 
 func report_sabotage() -> void:

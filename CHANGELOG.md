@@ -237,6 +237,35 @@
 - Deferred spawns (cash, reward cases, elite drops) are tracked by the floor
   so none can leak if the floor is torn down first.
 
+## Phase 6 — Market mechanics
+
+- **CONTRACT vs HIT** on every lead (about a third are HITs, from their own
+  hash so seeds stay stable). A CONTRACT pumps the venue on success as before;
+  a HIT inverts the tape — your hits and kills drive it down, damage you take
+  props it up — and the grade crashes it (S+ −40% … a botched D actually
+  lifts it). Green/red chips on the case files, the intro card and the job
+  report.
+- **Positions at the Fence**: a POSITIONS counter beside the three offers
+  (which keep their reroll). Long or short any venue with a stake scaled to
+  the quota block; every open position settles at the end of the next job:
+  stake × (1 + 2 × move), inverted for shorts, floored at zero. Two slots
+  (the Broker and a Market Maker perk get more). Positions are saved with the
+  run, marked L/S on every ticker, listed on the case wall and settled on the
+  job report with a P/L line (`positions.gd`, `positions_panel.gd`).
+- **Live loot multiplier**: floor valuables pay value × clamp(price / base,
+  0.5, 2.0) at the moment of pickup, as the HUD already showed.
+- **Repeat-venue decay**: every extra CONTRACT on the same venue pumps ×0.65
+  of the one before; the case file says so.
+- **Market news** (`market_news.gd`): after every job a story breaks — a
+  headline that moves a venue or a whole stage's sector now, or a RUMOR of a
+  move that lands (usually) at the end of the next job, just before positions
+  settle. Shown on THE WIRE clipping on the case wall, on the Fence's
+  positions counter, in the heist chat and on the job report.
+- Hideout prices and gold show `$` (the old gold glyph was missing from the
+  fonts); map labels with a wrap width now actually wrap.
+- The `Audio` autoload stops its players on shutdown (no leaked playbacks
+  when the game quits mid-sound).
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -297,3 +326,11 @@
   boss drop then.
 - **The Marlowe Exchange scene** was replaced by layout data; the room names
   (Lobby, Auditor, Records, Vault…) are unchanged so saves and tests agree.
+- **Positions settle at every extraction**, i.e. at the end of the job that
+  follows the hideout visit where they were opened; dying forfeits them.
+- **The in-heist terminal short stays** alongside Fence positions: it is a
+  one-job bet on the venue you are robbing, settled at the combat price.
+- **Rumors are the tradeable news** (75% reliable); headlines move prices
+  immediately and mostly set the scene.
+- **Boss jobs are always CONTRACTs**; the boss's own shock follows the tape
+  direction (inverted while a short targets the venue).

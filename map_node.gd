@@ -18,6 +18,9 @@ var venue_id: StringName = &""       # which stock this heist moves
 var is_valuable: bool = false        # flagged high-reward
 var boss_id: StringName = &""        # landlord / auditor / ambassador / chairman
 var modifier: StringName = &""
+## CONTRACT: the venue hired you, success pumps it. HIT: the job is against
+## the venue, success crashes it (scaled by grade; damage you take softens it).
+var contract: StringName = &"contract"
 const MODIFIERS := {
 	&"heavy_police": ["HEAVY POLICE RESPONSE", "Loot x1.5. Police deploy at half the heat, twice as often."],
 	&"lockdown": ["LOCKDOWN", "Fire exits sealed. Escape through the main door."],
@@ -29,6 +32,21 @@ func modifier_name() -> String:
 
 func modifier_detail() -> String:
 	return MODIFIERS[modifier][1] if MODIFIERS.has(modifier) else "Normal loot and police response."
+
+func is_hit() -> bool:
+	return contract == &"hit"
+
+func contract_label() -> String:
+	return "HIT" if is_hit() else "CONTRACT"
+
+func contract_detail() -> String:
+	var t := Venues.ticker(venue_id)
+	if is_hit():
+		return "Against %s: a clean job crashes it." % t
+	var n: int = int(RunState.contract_counts.get(String(venue_id), 0))
+	if n > 0:
+		return "%s hired you again: pump x%.2f." % [t, pow(0.65, n)]
+	return "%s hired you: a clean job pumps it." % t
 
 func _init(t: Type = Type.HEIST) -> void:
 	type = t

@@ -44,6 +44,7 @@ func refresh() -> void:
 	_string = CaseWallArt.RedString.new()
 	_build_header()
 	_build_quota_note()
+	_build_wire()
 	_build_route()
 	root.add_child(_string)
 	_build_footer()
@@ -87,8 +88,11 @@ func _type(parent: Control, text: String, at: Vector2, size: int, color: Color =
 	if width > 0.0:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size = Vector2(width, 0)
-		l.size = Vector2(width, 0)
 	parent.add_child(l)
+	if width > 0.0:
+		# The size grew to the unwrapped text when the label was made; shrink it
+		# once the minimum-size cache has caught up with autowrap.
+		l.set_deferred("size", Vector2(width, 0))
 	return l
 
 func _build_header() -> void:
@@ -115,6 +119,26 @@ func _build_quota_note() -> void:
 	i.add_theme_font_override("font", VisualTheme.font("mono"))
 	_type(note, "Both, or the Board cuts you off.", Vector2(16, 100), 15, Color("5a4a20"))
 	_pin(Vector2(1072, 22), Color("2a5ad0"))
+
+## The news wire: the latest story off the street, pending rumors, and any
+## open Fence positions with their live value.
+func _build_wire() -> void:
+	var clip := _paper(Rect2(612, 18, 272, 132), Color("dcd6c4"), -0.02)
+	_type(clip, "THE WIRE", Vector2(12, 6), 15, Palette.STAMP_RED, true)
+	var story: Dictionary = RunState.news[0] if not RunState.news.is_empty() else {}
+	var headline := MarketNews.line(story) if not story.is_empty() else "Quiet night on the street."
+	var h := _type(clip, headline, Vector2(12, 26), 14, Palette.INK, true, 250)
+	h.custom_minimum_size = Vector2(250, 0)
+	var quotes := Positions.quotes()
+	var y := 84.0
+	if quotes.is_empty():
+		_type(clip, "No open positions. The Fence takes longs and shorts.", Vector2(12, y), 12, Color("5a5040"), false, 250)
+	else:
+		for q: Dictionary in quotes.slice(0, 2):
+			var l := _type(clip, Positions.describe(q), Vector2(12, y), 13, Palette.STAMP_GREEN if int(q["profit"]) >= 0 else Palette.STAMP_RED, true)
+			l.add_theme_font_override("font", VisualTheme.font("mono"))
+			y += 18.0
+	_pin(Vector2(748, 22), Palette.STAMP_RED)
 
 func _build_route() -> void:
 	if run_map.is_complete():
@@ -377,7 +401,7 @@ class CaseFileCard extends Button:
 		tw.tween_property(self, "scale", Vector2(1.04, 1.04) if up else Vector2.ONE, 0.12)
 		var audio := get_node_or_null("/root/Audio")
 		if up and audio:
-			audio.play_ui("hover")
+			audio.play_ui("ui_hover")
 
 	func _draw() -> void:
 		var r := Rect2(Vector2(0, 16), size - Vector2(0, 16))
@@ -428,7 +452,21 @@ class CaseFileCard extends Button:
 		bars.size = Vector2(128, 10)
 		bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(bars)
-		var detail := VisualTheme.label(node.modifier_name() + "\n" + node.modifier_detail(), "", 15, Color("3a2a12"))
+		if not node.is_boss():
+			# CONTRACT (green) pumps the venue; HIT (red) crashes it.
+			var chip := Label.new()
+			chip.text = " %s " % node.contract_label()
+			chip.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+			chip.add_theme_font_size_override("font_size", 16)
+			chip.add_theme_color_override("font_color", Palette.PAPER)
+			chip.add_theme_stylebox_override("normal", VisualTheme.box(Palette.STAMP_RED if node.is_hit() else Palette.STAMP_GREEN, Color.TRANSPARENT, 0, 2, 3))
+			chip.position = Vector2(26, 42)
+			chip.size = Vector2(110, 24)
+			chip.rotation = -0.05
+			chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			chip.tooltip_text = node.contract_detail()
+			add_child(chip)
+		var detail := VisualTheme.label(node.contract_detail() + "\n" + node.modifier_name(), "", 15, Color("3a2a12"))
 		detail.add_theme_font_override("font", VisualTheme.font("type"))
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		detail.position = Vector2(16, 290)

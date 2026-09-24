@@ -110,6 +110,16 @@ func show_result(result: Dictionary, venue_name: String = "") -> void:
 	var short_result: Dictionary = result.get("short", {})
 	if not short_result.is_empty():
 		_add_row("Short settled", "$%d back (%+d)" % [short_result["payout"], short_result["profit"]])
+	if result.has("contract"):
+		_add_row("Job", "HIT on %s" % Venues.ticker(venue) if result["contract"] == "HIT" else "CONTRACT for %s" % Venues.ticker(venue))
+	for story: Dictionary in result.get("rumors", []):
+		_add_row("The wire", String(story.get("text", "")))
+	var net := 0
+	for q: Dictionary in result.get("positions", []):
+		_add_row("Position", Positions.describe(q))
+		net += int(q.get("profit", 0))
+	if not result.get("positions", []).is_empty():
+		_add_row("Positions P/L", "%+d" % net)
 	for line: String in result.get("extra_rows", []):
 		var parts := line.split("|")
 		_add_row(parts[0], parts[1] if parts.size() > 1 else "")

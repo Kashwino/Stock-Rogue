@@ -272,6 +272,20 @@ func _process(delta: float) -> void:
 	if absf(_music_a.get_playback_position() - _music_b.get_playback_position()) > 0.08:
 		_music_b.seek(_music_a.get_playback_position())
 
+## Quitting mid-sound would otherwise leave live playbacks behind at exit.
+func _exit_tree() -> void:
+	for p in _pos + _flat + _ui:
+		p.stop()
+		p.stream = null
+	for id in _loops:
+		if is_instance_valid(_loops[id]):
+			_loops[id].stop()
+			_loops[id].stream = null
+	for p in [_music_a, _music_b]:
+		if is_instance_valid(p):
+			p.stop()
+			p.stream = null
+
 # ------------------------------------------------------------- UI hooks -----
 ## Every button in the game ticks on hover and clicks on press.
 func _on_node_added(node: Node) -> void:

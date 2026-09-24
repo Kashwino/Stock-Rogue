@@ -430,7 +430,7 @@ func _refresh_gold_label() -> void:
 	if _active_gold_label == null:
 		return
 	var econ = get_node_or_null("/root/RunEconomy")
-	_active_gold_label.text = "\u26FF " + str(econ.gold if econ else 0)
+	_active_gold_label.text = "$" + str(econ.gold if econ else 0)
 
 ## A single buyable row. `on_buy` is a bound Callable taking no arguments
 ## (e.g. _buy_patch_kit, or _buy_weapon.bind(w)) -- never an inline lambda,
@@ -468,7 +468,7 @@ func _item_row(body: VBoxContainer, name_text: String, desc_text: String,
 
 	var right := VBoxContainer.new()
 	var price_l := Label.new()
-	price_l.text = "\u26FF " + str(price)
+	price_l.text = "$" + str(price)
 	price_l.add_theme_color_override("font_color", GOLD)
 	price_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(price_l)
@@ -519,9 +519,25 @@ var _current_offers: Array = []
 ## Shared entry point: builds the panel frame, intro line, reroll button, and
 ## the first roll of 3 offers. Each vendor just supplies its own generator.
 func _open_vendor(title: String, kicker: String, accent: Color,
-		intro_text: String, offer_generator: Callable) -> CanvasLayer:
+		intro_text: String, offer_generator: Callable, side: Control = null) -> CanvasLayer:
 	var frame := _panel_frame(title, kicker, accent)
 	var body: VBoxContainer = frame["body"]
+	if side:
+		# A second counter beside the offers (the Fence's positions).
+		var split := HBoxContainer.new()
+		split.add_theme_constant_override("separation", 26)
+		body.add_child(split)
+		var left := VBoxContainer.new()
+		left.custom_minimum_size = Vector2(560, 0)
+		left.add_theme_constant_override("separation", 10)
+		split.add_child(left)
+		var rule := ColorRect.new()
+		rule.custom_minimum_size = Vector2(2, 0)
+		rule.color = GOLD_DIM
+		rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		split.add_child(rule)
+		split.add_child(side)
+		body = left
 
 	if intro_text != "":
 		var intro := Label.new()
@@ -560,7 +576,7 @@ func _render_offer_rows() -> void:
 
 func _update_reroll_button() -> void:
 	if _reroll_button:
-		_reroll_button.text = "\u21BB Reroll stock (\u26FF %d)" % _reroll_cost
+		_reroll_button.text = "Reroll stock ($%d)" % _reroll_cost
 
 ## Rerolling costs gold and gets pricier each use THIS visit -- resets to
 ## base cost next time you walk in. A real decision, not a free retry loop.
@@ -608,7 +624,7 @@ func _build_weapon_dealer() -> CanvasLayer:
 	_spin_active = false
 
 	var tier_l := Label.new()
-	tier_l.text = "%s grade -- \u26FF %d each" % [LootRoller.tier_name(_case_tier), _case_price]
+	tier_l.text = "%s grade -- $%d each" % [LootRoller.tier_name(_case_tier), _case_price]
 	tier_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tier_l.add_theme_font_size_override("font_size", 12)
 	tier_l.add_theme_color_override("font_color", GOLD_DIM)
@@ -689,7 +705,7 @@ func _make_sealed_card(index: int) -> Button:
 	col.add_child(name_l)
 
 	var price_l := Label.new()
-	price_l.text = "\u26FF %d" % _case_price
+	price_l.text = "$%d" % _case_price
 	price_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	price_l.add_theme_color_override("font_color", GOLD)
 	col.add_child(price_l)
@@ -904,9 +920,9 @@ func _on_spin_landed(index: int, w: WeaponItem) -> void:
 
 # ----------------------------------------------------- stock manipulation --
 func _build_stock_manipulation() -> CanvasLayer:
-	return _open_vendor("THE FENCE", "STOCK MANIPULATION", GOLD,
+	return _open_vendor("THE FENCE", "STOCK MANIPULATION  ·  POSITIONS", GOLD,
 		"Three moves on offer today. Pay for a fourth if none of them suit you.",
-		_fence_offer_generator)
+		_fence_offer_generator, PositionsPanel.new())
 
 ## 3 of up to 6 possible offers, sampled fresh every open and every reroll.
 ## Perks drop out of the pool once owned, so they naturally stop appearing.

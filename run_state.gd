@@ -24,6 +24,13 @@ var short_position: Dictionary = {}
 var run_id: String = ""
 var last_grade := ""
 var bosses_down: Array = []          # stage boss ids defeated this run
+## Fence positions: [{venue, side, stake, entry, leverage}] (see Positions).
+var positions: Array = []
+## Completed CONTRACT jobs per venue: repeat contracts pump less (×0.65 each).
+var contract_counts: Dictionary = {}
+## The news wire (latest first) and rumors waiting to land (see MarketNews).
+var news: Array = []
+var rumors: Array = []
 
 var max_health: int = 3
 var health: int = 3
@@ -43,6 +50,10 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	short_position.clear()
 	last_grade = ""
 	bosses_down.clear()
+	positions.clear()
+	contract_counts.clear()
+	news.clear()
+	rumors.clear()
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
 
 	# Fresh loadout with the starter Sidearm.
@@ -187,6 +198,10 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"quota_block": run_map.quota_block if run_map else 0,
 		"heists_done": run_map.heists_done if run_map else 0,
 		"market": _serialize_market(),
+		"positions": positions.duplicate(true),
+		"contract_counts": contract_counts.duplicate(),
+		"news": news.duplicate(true),
+		"rumors": rumors.duplicate(true),
 	}
 
 func _serialize_market() -> Dictionary:
@@ -222,6 +237,10 @@ func deserialize(data: Dictionary) -> void:
 	short_position = data.get("short_position", {}).duplicate(true)
 	last_grade = str(data.get("last_grade", ""))
 	bosses_down = Array(data.get("bosses_down", [])).duplicate()
+	positions = Array(data.get("positions", [])).duplicate(true)
+	contract_counts = Dictionary(data.get("contract_counts", {})).duplicate()
+	news = Array(data.get("news", [])).duplicate(true)
+	rumors = Array(data.get("rumors", [])).duplicate(true)
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))
 

@@ -60,7 +60,10 @@ when the player walks in, the floor seals the arena (`Shutter`), shows
 devices, 16 props/cover, 32 flyers (drones). All set in code.
 
 **Economy/market:** `CriminalMarket` + `Roster` (15 venues, run-long prices),
-empire index = mean price ratio mapped through `INDEX_SCALE`.
+empire index = mean price ratio mapped through `INDEX_SCALE`. Leads are
+CONTRACTs or HITs (`MapNode.contract`); Fence positions live in
+`RunState.positions` (`Positions`), news and rumors in `RunState.news` /
+`rumors` (`MarketNews`, rolled in `RunFlow.on_heist_finished`).
 
 **UI rule set:** every CanvasLayer UI has one full-rect Control root; UI built in
 code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
@@ -81,7 +84,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       bullet pooling)
 - [x] Phase 5 — bosses (Boss framework, four multi-phase bosses in data-authored
       signature buildings, shutters, intro card, boss bar, lieutenants, uniques)
-- [ ] Phase 6 — market mechanics
+- [x] Phase 6 — market mechanics (CONTRACT/HIT, Fence positions, live loot
+      multiplier, repeat-venue decay, news wire and rumors)
 - [ ] Phase 7 — objectives & map modifiers
 - [ ] Phase 8 — build identity (relics, mods, traits)
 - [ ] Phase 9 — characters & meta progression

@@ -61,6 +61,8 @@ var _kill_streak := 0
 var _rarity: int = 0
 var _venue: StringName = &""
 var modifier: StringName = &""
+## HIT jobs crash the venue instead of pumping it.
+var hit_job := false
 var fx: CombatFX
 var security_disabled := 0
 var last_heat_source := "No reports. Stay out of sight."
@@ -127,6 +129,7 @@ func _build_floor() -> void:
 		_rarity = RunFlow.pending_heist.room_rarity
 		_venue = RunFlow.pending_heist.venue_id
 		modifier = RunFlow.pending_heist.modifier
+		hit_job = RunFlow.pending_heist.is_hit()
 	else:
 		_rarity = 0
 		_venue = &"pickpocket"
@@ -221,8 +224,11 @@ func _show_intro_card() -> void:
 		card.boss_title = Story.boss_name(boss_id)
 		card.objective = "TAKE HIM DOWN"
 		card.objective_detail = "the car won't leave while he stands"
+	if not boss_heist:
+		var tick := Venues.ticker(_venue)
+		card.modifiers.append(["HIT: CRASH " + tick, "", Palette.DANGER] if hit_job else ["CONTRACT: PUMP " + tick, "", Palette.STAMP_GREEN])
 	if RunFlow.pending_heist and RunFlow.pending_heist.modifier != &"":
-		card.modifiers = [[RunFlow.pending_heist.modifier_name(), RunFlow.pending_heist.modifier_detail()]]
+		card.modifiers.append([RunFlow.pending_heist.modifier_name(), RunFlow.pending_heist.modifier_detail()])
 	if RunFlow.practice:
 		card.modifiers.append(["REHEARSAL — NOBODY DIES IN A DRY RUN", ""])
 	add_child(card)
@@ -249,6 +255,7 @@ func _setup_market_and_hud() -> void:
 	# Persistent run-long market lives in RunState; the heist drives ONE venue.
 	live = LiveStock.new()
 	live.venue_asset_id = _venue
+	live.hit_job = hit_job
 	add_child(live)
 	live.setup(RunState.market, player, RunState.character_profile)
 	player.live_stock = live
@@ -570,7 +577,7 @@ func _become_marked() -> void:
 	if not boss_heist:
 		RunEconomy.add_bonus(_rng.randi_range(250, 400) * loot_multiplier())
 	if live:
-		live.report_shock(0.70 if ShortBook.targets(_venue) else 1.30, &"boss")
+		live.report_shock(0.70 if live.inverted() else 1.30, &"boss")
 
 # ------------------------------------------------- heat & reinforcements ----
 func _process(delta: float) -> void:
@@ -811,10 +818,20 @@ func _extract() -> void:
 	result["loot"] = loot_banked
 	result["meta_saved"] = Meta.last_save_ok
 
-	# Grade moves the venue stock. "Inside Trader" perk boosts the upside.
+	# Grade moves the venue stock. A CONTRACT pumps it (less for every repeat
+	# contract on the same venue); a HIT crashes it, harder the cleaner the job.
 	var delta: float = result["stock_delta"]
-	if delta > 1.0 and RunState.has_perk(&"inside_trader"):
-		delta = 1.0 + (delta - 1.0) * 1.25
+	if hit_job:
+		delta = 2.0 - delta
+	else:
+		var repeats: int = int(RunState.contract_counts.get(String(_venue), 0))
+		if delta > 1.0:
+			delta = 1.0 + (delta - 1.0) * pow(0.65, repeats)
+			if RunState.has_perk(&"inside_trader"):
+				delta = 1.0 + (delta - 1.0) * 1.25
+		RunState.contract_counts[String(_venue)] = repeats + 1
+	result["stock_delta"] = delta
+	result["contract"] = "HIT" if hit_job else "CONTRACT"
 	if live:
 		live.report_shock(delta, &"grade")
 	else:
@@ -822,6 +839,9 @@ func _extract() -> void:
 		if asset:
 			asset.current_price = maxf(asset.current_price * delta, 0.01)
 
+	# The wire's rumors land, then every Fence position settles at today's prices.
+	result["rumors"] = MarketNews.resolve_rumors()
+	result["positions"] = Positions.settle_all()
 	result["stats"] = stats
 	RunState.sync_from_player(player)
 	if results:
@@ -933,7 +953,8 @@ func _loot_slot(size: Vector2, placed: Array, room: BuildingRoom = null) -> Vect
 	return candidate
 
 func _on_loot_collected(value: int, pickup: Node2D = null) -> void:
-	var paid := roundi(value * loot_multiplier() * (1.25 if RunState.has_perk(&"scavenger") else 1.0))
+	# Valuables are worth what the venue trades at, the moment you pick them up.
+	var paid := roundi(value * loot_multiplier() * live_loot_multiplier() * (1.25 if RunState.has_perk(&"scavenger") else 1.0))
 	loot_banked += paid
 	if pickup and is_instance_valid(pickup) and hud and hud.has_method("fly_gold"):
 		hud.fly_gold(pickup.get_global_transform_with_canvas().origin, paid)

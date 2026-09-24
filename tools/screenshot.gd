@@ -41,8 +41,15 @@ func _run() -> void:
 		for i in 40:
 			await get_tree().process_frame
 	var extra: String = args.get("then", "")
+	var extra_arg := ""
+	if extra.contains(":"):
+		extra_arg = extra.get_slice(":", 1)
+		extra = extra.get_slice(":", 0)
 	if extra != "" and is_instance_valid(scene) and scene.has_method(extra):
-		scene.call(extra)
+		if extra_arg != "":
+			scene.call(extra, StringName(extra_arg))
+		else:
+			scene.call(extra)
 		for i in 30:
 			await get_tree().process_frame
 	var image := get_viewport().get_texture().get_image()

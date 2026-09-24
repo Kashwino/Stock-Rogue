@@ -92,6 +92,9 @@ func bind_stock(stock) -> void:
 		stock.market_event.connect(_on_market_event)
 	post(_pick(HANDLES), "chat's live. someone's about to do something stupid.",
 		Color(0.55, 0.57, 0.65))
+	# Whatever broke on the wire since the last job.
+	if not RunState.news.is_empty():
+		post("NEWSWIRE", MarketNews.line(RunState.news[0]), Palette.GOLD)
 
 func _process(delta: float) -> void:
 	_cooldown = maxf(_cooldown - delta, 0.0)

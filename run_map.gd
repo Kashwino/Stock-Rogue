@@ -136,6 +136,10 @@ func _make_heist_option(stage: int, floor_rarity: int, venues: Array, heist_inde
 	# roll types without reshuffling every other choice on a seed.
 	var tags: Array = [&"heavy_police", &"lockdown", &"insider"]
 	node.modifier = tags[(absi(hash(str(run_seed) + ":" + str(stage) + ":" + str(heist_index))) + option_index) % tags.size()]
+	# Roughly a third of leads are HITs, from their own hash for the same reason.
+	var roll := RandomNumberGenerator.new()
+	roll.seed = hash("hit:" + str(run_seed) + ":" + str(stage) + ":" + str(heist_index) + ":" + str(option_index))
+	node.contract = &"hit" if roll.randf() < 0.34 else &"contract"
 	return node
 
 # --- Progression ---

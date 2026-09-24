@@ -121,6 +121,10 @@ func on_heist_finished() -> void:
 		if next == null:
 			end_run(true)
 			return
+		# A story breaks on the wire between jobs.
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash(str(run_seed) + ":news:" + str(RunState.run_map.heists_done))
+		MarketNews.roll(rng)
 	go_to_map()
 
 ## Quota gate outcome from the map's sit-down with the collector.
