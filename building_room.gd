@@ -24,6 +24,10 @@ signal cleared()
 @onready var spawn_points: Node2D = get_node_or_null("SpawnPoints")
 @onready var door_entries: Node2D = get_node_or_null("DoorEntries")
 
+## Local rects occupied by furniture (PropPlacer fills this). Spawns and loot
+## keep out of them.
+var blocked_rects: Array = []
+
 var _alive: int = 0
 var _cleared: bool = false
 var _activated: bool = false
@@ -93,6 +97,10 @@ func _spawn_slot(index: int, markers: Array, used: Array) -> Vector2:
 		var clear := true
 		for p: Vector2 in used:
 			if candidate.distance_to(p) < MIN_SEP:
+				clear = false
+				break
+		for r: Rect2 in blocked_rects:
+			if r.grow(18).has_point(candidate):
 				clear = false
 				break
 		if clear:

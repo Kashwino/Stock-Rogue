@@ -23,6 +23,7 @@ signal hit_taken(remaining: int)
 @onready var sprite: Node2D = $Sprite        # your visual (Sprite2D/AnimatedSprite2D)
 
 var health: int
+var kit: SpriteKit = null
 var _fire_timer: float = 0.0
 var _dodging: bool = false
 var _dodge_timer: float = 0.0
@@ -49,26 +50,32 @@ func attach_loadout(l: Loadout) -> void:
 	loadout = l
 	if l and not l.reload_started.is_connected(_on_reload_started):
 		l.reload_started.connect(_on_reload_started)
+	if l and not l.active_changed.is_connected(_on_active_weapon):
+		l.active_changed.connect(_on_active_weapon)
+	_refresh_kit()
+
+func _on_active_weapon(_weapon: WeaponItem, _mag: int, _reserve: int) -> void:
+	_refresh_kit()
+
+## The character holds a silhouette that matches the equipped weapon.
+func _refresh_kit() -> void:
+	if sprite == null:
+		return
+	var profile_id: StringName = RunState.character_profile.id if RunState.character_profile else &"operator"
+	var weapon: WeaponItem = loadout.get_active() if loadout else null
+	kit = SpriteKit.dress(sprite, SpriteKit.hero_spec(profile_id, SpriteKit.gun_for(weapon)))
 
 func _on_reload_started(duration: float) -> void:
-	# Placeholder reload animation: the sprite squashes, then pops back with a
-	# spin — reads clearly as "hands off the trigger" until real art exists.
-	if sprite == null or Settings.values["low_effects"]:
-		return
-	var tw := create_tween()
-	tw.tween_property(sprite, "scale", Vector2(0.65, 0.65), duration * 0.35)
-	tw.parallel().tween_property(sprite, "rotation",
-		sprite.rotation + TAU, duration * 0.9)
-	tw.tween_property(sprite, "scale", Vector2.ONE, duration * 0.55) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if kit:
+		kit.reload_pose(duration)
 
 func _ready() -> void:
-	ActorArt.dress(sprite, true, false)
+	_refresh_kit()
 	z_index = 10
 	add_to_group("player")
 	# Player on layer 4; still collides with walls (layer 1) for movement.
-	collision_layer = 4
-	collision_mask = 1
+	collision_layer = Layers.PLAYER
+	collision_mask = Layers.SOLID
 	health = max_health
 	health_changed.emit(health, max_health)
 
@@ -161,6 +168,8 @@ func _spawn_bullet(weapon: WeaponItem = null) -> void:
 		if "speed" in b:
 			b.speed = bspeed
 	shots_fired += pellets
+	if kit:
+		kit.kick(0.5 + 0.12 * pellets + 0.15 * dmg)
 	var host := get_tree().current_scene
 	if host is HeistFloor:
 		host.fx.muzzle(muzzle.global_position, aim)
@@ -199,14 +208,16 @@ func take_damage(amount: int = 1) -> void:
 	# hitting the corpse, driving health negative and re-crashing the stock.
 	if _dead or _invulnerable or _mercy_timer > 0.0:
 		return
-	health = maxi(health - amount, 0)
+	# Practice jobs are rehearsals: every hit still costs gold, grade and
+	# stock, but nobody dies in a dry run.
+	health = maxi(health - amount, 1 if RunFlow.practice else 0)
 	hits_taken += amount
 	var host := get_tree().current_scene
 	if host is HeistFloor:
 		host.fx.shake(9.0)
-	if not Settings.values["low_effects"]:
-		sprite.modulate = Color(2.0, 0.4, 0.4)
-		create_tween().tween_property(sprite, "modulate", Color.WHITE, 0.12)
+		host.on_player_hurt()
+	if kit:
+		kit.flash()
 	Sfx.play_sound("hit")
 	RunEconomy.on_player_hit(amount)      # currency drops on every hit
 	if live_stock:

@@ -81,7 +81,7 @@ func _process(_delta: float) -> void:
 	var mode: int = Settings.values["touch_mode"]
 	var enabled := mode == 1 or (mode == 0 and (DisplayServer.is_touchscreen_available() or TouchInput.touch_active))
 	var panel_open := hub and scene.get("_active_panel") != null
-	var show_controls := enabled and (combat or hub) and not get_tree().paused and not panel_open
+	var show_controls := enabled and (combat or hub) and not get_tree().paused and not panel_open and not Transition.busy
 	if show_controls != _was_visible or combat != _was_combat:
 		release_all()
 		_root.visible = show_controls

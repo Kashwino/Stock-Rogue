@@ -70,6 +70,13 @@ var tactical_map: HeistMap
 var _status_clock := 0.0
 var boss_heist := false
 var boss_id: StringName = &""
+var exit_signs: Array = []
+var loot_banked := 0
+var env: EnvTheme
+var lighting: HeistLighting
+var post_fx: PostFX
+var building_bounds := Rect2()
+var wall_art: Array = []
 
 func _ready() -> void:
 	director = EnemyDirector.new()
@@ -84,6 +91,8 @@ func _ready() -> void:
 	fx = CombatFX.new()
 	fx.camera = camera
 	add_child(fx)
+	post_fx = PostFX.new()
+	add_child(post_fx)
 
 	_ensure_chest_ui()
 	_ensure_results()
@@ -160,6 +169,7 @@ func _build_floor() -> void:
 	_decorate_exits()
 	_ensure_prompt()
 	_spawn_car()
+	_dress_outside()
 	_assign_guard_roles()
 	director.refresh()
 	var terminal := MarketTerminal.new()
@@ -168,9 +178,27 @@ func _build_floor() -> void:
 	_setup_security()
 	_setup_tactics()
 
+	_show_intro_card()
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
 	_heat_timer = reinforcement_interval
+
+func _show_intro_card() -> void:
+	var card := HeistIntroCard.new()
+	card.venue_name = Venues.display_name(_venue)
+	card.sign_name = Venues.sign_name(_venue, boss_id)
+	card.security = _rarity
+	card.objective = "LOOT"
+	card.objective_detail = "grab the valuables and get back to the car"
+	if boss_heist:
+		card.boss_title = String(boss_id).to_upper()
+		card.objective = "TAKE HIM DOWN"
+		card.objective_detail = "the car won't leave while he stands"
+	if RunFlow.pending_heist and RunFlow.pending_heist.modifier != &"":
+		card.modifiers = [[RunFlow.pending_heist.modifier_name(), RunFlow.pending_heist.modifier_detail()]]
+	if RunFlow.practice:
+		card.modifiers.append(["REHEARSAL — NOBODY DIES IN A DRY RUN", ""])
+	add_child(card)
 
 func _spawn_player() -> void:
 	var scene = load("res://player.tscn")
@@ -179,11 +207,12 @@ func _spawn_player() -> void:
 		return
 	player = scene.instantiate()
 	add_child(player)
-	# Start OUTSIDE, next to the getaway car.
+	# Start OUTSIDE on the door's axis; the getaway car is parked alongside.
 	player.global_position = _outside_position()
 	if RunState.active:
 		RunState.apply_to_player(player)
 	player.died.connect(_on_player_died)
+	player.health_changed.connect(_on_player_health)
 	var pcam = player.get_node_or_null("Camera2D")
 	if pcam:
 		pcam.enabled = false
@@ -228,12 +257,11 @@ func _ensure_results() -> void:
 	results.continued.connect(_on_results_continued)
 
 func _decorate_exits() -> void:
-	# Labels over the main door + each emergency exit.
-	if not generator.entrance.is_empty():
-		_exit_label(generator.entrance["inside_pos"], "MAIN DOOR — the car is out here",
-			Color(0.95, 0.8, 0.3))
+	# The main door has the neon sign and a gold threshold; fire exits get a
+	# lit green EXIT box (or a red SEALED one under lockdown).
 	for g: Dictionary in generator.exits:
-		_exit_label(g["inside_pos"], "LOCKDOWN — EXIT SEALED" if modifier == &"lockdown" else "FIRE EXIT — quiet escape", Color(1.0, 0.35, 0.3) if modifier == &"lockdown" else Color(0.35, 0.85, 0.5))
+		var sealed: bool = not g.get("open", false)
+		_exit_label(g["inside_pos"], "SEALED" if sealed else "EXIT", Palette.DANGER if sealed else Palette.NEON_GREEN)
 
 ## A point OUTSIDE the main door, on the street side of the entrance wall.
 func _outside_position() -> Vector2:
@@ -250,10 +278,20 @@ func _outside_position() -> Vector2:
 	var outward := (wall_world - inside).normalized()
 	return wall_world + outward * 190.0
 
+func _door_outward() -> Vector2:
+	if generator.entrance.is_empty():
+		return Vector2.DOWN
+	var e: Dictionary = generator.entrance
+	return (e["room"].to_global(e["wall_pos"]) - e["inside_pos"]).normalized()
+
 ## Park the getaway car outside the main door and route extraction through it.
 func _spawn_car() -> void:
 	car = GetawayCar.new()
-	car.global_position = _outside_position()
+	car.global_position = _outside_position() + Vector2(-_door_outward().y, _door_outward().x) * 150.0
+	if not generator.entrance.is_empty():
+		var e: Dictionary = generator.entrance
+		var outward: Vector2 = (e["room"].to_global(e["wall_pos"]) - e["inside_pos"]).normalized()
+		car.facing = Vector2(-outward.y, outward.x)
 	add_child(car)
 	car.bind_player(player)
 	car.extracted.connect(_extract)
@@ -356,12 +394,15 @@ func _exit_label(pos: Vector2, text: String, color: Color) -> void:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_color_override("font_color", color)
-	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+	l.add_theme_font_size_override("font_size", 22)
+	l.add_theme_stylebox_override("normal", VisualTheme.box(Color(0.02, 0.05, 0.03, 0.92), color, 2, 2, 6))
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Offset so the text centres on the anchor rather than starting at it.
-	l.position = Vector2(-90, 0)
-	l.custom_minimum_size = Vector2(180, 0)
+	l.position = Vector2(-50, 0)
+	l.custom_minimum_size = Vector2(100, 0)
+	l.material = StreetArt._unshaded()
 	anchor.add_child(l)
+	exit_signs.append(l)
 
 ## Big centred prompt shown while standing in an open doorway.
 func _ensure_prompt() -> void:
@@ -632,8 +673,13 @@ func _extract() -> void:
 		"par_time": 15.0 * generator.rooms.size(),
 	}
 	var result: Dictionary = HeistGrader.grade_heist(stats)
+	RunState.last_grade = result["grade_name"]
+	if boss_heist and marked and boss_id not in RunState.bosses_down:
+		RunState.bosses_down.append(boss_id)
 	result["intel"] = earned_intel
 	result["short"] = short_result
+	result["boss_id"] = String(boss_id)
+	result["loot"] = loot_banked
 	result["meta_saved"] = Meta.last_save_ok
 
 	# Grade moves the venue stock. "Inside Trader" perk boosts the upside.
@@ -656,6 +702,15 @@ func _extract() -> void:
 
 func _on_results_continued() -> void:
 	RunFlow.on_heist_finished()
+
+func _on_player_health(current: int, maximum: int) -> void:
+	if post_fx:
+		post_fx.set_health(current, maximum)
+
+## Damage feedback shared by every hit on the player.
+func on_player_hurt() -> void:
+	if post_fx:
+		post_fx.hit(1.0)
 
 func _on_player_died() -> void:
 	# Die before extracting: the loot is gone and so is the run.
@@ -695,7 +750,7 @@ func _scatter_loot(room) -> void:
 
 	var placed: Array = []
 	for i in count:
-		var pos := _loot_slot(size, placed)
+		var pos := _loot_slot(size, placed, room)
 		placed.append(pos)
 		var pickup := LootPickup.new()
 		pickup.value = _rng.randi_range(per_min, per_max)
@@ -704,9 +759,9 @@ func _scatter_loot(room) -> void:
 		pickup.collected.connect(_on_loot_collected)
 
 ## A floor position inset from the walls, spaced from other loot.
-func _loot_slot(size: Vector2, placed: Array) -> Vector2:
+func _loot_slot(size: Vector2, placed: Array, room: BuildingRoom = null) -> Vector2:
 	var candidate := Vector2.ZERO
-	for attempt in 6:
+	for attempt in 16:
 		candidate = Vector2(
 			_rng.randf_range(90, size.x - 90),
 			_rng.randf_range(90, size.y - 90))
@@ -715,12 +770,19 @@ func _loot_slot(size: Vector2, placed: Array) -> Vector2:
 			if candidate.distance_to(p) < 80.0:
 				ok = false
 				break
+		if ok and room:
+			for r: Rect2 in room.blocked_rects:
+				if r.grow(20).has_point(candidate):
+					ok = false
+					break
 		if ok:
 			return candidate
 	return candidate
 
 func _on_loot_collected(value: int) -> void:
-	RunEconomy.add_bonus(roundi(value * loot_multiplier() * (1.25 if RunState.has_perk(&"scavenger") else 1.0)))
+	var paid := roundi(value * loot_multiplier() * (1.25 if RunState.has_perk(&"scavenger") else 1.0))
+	loot_banked += paid
+	RunEconomy.add_bonus(paid)
 	Sfx.play_sound("pickup")
 	if hud and hud.has_method("flash_gold"):
 		hud.flash_gold()
@@ -756,6 +818,19 @@ func _on_item_claimed(item) -> void:
 func loot_multiplier() -> int:
 	return 2 if modifier == &"heavy_police" else 1
 
+func fire_exit_limit() -> float:
+	return fire_exit_heat_limit
+
+## Live loot multiplier: floor valuables are worth more while the venue trades
+## above its listing price (Phase 6 wires the pickups to it).
+func live_loot_multiplier() -> float:
+	if RunState.market == null:
+		return 1.0
+	var a: CriminalAsset = RunState.market.get_asset(_venue)
+	if a == null or a.base_price <= 0.0:
+		return 1.0
+	return clampf(a.current_price / a.base_price, 0.5, 2.0)
+
 func dispatch_threshold() -> float:
 	return 8.0 if modifier == &"heavy_police" else 16.0
 
@@ -763,9 +838,12 @@ func add_heat(amount: float, source: String) -> void:
 	if amount <= 0.0 or _extracting:
 		return
 	var was_quiet := heat < dispatch_threshold()
-	heat = minf(100.0, heat + amount * (0.75 if RunState.has_perk(&"cool_head") else 1.0))
+	var gained := amount * (0.75 if RunState.has_perk(&"cool_head") else 1.0)
+	heat = minf(100.0, heat + gained)
 	quiet_seconds = 0.0
 	last_heat_source = source
+	if hud and hud.has_method("log_heat"):
+		hud.log_heat("%s  +%d" % [source.to_upper(), roundi(gained)])
 	if was_quiet and heat >= dispatch_threshold():
 		_heat_timer = minf(_heat_timer, 4.0)
 
@@ -802,23 +880,24 @@ func _setup_tactics() -> void:
 	layer.layer = 8
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
-	_security_status = Label.new()
-	_security_status.position = Vector2(332, 29)
-	_security_status.size = Vector2(530, 102)
-	_security_status.add_theme_font_size_override("font_size", 18)
-	_security_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(_security_status)
+	var ui := Control.new()
+	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(ui)
 	tactical_map = HeistMap.new()
 	tactical_map.floor_host = self
 	tactical_map.full_reveal = modifier == &"insider"
-	layer.add_child(tactical_map)
+	ui.add_child(tactical_map)
 	tactical_map.hide()
 	var toggle := Button.new()
 	toggle.text = "MAP"
-	toggle.position = Vector2(984, 18)
-	toggle.size = Vector2(130, 70)
+	toggle.position = Vector2(1040, 38)
+	toggle.size = Vector2(98, 58)
+	toggle.focus_mode = Control.FOCUS_NONE
 	toggle.pressed.connect(_toggle_map)
-	layer.add_child(toggle)
+	ui.add_child(toggle)
+	if hud and hud.has_method("bind_floor"):
+		hud.bind_floor(self)
 	_update_security_status()
 
 func _toggle_map() -> void:
@@ -828,47 +907,111 @@ func _toggle_map() -> void:
 	tactical_map.visible = not tactical_map.visible
 	get_tree().paused = tactical_map.visible
 
-func _update_security_status() -> void:
-	if _security_status == null:
-		return
-	var tag := RunFlow.pending_heist.modifier_name() if RunFlow.pending_heist else "STANDARD SECURITY"
-	var response := " · POLICE IN %.0fs" % _heat_timer if heat >= dispatch_threshold() else " · CLEAR"
-	_security_status.text = "%s\nHEAT  %.0f / %.0f%s\n%s" % [tag, heat, dispatch_threshold(), response, last_heat_source]
-	var short_quote := ShortBook.quote()
-	if not short_quote.is_empty():
-		_security_status.text += "\nSHORT: %s%d P/L · escape pays %d" % ["+" if short_quote["profit"] >= 0 else "", short_quote["profit"], short_quote["payout"]]
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("tactical_map") and not event.is_echo():
+		_toggle_map()
+		get_viewport().set_input_as_handled()
 
+func _update_security_status() -> void:
+	if hud and hud.has_method("set_heat"):
+		hud.set_heat(heat, dispatch_threshold(), fire_exit_limit(), _heat_timer)
+		hud.set_loot_multiplier(live_loot_multiplier())
+
+## Stage art for the whole building: themed floors, walls with height,
+## furniture that doubles as cover. Runs right after generation, before crews.
 func _dress_building() -> void:
-	var bounds := Rect2()
+	var stage_idx: int = RunFlow.pending_heist.stage if RunFlow.pending_heist else (RunState.run_map.current_stage if RunState.run_map else 0)
+	if boss_id == &"auditor":
+		stage_idx = 1
+	env = EnvTheme.for_stage(stage_idx)
+	building_bounds = Rect2()
 	for room: BuildingRoom in generator.rooms:
 		var rect := Rect2(room.global_position, room.room_size)
-		bounds = rect if bounds.size == Vector2.ZERO else bounds.merge(rect)
-		var label := room.get_node_or_null("RoomName")
-		if label:
-			label.hide()
+		building_bounds = rect if building_bounds.size == Vector2.ZERO else building_bounds.merge(rect)
+		var gaps := _open_gaps_local(room)
+		var obstacles: Array = []
+		var counter := room.get_node_or_null("Counter") as StaticBody2D
+		if counter:
+			# Authored counters become proper furniture on the props layer.
+			var prop := Prop.new()
+			prop.kind = "counter"
+			prop.size = Vector2(170, 34)
+			prop.theme = env
+			prop.position = counter.position
+			counter.queue_free()
+			room.add_child(prop)
+			obstacles.append(prop.footprint())
+			room.blocked_rects.append(prop.footprint().grow(12))
 		var art := RoomArt.new()
 		art.room = room
+		art.theme = env
+		art.room_type = env.room_type_for(room, room == generator.start_room)
+		art.open_gaps = gaps
+		room.set_meta("room_type", art.room_type)
 		room.add_child(art)
-		var walls := room.get_node_or_null("Walls")
-		if walls:
-			for wall in walls.get_children():
-				if wall is Polygon2D:
-					wall.color = Color("506069")
-					var edge := Line2D.new()
-					edge.points = wall.polygon
-					edge.closed = true
-					edge.width = 2
-					edge.default_color = Color("82958d")
-					wall.add_child(edge)
-		var counter := room.get_node_or_null("Counter/Countertop") as Polygon2D
-		if counter:
-			counter.color = Color("6b6856")
-			var trim := Line2D.new()
-			trim.points = counter.polygon
-			trim.closed = true
-			trim.width = 3
-			trim.default_color = Color("c3ad77")
-			counter.add_child(trim)
+		var walls := RoomArt.WallArt.new()
+		walls.room = room
+		walls.theme = env
+		room.add_child(walls)
+		wall_art.append(walls)
+		var keepouts: Array = []
+		for marker in room.get_node("SpawnPoints").get_children() if room.has_node("SpawnPoints") else []:
+			keepouts.append([marker.position, 46.0])
+		keepouts.append([Vector2(55, 70), 50.0])                                        # camera
+		keepouts.append([Vector2(room.room_size.x - 65, room.room_size.y - 100), 56.0])  # alarm panel
+		if room == generator.start_room:
+			keepouts.append([Vector2(430, 270), 70.0])                                   # market terminal
+		if room.has_meta("is_boss"):
+			keepouts.append([room.room_size * 0.5, 170.0])
+		elif room.has_meta("chest_kind"):
+			keepouts.append([room.room_size * 0.5, 90.0])
+		var placer := PropPlacer.new()
+		placer.room = room
+		placer.theme = env
+		placer.room_type = art.room_type
+		placer.furnish(gaps, keepouts, obstacles)
+
+## Doorways of a room that actually lead somewhere: into a neighbour, or out
+## through the main door / a fire exit. Local coordinates.
+func _open_gaps_local(room: Node2D) -> Array:
+	var out: Array = []
+	for gap: Dictionary in generator._gaps_of(room):
+		var side: int = gap["side"]
+		var neighbour: Vector2i = gap["cell"] + FloorGenerator.SIDE_DELTA[side]
+		var open: bool = generator._occupied.has(neighbour) and generator._occupied[neighbour] != room
+		if not open:
+			for door: Dictionary in [generator.entrance] + generator.exits:
+				if not door.is_empty() and door["room"] == room and door["side"] == side and door["wall_pos"] == gap["wall_pos"]:
+					open = true
+		if open:
+			out.append({"local": gap["wall_pos"], "side": side, "horizontal": side == FloorGenerator.NORTH or side == FloorGenerator.SOUTH})
+	return out
+
+## Outside and lighting: once the player and car exist.
+func _dress_outside() -> void:
+	lighting = HeistLighting.new()
+	add_child(lighting)
+	lighting.setup(env, generator.rooms, player, modifier == &"blackout")
+	var occluders: Array = []
+	for walls: RoomArt.WallArt in wall_art:
+		for r: Rect2 in walls.rects:
+			occluders.append(Rect2(r.position + walls.room.global_position, r.size))
+	lighting.add_occluders(occluders)
 	var street := StreetArt.new()
-	street.bounds = bounds
+	street.bounds = building_bounds
+	street.theme = env
+	street.lighting = lighting
+	if not generator.entrance.is_empty():
+		var e: Dictionary = generator.entrance
+		var wall_world: Vector2 = e["room"].to_global(e["wall_pos"])
+		street.door_pos = wall_world
+		street.door_out = (wall_world - e["inside_pos"]).normalized()
+	street.sign_text = Venues.sign_name(_venue, boss_id)
 	add_child(street)
+	var rain := StreetArt.Rain.new()
+	rain.follow = camera
+	add_child(rain)
+	if car:
+		car.add_headlights(lighting)
+	for g: Dictionary in generator.exits:
+		lighting.add_street_lamp(g["inside_pos"], Palette.NEON_GREEN, 1.1, 0.7)

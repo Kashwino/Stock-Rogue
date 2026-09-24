@@ -28,7 +28,7 @@ async function point(x, y) {
   return { x: r.x + x * r.width / s.viewport[0], y: r.y + y * r.height / s.viewport[1] };
 }
 async function tap(text) {
-  await wait(t => window.stockRogueQA?.controls.some(c => c.text === t), text);
+  await wait(t => window.stockRogueQA?.controls.some(c => c.text === t) && !window.stockRogueQA.transition, text);
   const s = await state();
   const c = s.controls.find(c => c.text === text);
   const p = await point(c.rect[0] + c.rect[2] / 2, c.rect[1] + c.rect[3] / 2);
@@ -36,6 +36,7 @@ async function tap(text) {
   await page.waitForTimeout(250);
 }
 async function tapCard() {
+  await wait(() => !window.stockRogueQA?.transition);
   const s = await state();
   const c = s.controls.find(c => c.type === 'Button' && c.text === '');
   assert(c, 'selectable card is visible');

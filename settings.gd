@@ -4,7 +4,12 @@ signal changed
 signal save_failed(message: String)
 const PATH := "user://settings.cfg"
 const WEB_KEY := "stock-rogue-settings-v1"
-const DEFAULTS := {"master": 0.8, "sfx": 0.8, "fullscreen": false, "low_effects": false, "frame_cap": 60, "touch_mode": 0}
+const DEFAULTS := {"master": 0.8, "music": 0.7, "sfx": 0.8, "ui": 0.8, "fullscreen": false,
+	"low_effects": false, "frame_cap": 60, "touch_mode": 0, "shake": 1.0, "dynamic_shadows": false,
+	"post_fx": true, "reduce_flashing": false, "damage_numbers": true}
+const AUDIO_KEYS := {"master": "Master", "music": "Music", "sfx": "SFX", "ui": "UI"}
+const FLOAT_KEYS := ["master", "music", "sfx", "ui", "shake"]
+const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers"]
 var values: Dictionary = DEFAULTS.duplicate()
 var last_save_error: int = OK
 
@@ -19,7 +24,7 @@ func load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(PATH) == OK:
 		for key: String in DEFAULTS:
-			values[key] = cfg.get_value("audio" if key in ["master", "sfx"] else "video", key, DEFAULTS[key])
+			values[key] = cfg.get_value("audio" if AUDIO_KEYS.has(key) else "video", key, DEFAULTS[key])
 	if OS.has_feature("web"):
 		var saved = JavaScriptBridge.eval("(()=>{try{return localStorage.getItem('" + WEB_KEY + "')}catch(e){return null}})()", true)
 		if saved is String:
@@ -30,11 +35,11 @@ func load_settings() -> void:
 	_sanitize()
 
 func _sanitize() -> void:
-	for key: String in ["master", "sfx"]:
+	for key: String in FLOAT_KEYS:
 		if not (values[key] is float or values[key] is int) or not is_finite(float(values[key])):
 			values[key] = DEFAULTS[key]
 		values[key] = clampf(float(values[key]), 0.0, 1.0)
-	for key: String in ["fullscreen", "low_effects"]:
+	for key: String in BOOL_KEYS:
 		if not values[key] is bool:
 			values[key] = DEFAULTS[key]
 	if values["frame_cap"] not in [30, 60]:
@@ -52,12 +57,13 @@ func set_setting(key: String, value: Variant) -> void:
 	changed.emit()
 
 func apply() -> void:
-	if AudioServer.get_bus_index("SFX") < 0:
-		AudioServer.add_bus()
-		AudioServer.set_bus_name(AudioServer.bus_count - 1, "SFX")
-		AudioServer.set_bus_send(AudioServer.bus_count - 1, "Master")
-	for key: String in ["master", "sfx"]:
-		var index := AudioServer.get_bus_index("Master" if key == "master" else "SFX")
+	for bus: String in ["Music", "SFX", "UI"]:
+		if AudioServer.get_bus_index(bus) < 0:
+			AudioServer.add_bus()
+			AudioServer.set_bus_name(AudioServer.bus_count - 1, bus)
+			AudioServer.set_bus_send(AudioServer.bus_count - 1, "Master")
+	for key: String in AUDIO_KEYS:
+		var index := AudioServer.get_bus_index(AUDIO_KEYS[key])
 		var value: float = values[key]
 		AudioServer.set_bus_mute(index, value <= 0.0)
 		AudioServer.set_bus_volume_db(index, linear_to_db(maxf(value, 0.0001)))
@@ -71,7 +77,7 @@ func apply_display_from_gesture() -> void:
 func save() -> bool:
 	var cfg := ConfigFile.new()
 	for key: String in DEFAULTS:
-		cfg.set_value("audio" if key in ["master", "sfx"] else "video", key, values[key])
+		cfg.set_value("audio" if AUDIO_KEYS.has(key) else "video", key, values[key])
 	last_save_error = cfg.save(PATH)
 	if OS.has_feature("web"):
 		# Synchronous same-origin fallback also survives closing a browser tab

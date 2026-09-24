@@ -30,6 +30,7 @@ func _process(delta: float) -> void:
 	if RunState.run_map:
 		data["route_stage"] = RunState.run_map.current_stage
 		data["route_step"] = RunState.run_map.current_step
+	data["transition"] = Transition.busy
 	data["intel"] = Meta.intel
 	data["unlocks"] = Meta.unlocked_assets
 	data["starting_perk"] = String(Meta.starting_perk)

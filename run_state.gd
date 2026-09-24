@@ -22,6 +22,8 @@ var perks: Array = []
 var hedge_charges: int = 0
 var short_position: Dictionary = {}
 var run_id: String = ""
+var last_grade := ""
+var bosses_down: Array = []          # stage boss ids defeated this run
 
 var max_health: int = 3
 var health: int = 3
@@ -39,6 +41,8 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	stat_mods.clear()
 	hedge_charges = 0
 	short_position.clear()
+	last_grade = ""
+	bosses_down.clear()
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
 
 	# Fresh loadout with the starter Sidearm.
@@ -178,6 +182,8 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"hedge_charges": hedge_charges,
 		"short_position": short_position.duplicate(true),
 		"run_id": run_id,
+		"last_grade": last_grade,
+		"bosses_down": bosses_down.duplicate(),
 		"quota_block": run_map.quota_block if run_map else 0,
 		"heists_done": run_map.heists_done if run_map else 0,
 		"market": _serialize_market(),
@@ -214,6 +220,8 @@ func _serialize_loadout() -> Dictionary:
 func deserialize(data: Dictionary) -> void:
 	run_id = str(data.get("run_id", "legacy-" + str(data.get("seed", 0))))
 	short_position = data.get("short_position", {}).duplicate(true)
+	last_grade = str(data.get("last_grade", ""))
+	bosses_down = Array(data.get("bosses_down", [])).duplicate()
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))
 

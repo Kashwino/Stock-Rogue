@@ -3,7 +3,7 @@ class_name Bullet
 @export var speed := 600.0
 @export var damage := 1
 @export var lifetime := 2.0
-@export_flags_2d_physics var wall_mask := 1
+@export_flags_2d_physics var wall_mask := Layers.SOLID
 var pierce := 0
 var ricochets := 0
 var knockback := 0.0
@@ -22,7 +22,7 @@ func setup(direction: Vector2, shooter: Node) -> void:
 
 func _ready() -> void:
 	collision_layer = 0
-	collision_mask = wall_mask | 2 | 8
+	collision_mask = wall_mask | Layers.ENEMIES | Layers.SECURITY | Layers.FLYERS
 	body_entered.connect(_try_hit)
 
 func _physics_process(delta: float) -> void:
@@ -39,7 +39,7 @@ func _physics_process(delta: float) -> void:
 		if remaining <= 0.01 or _spent:
 			break
 		var target := global_position + _dir * remaining
-		var query := PhysicsRayQueryParameters2D.create(global_position, target, wall_mask | 2 | 8, _excluded)
+		var query := PhysicsRayQueryParameters2D.create(global_position, target, wall_mask | Layers.ENEMIES | Layers.SECURITY | Layers.FLYERS, _excluded)
 		var hit := get_world_2d().direct_space_state.intersect_ray(query)
 		if hit.is_empty():
 			global_position = target

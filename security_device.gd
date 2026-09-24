@@ -17,7 +17,7 @@ const RANGE := 450.0
 
 func _ready() -> void:
 	add_to_group("security")
-	collision_layer = 8
+	collision_layer = Layers.SECURITY
 	collision_mask = 0
 	var shape := CollisionShape2D.new()
 	var box := RectangleShape2D.new()
@@ -62,7 +62,7 @@ func _physics_process(delta: float) -> void:
 		var offset: Vector2 = p.global_position - global_position
 		var sees := offset.length() < RANGE and absf(angle_difference(scan_angle, offset.angle())) < 0.48
 		if sees:
-			var query := PhysicsRayQueryParameters2D.create(global_position, p.global_position, 1)
+			var query := PhysicsRayQueryParameters2D.create(global_position, p.global_position, Layers.SOLID)
 			sees = get_world_2d().direct_space_state.intersect_ray(query).is_empty()
 		detected = minf(1.6, detected + elapsed) if sees else maxf(0.0, detected - elapsed * 2.0)
 		transmit_clock = maxf(0.0, transmit_clock - elapsed)

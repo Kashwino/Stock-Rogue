@@ -1,52 +1,113 @@
 extends Control
 class_name MenuBackdrop
+## Animated menu backdrop: looking out of a dark office window at a rain-soaked
+## skyline. Blinking windows, a neon crown on the Exchange tower, searchlight
+## sweeps, and raindrops that slide down the glass. `hero` adds the window
+## frame and heavier rain for the main menu; other screens get a dimmer take.
+
 var hero := false
+var _t := 0.0
+var _buildings: Array = []     # [Rect2, layer, window seeds]
+var _lit: Dictionary = {}      # window key -> on
+var _drops: Array = []         # [pos, speed, radius]
+var _rng := RandomNumberGenerator.new()
+var _blink_clock := 0.0
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	resized.connect(queue_redraw)
+	_rng.seed = 1947
+	_generate()
+	resized.connect(_generate)
+
+func _generate() -> void:
+	_buildings.clear()
+	var w := maxf(size.x, 1280.0)
+	var h := maxf(size.y, 720.0)
+	for layer in 3:
+		var x := -40.0
+		while x < w + 40.0:
+			var bw := _rng.randf_range(60, 150) * (1.0 + layer * 0.25)
+			var bh := _rng.randf_range(160, 420) * (0.55 + layer * 0.3)
+			_buildings.append([Rect2(x, h - bh - 60, bw, bh + 60), layer])
+			x += bw + _rng.randf_range(-10, 20)
+	_drops.clear()
+	for i in (70 if hero else 26):
+		_drops.append([Vector2(_rng.randf() * w, _rng.randf() * h), _rng.randf_range(20, 90), _rng.randf_range(1.5, 4.0)])
+
+func _process(delta: float) -> void:
+	_t += delta
+	_blink_clock -= delta
+	if _blink_clock <= 0.0:
+		_blink_clock = 0.12
+		for i in 6:
+			_lit[_rng.randi() % 4000] = _rng.randf() < 0.55
+	for d: Array in _drops:
+		d[0].y += d[1] * delta
+		d[0].x += sin(_t * 0.7 + d[2]) * 4.0 * delta
+		if d[0].y > size.y + 10:
+			d[0] = Vector2(_rng.randf() * size.x, -10)
+	queue_redraw()
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color("0b1219"))
-	for y in range(0, int(size.y), 24):
-		var t: float = float(y) / maxf(size.y, 1.0)
-		draw_rect(Rect2(0, y, size.x, 24), Color(0.045 + t * 0.018, 0.075 + t * 0.025, 0.095 + t * 0.023))
-	for x in range(0, int(size.x), 56):
-		draw_line(Vector2(x, 0), Vector2(x, size.y), Color(0.35, 0.6, 0.6, 0.035))
-	for y in range(0, int(size.y), 56):
-		draw_line(Vector2(0, y), Vector2(size.x, y), Color(0.35, 0.6, 0.6, 0.035))
-	draw_line(Vector2(48, 48), Vector2(size.x - 48, 48), Color("375052"), 1)
-	draw_line(Vector2(48, size.y - 40), Vector2(size.x - 48, size.y - 40), Color("375052"), 1)
-	if not hero:
-		return
-	# A bespoke vault illustration, rendered as crisp vector artwork at any scale.
-	var c := Vector2(535, 430)
-	for r in range(210, 179, -6):
-		draw_circle(c + Vector2(0, 12), r, Color(0.02, 0.03, 0.04, 0.20))
-	draw_rect(Rect2(c - Vector2(206, 206), Vector2(412, 412)), Color("132b32"))
-	draw_rect(Rect2(c - Vector2(194, 194), Vector2(388, 388)), Color("27414a"), false, 3)
-	draw_circle(c, 171, Color("09151d"))
-	draw_circle(c, 160, Color("243c43"))
-	draw_circle(c - Vector2(3, 4), 151, Color("172c34"))
-	draw_arc(c, 150, -PI * 0.9, -PI * 0.12, 48, Color("829184"), 4, true)
-	draw_arc(c, 140, 0, TAU, 64, Color("40565a"), 2, true)
-	for i in 32:
-		var a := TAU * i / 32.0
-		draw_line(c + Vector2.from_angle(a) * 131, c + Vector2.from_angle(a) * (119 if i % 4 == 0 else 124), Color("a4905e"), 2)
-	for a in [0.0, PI * 0.5, PI, PI * 1.5]:
-		var at: Vector2 = c + Vector2.from_angle(a) * 80
-		draw_line(c, at, Color("080f16"), 18, true)
-		draw_line(c - Vector2(2, 2), at - Vector2(2, 2), Color("b6a67e"), 8, true)
-	draw_circle(c, 39, Color("09151d"))
-	draw_circle(c, 29, Color("d9bb76"))
-	draw_circle(c, 20, Color("34474a"))
-	draw_line(c + Vector2(0, -14), c + Vector2(0, 14), Color("e4cc92"), 4)
-	for y in [-120, 100]:
-		draw_style_box(VisualTheme.panel(Color("576d6b"), 0), Rect2(c + Vector2(-222, y), Vector2(48, 70)))
-	# Market candles behind the title, kept deliberately low contrast.
-	for i in 12:
-		var x := 82.0 + i * 42
-		var y := 345.0 + sin(i * 0.8) * 38
-		var col := Color(0.41, 0.78, 0.68, 0.16) if i % 3 else Color(0.91, 0.60, 0.40, 0.16)
-		draw_line(Vector2(x, y - 26), Vector2(x, y + 46), col, 2)
-		draw_rect(Rect2(x - 7, y - 8, 14, 28), col)
+	var w := size.x
+	var h := size.y
+	# Night sky.
+	for i in 24:
+		var t := float(i) / 24.0
+		draw_rect(Rect2(0, h * t, w, h / 24.0 + 1), Color("0a0c16").lerp(Color("2a1428"), t * t))
+	# Searchlights.
+	for k in 2:
+		var a := -PI * 0.5 + sin(_t * 0.25 + k * 2.2) * 0.6
+		var base := Vector2(w * (0.3 + k * 0.45), h)
+		var tip := base + Vector2.from_angle(a) * h * 1.4
+		var side := Vector2.from_angle(a + PI * 0.5) * 70.0
+		draw_colored_polygon(PackedVector2Array([base, tip + side, tip - side]), Color(0.8, 0.85, 1.0, 0.035))
+	# Skyline, far to near.
+	var tower_x := w * 0.52
+	for b: Array in _buildings:
+		var r: Rect2 = b[0]
+		var layer: int = b[1]
+		var shade := Color("0f1018").lerp(Color("07070b"), layer / 2.0)
+		draw_rect(r, shade)
+		var bright := 0.25 + layer * 0.3
+		var cols := int(r.size.x / 14.0)
+		var rows := int(r.size.y / 18.0)
+		for cx in cols:
+			for cy in rows:
+				var key := int(r.position.x) * 31 + cx * 7 + cy * 131
+				var on: bool = _lit.get(key % 4000, (key % 7) == 0)
+				if on:
+					draw_rect(Rect2(r.position.x + 5 + cx * 14, r.position.y + 8 + cy * 18, 6, 8), Color(1.0, 0.8, 0.45, bright * 0.8))
+	# The Exchange tower with its neon crown.
+	var tower := Rect2(tower_x - 60, h * 0.18, 120, h * 0.82)
+	draw_rect(tower, Color("06060a"))
+	draw_colored_polygon(PackedVector2Array([Vector2(tower_x - 60, h * 0.18), Vector2(tower_x, h * 0.08), Vector2(tower_x + 60, h * 0.18)]), Color("06060a"))
+	var pulse := 0.6 + 0.4 * sin(_t * 1.3)
+	draw_polyline(PackedVector2Array([Vector2(tower_x - 60, h * 0.18), Vector2(tower_x, h * 0.08), Vector2(tower_x + 60, h * 0.18)]), Palette.with_alpha(Palette.GOLD, pulse), 3.0, true)
+	draw_circle(Vector2(tower_x, h * 0.08), 4, Palette.DANGER if fmod(_t, 1.2) < 0.6 else Color(0.3, 0.05, 0.05))
+	for i in 18:
+		var y := h * 0.22 + i * 26
+		draw_line(Vector2(tower_x - 50, y), Vector2(tower_x + 50, y), Palette.with_alpha(Palette.NEON_CYAN, 0.12 + 0.1 * sin(_t * 2.0 + i)), 1.5)
+	# Street glow at the bottom.
+	draw_rect(Rect2(0, h - 60, w, 60), Color(0.9, 0.5, 0.2, 0.08))
+	# Rain on the glass.
+	for d: Array in _drops:
+		var p: Vector2 = d[0]
+		var r2: float = d[2]
+		draw_line(p - Vector2(0, r2 * 6.0), p, Color(0.7, 0.8, 1.0, 0.12), r2 * 0.6)
+		draw_circle(p, r2, Color(0.75, 0.85, 1.0, 0.25))
+		draw_circle(p - Vector2(r2 * 0.3, r2 * 0.3), r2 * 0.35, Color(1, 1, 1, 0.35))
+	if hero:
+		# Window frame and a desk-lamp glow inside the office.
+		var frame := Color("050507")
+		draw_rect(Rect2(0, 0, w, 18), frame)
+		draw_rect(Rect2(0, h - 18, w, 18), frame)
+		draw_rect(Rect2(0, 0, 18, h), frame)
+		draw_rect(Rect2(w - 18, 0, 18, h), frame)
+		draw_rect(Rect2(w * 0.5 - 7, 0, 14, h), frame)
+		draw_rect(Rect2(0, h * 0.42 - 6, w, 12), frame)
+		for i in 10:
+			draw_circle(Vector2(w * 0.05, h * 1.05), 520 - i * 45, Color(1.0, 0.72, 0.35, 0.012))
+	else:
+		draw_rect(Rect2(0, 0, w, h), Color(0, 0, 0, 0.45))

@@ -365,7 +365,7 @@ func _seal_gap(gap: Dictionary) -> void:
 		else Vector2(WALL_THICK, DOOR_GAP + 4.0)
 
 	var body := StaticBody2D.new()
-	body.collision_layer = 1
+	body.collision_layer = Layers.WALLS
 	body.collision_mask = 0
 	body.position = gap["wall_pos"]
 	room.add_child(body)

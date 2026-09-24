@@ -1,21 +1,16 @@
 extends CanvasLayer
 class_name ResultsScreen
 
-## Post-heist grade card. Builds its whole UI in code, so the scene is just:
-##   CanvasLayer (root) + this script.
-##
-## Built this way for the same reason as ChestUI: a CanvasLayer routes mouse
-## input down the CONTROL tree, so the contents need a full-rect Control root
-## or buttons silently stop responding.
-##
-## Pauses the game while shown, and emits `continued` when dismissed.
+## Post-heist job report: a typed sheet on the desk, the grade slammed on as a
+## rubber stamp, the numbers, the stock move and the money. Built in code
+## under one full-rect Control root; pauses the tree while shown and emits
+## `continued` when dismissed.
 
 signal continued
 
 const GRADE_COLORS := {
-	"S+": Color(1.0, 0.85, 0.3), "S": Color(1.0, 0.8, 0.35),
-	"A": Color(0.45, 0.95, 0.55), "B": Color(0.5, 0.8, 1.0),
-	"C": Color(0.8, 0.8, 0.85), "D": Color(1.0, 0.5, 0.45),
+	"S+": Palette.GOLD, "S": Palette.GOLD, "A": Palette.STAMP_GREEN,
+	"B": Color("2a5a9a"), "C": Color("6a6a6a"), "D": Palette.STAMP_RED,
 }
 const VERDICTS := {
 	"S+": "They'll tell stories about this one.",
@@ -27,10 +22,12 @@ const VERDICTS := {
 }
 
 var _root: Control
-var _grade_stamp: Label
-var _verdict_label: Label
-var _venue_label: Label
+var _sheet: PaperSheet
 var _rows: VBoxContainer
+var _title: Label
+var _sub: Label
+var _stamp: StampArt
+var _verdict: Label
 var _stock_label: Label
 var _continue_button: Button
 var _shown: bool = false
@@ -47,115 +44,98 @@ func _build() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_PASS
 	_root.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_root)
-
 	var dim := ColorRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.02, 0.02, 0.04, 0.85)
+	dim.color = Color(0.02, 0.02, 0.03, 0.86)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(dim)
-
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(center)
-
-	var panel := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.07, 0.07, 0.1, 0.98)
-	sb.border_color = Color(0.35, 0.36, 0.44)
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(8)
-	sb.content_margin_left = 44
-	sb.content_margin_right = 44
-	sb.content_margin_top = 30
-	sb.content_margin_bottom = 30
-	panel.add_theme_stylebox_override("panel", sb)
-	center.add_child(panel)
-
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 12)
-	col.custom_minimum_size = Vector2(420, 0)
-	panel.add_child(col)
-
-	_venue_label = Label.new()
-	_venue_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_venue_label.add_theme_font_size_override("font_size", 13)
-	_venue_label.add_theme_color_override("font_color", Color(0.6, 0.62, 0.7))
-	col.add_child(_venue_label)
-
-	_grade_stamp = Label.new()
-	_grade_stamp.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_grade_stamp.add_theme_font_size_override("font_size", 68)
-	col.add_child(_grade_stamp)
-
-	_verdict_label = Label.new()
-	_verdict_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_verdict_label.add_theme_font_size_override("font_size", 15)
-	_verdict_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(_verdict_label)
-
-	col.add_child(HSeparator.new())
-
+	_sheet = PaperSheet.new()
+	_sheet.stock = Palette.PAPER
+	_sheet.position = Vector2(250, 26)
+	_sheet.size = Vector2(780, 640)
+	_sheet.rotation = -0.012
+	_root.add_child(_sheet)
+	_title = _type("JOB REPORT", Vector2(90, 24), 34, true)
+	_title.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+	_sub = _type("", Vector2(90, 70), 18, false)
 	_rows = VBoxContainer.new()
-	_rows.add_theme_constant_override("separation", 6)
-	col.add_child(_rows)
-
-	_stock_label = Label.new()
-	_stock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stock_label.add_theme_font_size_override("font_size", 20)
-	col.add_child(_stock_label)
-
+	_rows.position = Vector2(90, 118)
+	_rows.custom_minimum_size = Vector2(430, 0)
+	_rows.add_theme_constant_override("separation", 4)
+	_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sheet.add_child(_rows)
+	_verdict = _type("", Vector2(90, 470), 22, true)
+	_verdict.custom_minimum_size = Vector2(620, 0)
+	_verdict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_stock_label = _type("", Vector2(90, 520), 26, true)
+	_stock_label.add_theme_font_override("font", VisualTheme.font("mono"))
+	_stamp = StampArt.new()
+	_stamp.text = "A"
+	_stamp.font_size = 120
+	_stamp.tilt = -0.18
+	_sheet.add_child(_stamp)
 	_continue_button = Button.new()
-	_continue_button.text = "Back to the map"
-	_continue_button.custom_minimum_size = Vector2(0, 74)
-	_continue_button.focus_mode = Control.FOCUS_ALL
+	_continue_button.text = "BACK TO THE CASE WALL"
+	_continue_button.theme_type_variation = "PrimaryButton"
+	_continue_button.position = Vector2(440, 574)
+	_continue_button.size = Vector2(300, 54)
 	_continue_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	_continue_button.set_meta("qa_label", "Back to the map")
 	_continue_button.pressed.connect(_on_continue)
-	col.add_child(_continue_button)
+	_sheet.add_child(_continue_button)
+
+func _type(text: String, at: Vector2, size: int, bold: bool) -> Label:
+	var l := VisualTheme.label(text, "", size, Palette.INK)
+	l.add_theme_font_override("font", VisualTheme.font("type_bold" if bold else "type"))
+	l.position = at
+	_sheet.add_child(l)
+	return l
 
 func show_result(result: Dictionary, venue_name: String = "") -> void:
 	var g: String = result.get("grade_name", "?")
-	_grade_stamp.text = g
-	_grade_stamp.add_theme_color_override("font_color",
-		GRADE_COLORS.get(g, Color.WHITE))
-	_verdict_label.text = VERDICTS.get(g, "")
-	_venue_label.text = venue_name.to_upper().replace("_", " ")
-
+	var venue := StringName(venue_name)
+	_title.text = "JOB REPORT — " + Venues.sign_name(venue, StringName(result.get("boss_id", "")))
+	_sub.text = "CASE %s  ·  %s  ·  FILED BY THE FENCE" % [str(RunFlow.heists_completed + 1).pad_zeros(3), Venues.display_name(venue).to_upper()]
 	var stats: Dictionary = result.get("stats", {})
 	var b: Dictionary = result.get("breakdown", {})
-
 	for c in _rows.get_children():
 		c.queue_free()
 	_add_row("Hits taken", str(stats.get("hits_taken", 0)))
 	_add_row("Accuracy", "%d%%" % int(b.get("accuracy", 0.0) * 100))
-	_add_row("Time", _fmt_time(stats.get("time_seconds", 0.0)))
-	_add_row("Kills", "%d / %d" % [stats.get("kills", 0),
-		stats.get("enemies_total", 0)])
-	_add_row("Intel banked", "+%d  /  NETWORK" % int(result.get("intel", 0)) if result.get("meta_saved", true) else "Could not save on this device")
+	_add_row("Time on site", _fmt_time(stats.get("time_seconds", 0.0)))
+	_add_row("Guards down", "%d / %d" % [stats.get("kills", 0), stats.get("enemies_total", 0)])
+	if result.has("loot"):
+		_add_row("Loot banked", "$%d" % int(result["loot"]))
+	_add_row("Intel banked", "+%d" % int(result.get("intel", 0)) if result.get("meta_saved", true) else "not saved on this device")
 	var short_result: Dictionary = result.get("short", {})
 	if not short_result.is_empty():
-		_add_row("Short settled", "%d gold returned (%+d profit)" % [short_result["payout"], short_result["profit"]])
-
+		_add_row("Short settled", "$%d back (%+d)" % [short_result["payout"], short_result["profit"]])
+	for line: String in result.get("extra_rows", []):
+		var parts := line.split("|")
+		_add_row(parts[0], parts[1] if parts.size() > 1 else "")
+	_verdict.text = "\"" + VERDICTS.get(g, "") + "\""
 	var delta: float = result.get("stock_delta", 1.0)
 	var pct: float = (delta - 1.0) * 100.0
-	_stock_label.text = "STOCK  %s%.0f%%" % ["+" if pct >= 0.0 else "", pct]
-	_stock_label.add_theme_color_override("font_color",
-		Color(0.45, 0.95, 0.55) if pct >= 0.0 else Color(1.0, 0.5, 0.45))
-
+	_stock_label.text = "%s  %s%.0f%%   ·   INDEX %d" % [Venues.ticker(venue), "+" if pct >= 0.0 else "", pct, roundi(RunState.empire_index())]
+	_stock_label.add_theme_color_override("font_color", Palette.STAMP_GREEN if pct >= 0.0 else Palette.STAMP_RED)
+	_stamp.set_text(g)
+	_stamp.ink = GRADE_COLORS.get(g, Palette.INK)
+	_stamp.position = Vector2(560, 150)
 	_root.show()
 	_shown = true
 	get_tree().paused = true
+	_stamp.slam(0.35)
 	_continue_button.grab_focus()
 
 func _add_row(label: String, value: String) -> void:
 	var row := HBoxContainer.new()
-	var l := Label.new()
-	l.text = label
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	l.add_theme_color_override("font_color", Color(0.62, 0.63, 0.7))
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := VisualTheme.label(label.to_upper(), "", 20, Color("4a4030"))
+	l.add_theme_font_override("font", VisualTheme.font("type"))
+	l.custom_minimum_size = Vector2(230, 0)
 	row.add_child(l)
-	var v := Label.new()
-	v.text = value
+	var v := VisualTheme.label(value, "", 20, Palette.INK)
+	v.add_theme_font_override("font", VisualTheme.font("type_bold"))
 	row.add_child(v)
 	_rows.add_child(row)
 

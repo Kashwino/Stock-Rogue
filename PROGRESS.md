@@ -63,7 +63,8 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
 - [x] Phase 0 — audit & cleanup (dead scripts removed, Log helper, Layers,
       input map in project.godot, brief route restored: case files → crew →
       hideout before every heist → quota gates → stage bosses)
-- [ ] Phase 1 — visual foundation
+- [x] Phase 1 — visual foundation (theme, fonts, sprite kit, stage art, props,
+      lighting, street, post-fx, transitions, HUD, case wall, hideout, menus)
 - [ ] Phase 2 — game feel
 - [ ] Phase 3 — audio
 - [ ] Phase 4 — enemies & security

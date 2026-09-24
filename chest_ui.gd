@@ -61,8 +61,9 @@ func _build() -> void:
 
 	_chest_label = Label.new()
 	_chest_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_chest_label.add_theme_font_size_override("font_size", 26)
-	_chest_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.45))
+	_chest_label.add_theme_font_size_override("font_size", 28)
+	_chest_label.add_theme_font_override("font", VisualTheme.font("heading"))
+	_chest_label.add_theme_color_override("font_color", Palette.GOLD)
 	_chest_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(_chest_label)
 
@@ -83,8 +84,8 @@ func _build() -> void:
 
 	_detail_panel = PanelContainer.new()
 	var dsb := StyleBoxFlat.new()
-	dsb.bg_color = Color(0.08, 0.08, 0.11, 0.95)
-	dsb.border_color = Color(0.3, 0.31, 0.38)
+	dsb.bg_color = Palette.with_alpha(Palette.PANEL, 0.97)
+	dsb.border_color = Palette.GOLD_DIM
 	dsb.set_border_width_all(2)
 	dsb.set_corner_radius_all(6)
 	dsb.content_margin_left = 18
@@ -102,17 +103,17 @@ func _build() -> void:
 	_detail_panel.add_child(dcol)
 
 	_detail_name = Label.new()
-	_detail_name.add_theme_font_size_override("font_size", 18)
+	_detail_name.add_theme_font_size_override("font_size", 22)
 	_detail_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dcol.add_child(_detail_name)
 
 	_detail_rarity = Label.new()
-	_detail_rarity.add_theme_font_size_override("font_size", 13)
+	_detail_rarity.add_theme_font_size_override("font_size", 17)
 	_detail_rarity.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dcol.add_child(_detail_rarity)
 
 	_detail_stats = Label.new()
-	_detail_stats.add_theme_font_size_override("font_size", 13)
+	_detail_stats.add_theme_font_size_override("font_size", 17)
 	_detail_stats.add_theme_color_override("font_color", Color(0.72, 0.74, 0.8))
 	_detail_stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail_stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -167,11 +168,11 @@ func _make_card(item) -> Button:
 
 	for state in ["normal", "hover", "pressed", "focus"]:
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color("14232d")
+		sb.bg_color = Palette.PANEL
 		if state == "hover" or state == "focus":
-			sb.bg_color = Color(0.15, 0.15, 0.2)
+			sb.bg_color = Palette.PANEL_HI
 		elif state == "pressed":
-			sb.bg_color = Color(0.05, 0.05, 0.07)
+			sb.bg_color = Palette.BG
 		sb.border_color = col
 		sb.set_border_width_all(2 if state != "normal" else 1)
 		sb.set_corner_radius_all(6)

@@ -10,7 +10,7 @@ class_name TraderFeed
 ##
 ## Drop on a Control in hud.tscn under the chart, ~260x120.
 
-const MAX_LINES := 5
+const MAX_LINES := 4
 const LINE_HEIGHT := 20.0
 const COOLDOWN := 1.1          # min seconds between posts, so it can't spam
 
@@ -64,7 +64,7 @@ const LINES := {
 
 ## Rarer, louder lines that only fire on big moves.
 const HYPE := [
-	"LEGENDARY GUN GOES TO MOON 🚀",
+	"LEGENDARY GUN GOES TO THE MOON",
 	"MORTGAGED THE SAFEHOUSE FOR THIS",
 	"generational wealth or jail. no in between",
 	"tell my wife i said hello",
@@ -113,11 +113,11 @@ func _on_market_event(kind: StringName, magnitude: float) -> void:
 	if magnitude > 0.15 and _rng.randf() < 0.5:
 		text = _pick(HYPE)
 
-	var colour := Color(0.55, 0.9, 0.62)
+	var colour := Palette.UP
 	if kind == &"damage" or kind == &"drift_down":
-		colour = Color(1.0, 0.5, 0.45)
+		colour = Palette.DOWN
 	elif kind == &"boss":
-		colour = Color(1.0, 0.82, 0.3)
+		colour = Palette.GOLD
 
 	post(_pick(HANDLES), text, colour)
 	_cooldown = COOLDOWN
@@ -126,9 +126,12 @@ func _on_market_event(kind: StringName, magnitude: float) -> void:
 func post(handle: String, text: String, colour: Color = Color.WHITE) -> void:
 	var l := Label.new()
 	l.text = "%s: %s" % [handle, text]
-	l.add_theme_font_size_override("font_size", 11)
+	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_font_override("font", VisualTheme.font("body"))
 	l.add_theme_color_override("font_color", colour)
 	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.clip_text = true
+	l.size = Vector2(size.x - 8, LINE_HEIGHT)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.modulate.a = 0.0
 	add_child(l)

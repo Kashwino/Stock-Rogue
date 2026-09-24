@@ -16,8 +16,8 @@ var sprite: Node2D
 
 func _ready() -> void:
 	add_to_group("player")
-	collision_layer = 4
-	collision_mask = 1        # walls only
+	collision_layer = Layers.PLAYER
+	collision_mask = Layers.SOLID
 	_build_visual_and_collision()
 
 func _build_visual_and_collision() -> void:
@@ -42,7 +42,8 @@ func _build_visual_and_collision() -> void:
 		Vector2(10, -5), Vector2(20, 0), Vector2(10, 5)])
 	nose.color = Color(0.95, 0.85, 0.5)
 	sprite.add_child(nose)
-	ActorArt.dress(sprite, true, false, 0, Color("69d6c4"))
+	var profile_id: StringName = RunState.character_profile.id if RunState.character_profile else &"operator"
+	SpriteKit.dress(sprite, SpriteKit.hero_spec(profile_id, SpriteKit.Gun.NONE))
 
 func _physics_process(_delta: float) -> void:
 	if not movement_enabled:

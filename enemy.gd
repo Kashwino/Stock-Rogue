@@ -126,16 +126,31 @@ func apply_archetype(k: Kind) -> void:
 func _apply_archetype_visual() -> void:
 	if sprite == null:
 		return
-	var a: Dictionary = ARCHETYPES[kind]
-	if sprite is CanvasItem:
-		sprite.modulate = Color.WHITE
-	ActorArt.dress(sprite, false, self is AuditorBoss, kind, a["colour"])
-	var scale_mult := 1.0
+	sprite.modulate = Color.WHITE
+	kit = SpriteKit.dress(sprite, visual_spec())
+
+## Silhouette first, colour second: every archetype gets its own body, head
+## and weapon shape so a room reads at a glance.
+func visual_spec() -> Dictionary:
+	var S := SpriteKit
 	match kind:
-		Kind.BRUTE: scale_mult = 1.35
-		Kind.TURRET: scale_mult = 1.15    # reads as a fixed emplacement
-		Kind.MEDIC: scale_mult = 0.9      # smaller, clearly non-frontline
-	sprite.scale = Vector2.ONE * scale_mult
+		Kind.GRUNT:
+			return {"body": S.Body.VEST, "head": S.Head.CAP, "gun": S.Gun.PISTOL, "color": Color("34425e"), "trim": Color("8fa3c7"), "hat": Color("1e2638"), "skin": S.SKIN[1], "acc": ["radio"] if radio_carrier else []}
+		Kind.ENFORCER:
+			return {"body": S.Body.ARMOR, "head": S.Head.HELMET, "gun": S.Gun.RIFLE, "color": Color("4b4f38"), "trim": Color("c08a3a"), "hat": Color("363a28"), "skin": S.SKIN[2], "acc": ["plates"]}
+		Kind.SHOTGUNNER:
+			return {"body": S.Body.BULKY, "head": S.Head.BALD, "gun": S.Gun.SHOTGUN, "color": Color("5a3a26"), "trim": Color("d0a040"), "skin": S.SKIN[0]}
+		Kind.MARKSMAN:
+			return {"body": S.Body.LEAN, "head": S.Head.BERET, "gun": S.Gun.LONG_RIFLE, "color": Color("30465a"), "trim": Color("8cc0ff"), "hat": Color("5a1e22"), "skin": S.SKIN[4]}
+		Kind.BRUTE:
+			return {"body": S.Body.TANK, "head": S.Head.BALD, "gun": S.Gun.LMG, "color": Color("3e2a44"), "trim": Color("b06ad0"), "skin": S.SKIN[3], "scale": 1.3}
+		Kind.SPRINTER:
+			return {"body": S.Body.HOODIE, "head": S.Head.HOOD, "gun": S.Gun.SMG, "color": Color("7a2744"), "trim": Color("ff6aa0"), "hat": Color("5a1a30"), "skin": S.SKIN[1]}
+		Kind.TURRET:
+			return {"body": S.Body.TRIPOD, "gun": S.Gun.LMG, "color": Color("4d5660"), "trim": Palette.DANGER, "scale": 1.1}
+		Kind.MEDIC:
+			return {"body": S.Body.SUIT, "head": S.Head.HAIR, "gun": S.Gun.PISTOL, "color": Color("d9d6cc"), "trim": Color("ffffff"), "hair": Color("3a2818"), "skin": S.SKIN[0], "acc": ["cross"], "scale": 0.92}
+	return {"body": S.Body.SUIT, "head": S.Head.CAP, "gun": S.Gun.PISTOL, "color": Color("3d4658")}
 
 ## Reinforcements are spawned with hunting = true: they always know where you
 ## are and never idle.
@@ -148,6 +163,7 @@ var hunting: bool = false:
 
 @onready var sprite: Node2D = $Sprite
 @onready var muzzle: Node2D = $Muzzle
+var kit: SpriteKit = null
 
 var health: int
 var _player: Node2D = null
@@ -214,8 +230,8 @@ func _ready() -> void:
 	# Set collision in code so a mis-set enemy.tscn can't let guards walk
 	# through walls. Layer 2 = enemies; mask 1 (walls) + 2 (other enemies) so
 	# guards physically can't overlap and pile onto one spot.
-	collision_layer = 2
-	collision_mask = 1 | 2
+	collision_layer = Layers.ENEMIES
+	collision_mask = Layers.SOLID | Layers.ENEMIES
 	health = max_health
 	_apply_archetype_visual()
 	_fire_timer = randf() * fire_rate        # stagger so they don't all fire in sync
@@ -274,7 +290,7 @@ func _can_see_player() -> bool:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position, _player.global_position)
-	query.collision_mask = 1                 # layer 1 = walls
+	query.collision_mask = Layers.SOLID      # walls and furniture block sight
 	query.collide_with_areas = false
 	query.exclude = [get_rid(), _player.get_rid()]
 	var hit := space.intersect_ray(query)
@@ -366,7 +382,7 @@ func _is_clear(dir: Vector2, dist: float) -> bool:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position, global_position + dir * dist)
-	query.collision_mask = 1                 # walls only
+	query.collision_mask = Layers.SOLID
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 	return space.intersect_ray(query).is_empty()
@@ -519,6 +535,8 @@ func _shoot(dir: Vector2) -> void:
 	var host := get_tree().current_scene
 	if host is HeistFloor:
 		host.fx.muzzle(global_position + dir * 28.0, dir)
+	if kit:
+		kit.kick(0.6 + 0.2 * pellets)
 	for i in maxi(pellets, 1):
 		var offset := 0.0
 		if pellets > 1:
@@ -549,10 +567,10 @@ func heal(amount: int) -> void:
 	health = mini(health + amount, max_health)
 	if health == before:
 		return
-	if sprite:
+	if kit:
 		var flash := create_tween()
-		flash.tween_property(sprite, "modulate", Color(0.5, 1.0, 0.6), 0.1)
-		flash.tween_property(sprite, "modulate", Color.WHITE, 0.25)
+		flash.tween_property(kit, "modulate", Color(0.5, 1.4, 0.6), 0.1)
+		flash.tween_property(kit, "modulate", Color.WHITE, 0.25)
 
 func take_damage(amount: int = 1) -> void:
 	# queue_free() only frees at end of frame, so without this guard several
@@ -574,12 +592,8 @@ func take_damage(amount: int = 1) -> void:
 		_die()
 
 func _flash() -> void:
-	if sprite is CanvasItem and not Settings.values["low_effects"]:
-		if _flash_tween and _flash_tween.is_valid():
-			_flash_tween.kill()
-		sprite.modulate = Color(3, 3, 3)
-		_flash_tween = create_tween()
-		_flash_tween.tween_property(sprite, "modulate", Color.WHITE, 0.06)
+	if kit:
+		kit.flash()
 
 func _die() -> void:
 	if _dead:
@@ -592,6 +606,8 @@ func _die() -> void:
 	# A body hitting the floor is heard by anyone nearby.
 	if has_node("/root/Noise"):
 		get_node("/root/Noise").death(global_position)
+	if kit and get_parent():
+		SpriteKit.drop_corpse(get_parent(), global_position, sprite.global_rotation if sprite else 0.0, kit.spec)
 	died.emit(self)
 	queue_free()
 

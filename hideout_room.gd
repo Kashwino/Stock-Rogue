@@ -17,14 +17,14 @@ class_name HideoutRoom
 ## can't reliably close an indented lambda block and continue the same
 ## expression with more arguments afterward.
 
-const GOLD := Color(0.91, 0.72, 0.26)
-const GOLD_DIM := Color(0.55, 0.45, 0.2)
-const PANEL := Color(0.10, 0.10, 0.13)
-const PANEL_EDGE := Color(0.24, 0.24, 0.3)
-const INK_SOFT := Color(0.62, 0.62, 0.7)
-const RED := Color(0.85, 0.35, 0.35)
+const GOLD := Palette.GOLD
+const GOLD_DIM := Palette.GOLD_DIM
+const PANEL := Palette.PANEL
+const PANEL_EDGE := Palette.EDGE
+const INK_SOFT := Palette.PAPER_DIM
+const RED := Palette.DANGER
 
-const ROOM_SIZE := Vector2(600, 420)
+const ROOM_SIZE := Vector2(1120, 640)
 const WALL_THICK := 24.0
 
 var _walker: HideoutWalker
@@ -48,10 +48,10 @@ func _ready() -> void:
 	_build_stations()
 	_build_door()
 	_build_hud_hint()
+	_build_lighting()
 
 ## If these actions aren't in the project's Input Map, movement/interaction
-## fail completely but silently -- no crash, no error, the room just looks
-## "broken". Surface that clearly instead of leaving it a mystery.
+## fail silently. Surface that clearly instead.
 func _check_input_actions() -> void:
 	var required := ["move_left", "move_right", "move_up", "move_down", "interact"]
 	var missing: Array = []
@@ -60,10 +60,11 @@ func _check_input_actions() -> void:
 			missing.append(a)
 	if not missing.is_empty():
 		push_error("[HideoutRoom] Missing Input Map actions: " + str(missing)
-			+ " -- Project > Project Settings > Input Map. Movement/interact "
-			+ "will not work until these exist.")
+			+ " -- Project > Project Settings > Input Map.")
 
 func _process(_delta: float) -> void:
+	if _active_panel:
+		return
 	if Input.is_action_just_pressed("interact"):
 		if not _near_station.is_empty():
 			_open_station(_near_station["kind"])
@@ -72,44 +73,35 @@ func _process(_delta: float) -> void:
 
 # ------------------------------------------------------------------ room ---
 func _build_room() -> void:
-	var floor_poly := Polygon2D.new()
-	floor_poly.polygon = PackedVector2Array([
-		Vector2(0, 0), Vector2(ROOM_SIZE.x, 0),
-		Vector2(ROOM_SIZE.x, ROOM_SIZE.y), Vector2(0, ROOM_SIZE.y)])
-	floor_poly.color = Color(0.09, 0.085, 0.1)
-	add_child(floor_poly)
-
-	for x in range(0, int(ROOM_SIZE.x), 40):
-		var line := Line2D.new()
-		line.points = PackedVector2Array([Vector2(x, 0), Vector2(x, ROOM_SIZE.y)])
-		line.width = 1.0
-		line.default_color = Color(1, 1, 1, 0.025)
-		add_child(line)
-	for y in range(0, int(ROOM_SIZE.y), 40):
-		var line := Line2D.new()
-		line.points = PackedVector2Array([Vector2(0, y), Vector2(ROOM_SIZE.x, y)])
-		line.width = 1.0
-		line.default_color = Color(1, 1, 1, 0.025)
-		add_child(line)
-
+	add_child(HideoutArt.new())
 	var walls := [
-		Rect2(-WALL_THICK, -WALL_THICK, ROOM_SIZE.x + WALL_THICK * 2, WALL_THICK),
+		Rect2(-WALL_THICK, -WALL_THICK, ROOM_SIZE.x + WALL_THICK * 2, WALL_THICK * 2),
 		Rect2(-WALL_THICK, ROOM_SIZE.y, ROOM_SIZE.x + WALL_THICK * 2, WALL_THICK),
 		Rect2(-WALL_THICK, -WALL_THICK, WALL_THICK, ROOM_SIZE.y + WALL_THICK * 2),
 		Rect2(ROOM_SIZE.x, -WALL_THICK, WALL_THICK, ROOM_SIZE.y + WALL_THICK * 2),
 	]
 	for r in walls:
 		_add_wall(r)
+	# Furniture you can bump into: vendor counters and the card table.
+	_add_wall(Rect2(40, 50, 220, 46), false)
+	_add_wall(Rect2(ROOM_SIZE.x * 0.5 - 120, 100, 240, 54), false)
+	_add_wall(Rect2(ROOM_SIZE.x - 280, 120, 190, 70), false)
+	var table := StaticBody2D.new()
+	table.collision_layer = Layers.WALLS
+	table.position = ROOM_SIZE * 0.5 + Vector2(0, 30)
+	var ts := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 76.0
+	ts.shape = circle
+	table.add_child(ts)
+	add_child(table)
+	var tv := HideoutArt.TV.new()
+	tv.position = Vector2(ROOM_SIZE.x * 0.5 + 200, 60)
+	add_child(tv)
 
-	var trim := ColorRect.new()
-	trim.position = Vector2(0, -6)
-	trim.size = Vector2(ROOM_SIZE.x, 4)
-	trim.color = GOLD_DIM
-	add_child(trim)
-
-func _add_wall(rect: Rect2) -> void:
+func _add_wall(rect: Rect2, visible_block: bool = true) -> void:
 	var body := StaticBody2D.new()
-	body.collision_layer = 1
+	body.collision_layer = Layers.WALLS
 	body.position = rect.position
 	add_child(body)
 	var shape := CollisionShape2D.new()
@@ -118,89 +110,115 @@ func _add_wall(rect: Rect2) -> void:
 	shape.shape = rs
 	shape.position = rect.size * 0.5
 	body.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = rect.size
-	visual.color = Color(0.04, 0.04, 0.05)
-	body.add_child(visual)
+	if visible_block:
+		var visual := ColorRect.new()
+		visual.size = rect.size
+		visual.color = Color(0.04, 0.035, 0.04)
+		visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		body.add_child(visual)
+
+func _build_lighting() -> void:
+	if Settings.values.get("low_effects", false):
+		return
+	var cm := CanvasModulate.new()
+	cm.color = Color(0.42, 0.38, 0.42)
+	add_child(cm)
+	for spot: Array in [[Vector2(150, 110), Color("ffc27a")], [Vector2(ROOM_SIZE.x * 0.5, 140), Palette.GOLD_PALE],
+			[Vector2(ROOM_SIZE.x - 190, 170), Color("c79aff")], [ROOM_SIZE * 0.5 + Vector2(0, 30), Color("ffd9a0")],
+			[Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y - 40), Palette.NEON_GREEN]]:
+		var lamp := PointLight2D.new()
+		lamp.texture = HeistLighting.radial()
+		lamp.texture_scale = 2.3
+		lamp.color = spot[1]
+		lamp.energy = 0.95
+		lamp.position = spot[0]
+		add_child(lamp)
+	var glow := PointLight2D.new()
+	glow.texture = HeistLighting.radial()
+	glow.texture_scale = 1.1
+	glow.energy = 0.55
+	glow.color = Color("ffe9c4")
+	_walker.add_child(glow)
 
 # ---------------------------------------------------------------- walker ---
 func _build_walker() -> void:
 	_walker = HideoutWalker.new()
-	_walker.position = ROOM_SIZE * 0.5 + Vector2(0, 110)
+	_walker.position = Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y - 110)
 	add_child(_walker)
-
+	# The whole backroom fits on screen: a fixed camera reads like a stage set.
 	var cam := Camera2D.new()
-	cam.zoom = Vector2(1.15, 1.15)
-	cam.position_smoothing_enabled = true
-	cam.position_smoothing_speed = 8.0
-	_walker.add_child(cam)
-	# make_current() rather than setting `current = true` directly: it needs
-	# the camera inside the tree first, which add_child just did.
+	cam.zoom = Vector2(0.9, 0.9)
+	cam.position = Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y * 0.5 - 70)
+	add_child(cam)
 	cam.make_current()
 
 # -------------------------------------------------------------- stations ---
+const VENDORS := {
+	&"weapons": ["WEAPON DEALER", "GUNS", Color("ff5a3a"), Vector2(150, 118)],
+	&"stocks": ["THE FENCE", "THE FENCE", Color("ffcc55"), Vector2(560, 176)],
+	&"blackmarket": ["BLACK MARKET", "BLACK MARKET", Color("c07aff"), Vector2(930, 210)],
+}
+
 func _build_stations() -> void:
-	_make_station(&"weapons", "WEAPON DEALER", "Sealed cases", Vector2(110, 130), Color(0.85, 0.4, 0.35))
-	_make_station(&"stocks", "THE FENCE", "Market moves", Vector2(300, 110), GOLD)
-	_make_station(&"blackmarket", "BLACK MARKET", "Gear for the next job", Vector2(490, 130), Color(0.6, 0.4, 0.85))
+	for kind: StringName in VENDORS:
+		var v: Array = VENDORS[kind]
+		_make_station(kind, v[0], "", v[3], v[2])
 
 func _make_station(kind: StringName, title: String, subtitle: String,
 		pos: Vector2, tint: Color) -> void:
 	var area := Area2D.new()
-	area.position = pos
+	area.position = pos + Vector2(0, 40)
 	area.collision_layer = 0
-	area.collision_mask = 4
+	area.collision_mask = Layers.PLAYER
 	add_child(area)
-
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
-	circle.radius = 52.0
+	circle.radius = 95.0
 	shape.shape = circle
 	area.add_child(shape)
-
-	var kiosk := Polygon2D.new()
-	kiosk.polygon = PackedVector2Array([
-		Vector2(-34, -22), Vector2(34, -22), Vector2(34, 22), Vector2(-34, 22)])
-	kiosk.color = tint.darkened(0.55)
-	area.add_child(kiosk)
-	var kiosk_edge := Polygon2D.new()
-	kiosk_edge.polygon = PackedVector2Array([
-		Vector2(-34, -22), Vector2(34, -22), Vector2(34, -17), Vector2(-34, -17)])
-	kiosk_edge.color = tint
-	area.add_child(kiosk_edge)
-
-	var title_l := Label.new()
-	title_l.text = title
-	title_l.add_theme_font_size_override("font_size", 22)
-	title_l.add_theme_color_override("font_color", tint)
-	title_l.position = Vector2(-48, -54)
-	area.add_child(title_l)
-
-	var sub_l := Label.new()
-	sub_l.text = subtitle
-	sub_l.add_theme_font_size_override("font_size", 10)
-	sub_l.add_theme_color_override("font_color", INK_SOFT)
-	sub_l.position = Vector2(-48, -39)
-	area.add_child(sub_l)
-
+	var vendor := HideoutArt.Vendor.new()
+	vendor.spec = _vendor_spec(kind)
+	vendor.lines = Story.vendor_lines(kind)
+	vendor.position = pos - Vector2(0, 62)
+	add_child(vendor)
+	var neon := HideoutArt.Neon.new()
+	neon.text = VENDORS[kind][1] if VENDORS.has(kind) else title
+	neon.color = tint
+	neon.position = Vector2(pos.x, -6)
+	add_child(neon)
 	var prompt := Label.new()
-	prompt.text = "[E] Talk"
-	prompt.add_theme_font_size_override("font_size", 12)
-	prompt.add_theme_color_override("font_color", Color.WHITE)
-	prompt.position = Vector2(-22, 28)
+	prompt.text = "[E] / USE  —  " + title
+	prompt.add_theme_font_override("font", VisualTheme.font("heading"))
+	prompt.add_theme_font_size_override("font_size", 20)
+	prompt.add_theme_color_override("font_color", Palette.PAPER)
+	prompt.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.8), tint, 1, 3, 6))
+	prompt.position = Vector2(-110, 58)
+	prompt.material = StreetArt._unshaded()
 	prompt.hide()
 	area.add_child(prompt)
-
-	var entry := {"area": area, "prompt": prompt, "kind": kind}
+	if subtitle != "":
+		prompt.text += "\n" + subtitle
+	var entry := {"area": area, "prompt": prompt, "kind": kind, "vendor": vendor}
 	_stations.append(entry)
 	area.body_entered.connect(_on_station_entered.bind(entry))
 	area.body_exited.connect(_on_station_exited.bind(entry))
+
+func _vendor_spec(kind: StringName) -> Dictionary:
+	var S := SpriteKit
+	match kind:
+		&"weapons":
+			return {"body": S.Body.BULKY, "head": S.Head.CAP, "gun": S.Gun.NONE, "color": Color("4a3a2a"), "trim": Color("b87a3a"), "hat": Color("2a2a2a"), "skin": S.SKIN[2], "acc": ["cigar"]}
+		&"stocks":
+			return {"body": S.Body.SUIT, "head": S.Head.FEDORA, "gun": S.Gun.LEDGER, "color": Color("2a2a3a"), "trim": Palette.GOLD, "hat": Color("1a1a22"), "band": Palette.GOLD_DIM, "skin": S.SKIN[0], "acc": ["tie", "pinstripe"]}
+		_:
+			return {"body": S.Body.HOODIE, "head": S.Head.HOOD, "gun": S.Gun.TABLET, "color": Color("3a2a4a"), "trim": Color("c07aff"), "hat": Color("261a30"), "skin": S.SKIN[3]}
 
 func _on_station_entered(body: Node, entry: Dictionary) -> void:
 	if not body.is_in_group("player"):
 		return
 	_near_station = entry
 	entry["prompt"].show()
+	entry["vendor"].talking = true
 
 func _on_station_exited(body: Node, entry: Dictionary) -> void:
 	if not body.is_in_group("player"):
@@ -208,44 +226,40 @@ func _on_station_exited(body: Node, entry: Dictionary) -> void:
 	if _near_station == entry:
 		_near_station = {}
 	entry["prompt"].hide()
+	entry["vendor"].talking = false
+	entry["vendor"].hush()
 
 # ------------------------------------------------------------------ door ---
 func _build_door() -> void:
 	var area := Area2D.new()
 	area.position = Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y - 16)
 	area.collision_layer = 0
-	area.collision_mask = 4
+	area.collision_mask = Layers.PLAYER
 	add_child(area)
-
 	var shape := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
-	rs.size = Vector2(76, 42)
+	rs.size = Vector2(120, 60)
 	shape.shape = rs
 	area.add_child(shape)
-
 	var door_visual := Polygon2D.new()
 	door_visual.polygon = PackedVector2Array([
-		Vector2(-38, -21), Vector2(38, -21), Vector2(38, 21), Vector2(-38, 21)])
-	door_visual.color = Color(0.4, 0.32, 0.12)
+		Vector2(-60, -8), Vector2(60, -8), Vector2(60, 24), Vector2(-60, 24)])
+	door_visual.color = Color("2a1a10")
 	area.add_child(door_visual)
-
-	var label := Label.new()
-	label.text = "OUT TO THE JOB BOARD"
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 19)
-	label.add_theme_color_override("font_color", GOLD_DIM)
-	label.position = Vector2(-60, -38)
-	label.custom_minimum_size = Vector2(140, 0)
-	area.add_child(label)
-
+	var exit_sign := HideoutArt.Neon.new()
+	exit_sign.text = "EXIT"
+	exit_sign.color = Palette.NEON_GREEN
+	exit_sign.position = Vector2(0, -34)
+	area.add_child(exit_sign)
 	_door_prompt = Label.new()
-	_door_prompt.text = "[E] Leave"
-	_door_prompt.add_theme_font_size_override("font_size", 12)
-	_door_prompt.add_theme_color_override("font_color", Color.WHITE)
-	_door_prompt.position = Vector2(-22, 24)
+	_door_prompt.text = "[E] / USE  —  BACK TO THE CASE WALL"
+	_door_prompt.add_theme_font_override("font", VisualTheme.font("heading"))
+	_door_prompt.add_theme_font_size_override("font_size", 20)
+	_door_prompt.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.8), Palette.NEON_GREEN, 1, 3, 6))
+	_door_prompt.position = Vector2(-180, -110)
+	_door_prompt.material = StreetArt._unshaded()
 	_door_prompt.hide()
 	area.add_child(_door_prompt)
-
 	area.body_entered.connect(_on_door_entered)
 	area.body_exited.connect(_on_door_exited)
 
@@ -264,27 +278,37 @@ func _leave_hideout() -> void:
 		return
 	RunFlow.leave_hideout()
 
+var _hint: Label
+
+func _on_gold_changed(gold: int) -> void:
+	if is_instance_valid(_hint):
+		_hint.text = "Walk to a vendor and press E / USE.   Cash: $%d" % gold
+
 # --------------------------------------------------------------- overlay ---
 func _build_hud_hint() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 5
 	add_child(layer)
-	var l := Label.new()
-	l.text = "MOVE -- WASD / ARROWS      INTERACT -- E"
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", 12)
-	l.add_theme_color_override("font_color", Color(0.55, 0.55, 0.6))
-	l.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	l.offset_top = 14
 	var ui := Control.new()
 	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(ui)
-	ui.add_child(l)
+	var tape := TickerTape.new()
+	tape.size = Vector2(1280, 30)
+	ui.add_child(tape)
+	var title := VisualTheme.label("THE HIDEOUT", "HeadingLabel", 30)
+	title.position = Vector2(24, 40)
+	ui.add_child(title)
+	_hint = VisualTheme.label("", "DimLabel", 18)
+	_hint.position = Vector2(26, 82)
+	ui.add_child(_hint)
+	_on_gold_changed(RunEconomy.gold)
+	RunEconomy.gold_changed.connect(_on_gold_changed)
 	var leave := Button.new()
 	leave.text = "TO THE JOB BOARD"
-	leave.position = Vector2(930, 22)
-	leave.size = Vector2(320, 70)
+	leave.position = Vector2(960, 40)
+	leave.size = Vector2(296, 58)
+	leave.focus_mode = Control.FOCUS_NONE
 	leave.pressed.connect(_leave_hideout)
 	ui.add_child(leave)
 

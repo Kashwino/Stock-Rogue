@@ -27,10 +27,9 @@ func _ready() -> void:
 	_name_label.add_theme_font_size_override("font_size", 24)
 	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_name_label)
-	var body := sprite.get_node("Body") as Polygon2D
-	body.polygon = PackedVector2Array([Vector2(-24, -23), Vector2(16, -23), Vector2(28, 0), Vector2(16, 23), Vector2(-24, 23)])
-	body.color = Color(0.95, 0.79, 0.28)
-	sprite.modulate = Color.WHITE
+	kit = SpriteKit.dress(sprite, {"body": SpriteKit.Body.SUIT, "head": SpriteKit.Head.SLICKED, "gun": SpriteKit.Gun.LEDGER,
+		"color": Color("2a2f3a"), "trim": Palette.GOLD, "skin": SpriteKit.SKIN[4], "hair": Color("8a8a8a"),
+		"acc": ["pinstripe", "tie", "glasses"], "scale": 1.45})
 
 func _physics_process(delta: float) -> void:
 	if _dead or not is_instance_valid(_player):
@@ -108,10 +107,6 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, 125.0, safe_angle - 0.5, safe_angle + 0.5, 12, Color(0.35, 1.0, 0.6), 6.0)
 
 func _flash() -> void:
-	if not Settings.values["low_effects"]:
-		if _flash_tween and _flash_tween.is_valid():
-			_flash_tween.kill()
-		sprite.modulate = Color(3, 3, 3)
-		_flash_tween = create_tween()
-		_flash_tween.tween_property(sprite, "modulate", Color.WHITE, 0.08)
+	if kit:
+		kit.flash()
 	queue_redraw()

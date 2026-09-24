@@ -27,6 +27,81 @@
 - `tools/run_tests.sh` mirrors CI locally with a clean user folder;
   `tools/screenshot.tscn` renders any screen to PNG under Xvfb.
 
+## Phase 1 — Visual foundation
+
+- **Palette + theme.** `Palette` holds every colour (ink, panel, gold, dim
+  gold, danger red, rarity colours untouched, neon, police, paper). `Look`
+  (visual_theme.gd) builds the project theme in code at startup: stamped gold
+  buttons (primary/danger/ghost variations), panels, paper panels, sliders,
+  switches, checkboxes, scrollbars, tooltips and popups, plus label roles
+  (Heading, Title, Mono, Type, Dim, Kicker). Fonts are OFL (Oswald, Barlow
+  Semi Condensed, IBM Plex Mono, Courier Prime) in `assets/fonts` with
+  licences; SystemFont fallbacks if missing.
+- **Character kit** (`sprite_kit.gd`): layered procedural top-down people —
+  world-aligned drop shadow, walking feet, superellipse torso per body type
+  (coat, suit, vest, armour, bulky, tank, lean, hoodie, gown), arms that hold
+  a silhouette matching the equipped weapon, heads with hats/helmets/hoods,
+  accessories (medic cross, radio, bandolier, hi-vis, pinstripe…), tripod
+  turrets, drones and dogs. Idle breathing, walk bob, recoil kick, reload pose,
+  hit flash, and a fallen-body decal that fades (capped at 40). Every guard
+  archetype has its own silhouette; each specialist has a look; the player
+  gets a gold rim.
+- **Environments per stage** (`env_theme.gd`, `room_art.gd`): Town concrete
+  slabs and hazard lanes, City carpet tiles and polished banking halls, World
+  marble and casino velvet, Doomsday dark glass with glowing ticker strips.
+  Rooms get a type (warehouse, pawn counter, offices, gaming floor, trading
+  floor…) and a stencilled name; walls are repainted with a top face, a front
+  face and a baseboard.
+- **Props & cover** (`prop.gd`, `prop_placer.gd`): ~30 furniture kinds
+  (crates, shelves, desks, cubicles, filing cabinets, safes, slot machines,
+  card tables, server racks, trading desks, pillars, statues…) placed by room
+  type as StaticBody2D on the new props layer (16): they stop walkers, bullets
+  and sight. A 20 px occupancy grid keeps doorway corridors, spawn markers,
+  security devices, the terminal and room centres clear, and a flood fill
+  (with a one-cell body clearance) rejects any prop that would cut a doorway,
+  spawn point or the centre off. Spawns and floor loot avoid furniture.
+- **Lighting** (`heist_lighting.gd`): CanvasModulate night per stage, ceiling
+  lamps per module (some flicker), player flashlight cone + a small glow so the
+  player always reads, pooled muzzle-flash lights, sodium street lamps, neon
+  spill, getaway-car headlights, police sweeps, optional LightOccluder2D wall
+  shadows (Dynamic shadows setting). Far lamps are culled at 4 Hz.
+- **Outside** (`street_art.gd`): wet-asphalt shader with puddle reflections,
+  sidewalk and kerb, lane markings, crosswalk, lamp posts, parked cars,
+  rooftops, a flickering neon sign with the venue's name over the main door,
+  and rain (CPU particles: streaks + splashes) drawn beneath the building so
+  it only falls outside.
+- **Post-process** (`post_fx.gd`): vignette, film grain, chromatic aberration
+  on damage, red heartbeat and desaturation at 1 HP (Settings `post_fx`).
+- **Transitions** (`transition.gd` autoload): fade, and a case-file stamp
+  wipe into hideouts and heists. Input is blocked while covered. **Heist intro
+  card**: venue sign, local time, security level, objective, modifiers;
+  skippable, never pauses.
+- **HUD rebuilt in code**: ticker tape crawl (every venue; the robbed one boxed
+  in gold), drawn hearts, gold counter, live loot multiplier, objective panel,
+  heat meter with fire-exit and police ticks + heat-source log, minimap,
+  restyled stock chart, trader feed, weapon panel with a drawn weapon icon,
+  magazine pips, reserve and reload bar.
+- **Case wall map**: corkboard, stage header, route strip of pinned index
+  cards joined by red string, heist leads as pinned case files with a night
+  photo of the building, ticker/price, security bars and modifier; the quota
+  gate is a sit-down across the table from the Board's collector with a ledger
+  and a PAID UP / CUT OFF stamp; stage hand-off card with a teaser.
+- **Hideout**: plank floor, rug, card table with chips, stacked cash, a TV
+  running the live ticker, a neon sign and a drawn NPC per vendor with speech
+  bubbles that react to the run (low index, close to quota, last grade, boss
+  down, low health, boss next).
+- **Main menu**: rain on an office window over a blinking skyline with the
+  Exchange tower's neon crown, searchlights, the logo with a live chart line and
+  a LISTED ON THE BOARD stamp, ticker along the bottom.
+- **Case files & crew**: dossier cards with hover tilt and slammed stamps;
+  mugshot portraits per specialist; locked crew are silhouettes.
+- **Results** are a typed job report with the grade slammed on as a stamp;
+  **death** is tomorrow's front page with a headline generated from the run.
+- Loot glows by value tier (cash, jewels, briefcase, art); chests and the
+  market terminal pulse.
+- Tools: `tools/check.sh` (compile every script), `tools/screenshot.tscn`
+  presets (home, select, map, hideout, heist, gallery, results, death).
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -56,3 +131,11 @@
   a local import regenerate them.
 - **Old saves** (route_version < 3) migrate by completed-heist count, keeping
   health, gold, loadout and market prices.
+- **Practice job is a rehearsal**: health cannot drop below 1 in the Quick
+  Heist (hits still cost gold, grade and stock). This also makes the browser
+  regression suite deterministic.
+- **Currency shown as `$`**: the currency is still called gold in text, but
+  `$` renders on every platform (the old `⦿` glyph was not in the shipped
+  fonts on the Web build).
+- **Getaway car** is parked alongside the door axis so the walk from the car
+  to the main door is straight.

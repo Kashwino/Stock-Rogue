@@ -8,7 +8,7 @@ class_name EnemyBullet
 @export var damage: int = 1
 @export var lifetime: float = 3.0
 ## Physics layers treated as solid cover. Layer 1 = room walls.
-@export_flags_2d_physics var wall_mask: int = 1
+@export_flags_2d_physics var wall_mask: int = Layers.SOLID
 
 var _dir: Vector2 = Vector2.RIGHT
 var _shooter: Node = null
@@ -22,7 +22,7 @@ func setup(direction: Vector2, shooter: Node) -> void:
 func _ready() -> void:
 	# Walls (layer 1) + player (layer 4). NOT layer 2, so enemy bullets pass
 	# harmlessly through other enemies.
-	collision_mask = wall_mask | 4
+	collision_mask = wall_mask | Layers.PLAYER
 	monitoring = true
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)

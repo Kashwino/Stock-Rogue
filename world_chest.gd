@@ -20,6 +20,7 @@ enum Kind { WEAPON, UPGRADE }
 var _player_in_range: bool = false
 var _used: bool = false
 var _chest_ui = null                         # set by spawner, or found at open time
+var _ring: PulseRing
 
 func _ready() -> void:
 	if sprite is Polygon2D:
@@ -31,6 +32,10 @@ func _ready() -> void:
 	illustration.kind = "chest"
 	illustration.tone = VisualTheme.GOLD if kind == Kind.WEAPON else VisualTheme.TEAL
 	sprite.add_child(illustration)
+	_ring = PulseRing.new()
+	_ring.color = illustration.tone
+	_ring.radius = 52.0
+	add_child(_ring)
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	if prompt:
@@ -64,6 +69,8 @@ func _open() -> void:
 		return
 
 	_used = true
+	if _ring:
+		_ring.active = false
 	if prompt:
 		prompt.hide()
 

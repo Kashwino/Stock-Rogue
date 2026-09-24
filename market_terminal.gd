@@ -7,13 +7,21 @@ var ui: CanvasLayer
 var _target: OptionButton
 var _status: Label
 var _trade_buttons: Array[Button] = []
+var _ring: PulseRing
 
 func _ready() -> void:
 	add_to_group("market_terminal")
 	var screen := PropArt.new()
 	add_child(screen)
+	_ring = PulseRing.new()
+	_ring.color = Palette.NEON_CYAN
+	_ring.radius = 46.0
+	add_child(_ring)
 	prompt = Label.new()
 	prompt.text = "MARKET TERMINAL\nUSE / E"
+	prompt.add_theme_font_override("font", VisualTheme.font("heading"))
+	prompt.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.75), Palette.NEON_CYAN, 1, 3, 6))
+	prompt.material = StreetArt._unshaded()
 	prompt.position = Vector2(-120, -70)
 	prompt.size = Vector2(240, 60)
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -97,6 +105,7 @@ func _trade(operation: String) -> void:
 		for button in _trade_buttons:
 			button.disabled = true
 		prompt.text = "TERMINAL LOCKED"
+		_ring.active = false
 		Sfx.play_sound("pickup")
 
 func close_terminal() -> void:

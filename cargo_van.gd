@@ -109,6 +109,8 @@ func _make_miniboss(e: Node) -> void:
 		e.currency_value *= 2
 	if "sprite" in e and e.sprite:
 		e.sprite.scale *= 1.25
+	if "elite_tag" in e:
+		e.elite_tag = "REINFORCEMENT"
 
 func _drive_off() -> void:
 	var tw := create_tween()

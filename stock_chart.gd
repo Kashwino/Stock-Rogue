@@ -11,10 +11,10 @@ class_name StockChart
 ## It polls RunState every sample_interval seconds — no wiring needed.
 
 const MAX_SAMPLES := 120         # ~30s of history at 0.25s sampling
-const PAD_LEFT := 6.0
-const PAD_RIGHT := 52.0          # room for the price labels on the right
-const PAD_TOP := 20.0            # room for the venue name
-const PAD_BOTTOM := 14.0
+const PAD_LEFT := 4.0
+const PAD_RIGHT := 40.0          # room for the value labels on the right
+const PAD_TOP := 16.0
+const PAD_BOTTOM := 16.0
 
 @export var sample_interval: float = 0.25
 @export var venue_id: StringName = &""      # set by HeistFloor; blank = index only
@@ -26,8 +26,9 @@ var _quota: float = 120.0
 var _font: Font
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(260, 100)
-	_font = ThemeDB.fallback_font
+	custom_minimum_size = Vector2(200, 80)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_font = VisualTheme.font("mono")
 	set_process(true)
 	# Do NOT sample here — RunState may not be ready yet on some scenes. The
 	# first _process tick will sample once the tree is settled.
@@ -77,9 +78,7 @@ func _draw() -> void:
 	var plot_w := w - PAD_LEFT - PAD_RIGHT
 	var plot_h := h - PAD_TOP - PAD_BOTTOM
 
-	# Panel background.
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.06, 0.07, 0.09, 0.82))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.25, 0.26, 0.32, 0.9), false, 1.0)
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.03, 0.6))
 
 	if _index_samples.is_empty():
 		return
@@ -116,7 +115,7 @@ func _draw() -> void:
 
 	var current: float = _index_samples[_index_samples.size() - 1]
 	var over := current >= _quota
-	var line_col := Color(0.4, 0.95, 0.55) if over else Color(1.0, 0.42, 0.38)
+	var line_col := Palette.UP if over else Palette.DOWN
 
 	# --- Filled area under the index line ---
 	if _index_samples.size() > 1:
@@ -132,14 +131,14 @@ func _draw() -> void:
 	# --- Quota line (gold, dashed) ---
 	var qy: float = to_y.call(_quota)
 	if qy > PAD_TOP - 4.0 and qy < PAD_TOP + plot_h + 4.0:
-		var gold := Color(1.0, 0.82, 0.25)
+		var gold := Palette.GOLD
 		var x := PAD_LEFT
 		while x < PAD_LEFT + plot_w:
 			draw_line(Vector2(x, qy), Vector2(minf(x + 7.0, PAD_LEFT + plot_w), qy),
 				gold, 1.6)
 			x += 12.0
 		draw_string(_font, Vector2(PAD_LEFT + plot_w + 4.0, qy + 4.0),
-			"%d" % int(_quota), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, gold)
+			"%d" % roundi(_quota), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, gold)
 
 	# --- Venue line (blue, thin) — actual stock value on its own axis ---
 	if _venue_samples.size() > 1:
@@ -148,14 +147,10 @@ func _draw() -> void:
 		for i in _venue_samples.size():
 			vpts.append(Vector2(PAD_LEFT + vstep * i,
 				venue_to_y.call(_venue_samples[i])))
-		draw_polyline(vpts, Color(0.45, 0.8, 1.0, 0.9), 1.6, true)
+		draw_polyline(vpts, Palette.with_alpha(Palette.NEON_CYAN, 0.75), 1.6, true)
 		# Current dollar value, right at the tip of the line.
 		var vlast: float = _venue_samples[_venue_samples.size() - 1]
-		draw_circle(vpts[vpts.size() - 1], 2.5, Color(0.45, 0.8, 1.0))
-		draw_string(_font, Vector2(PAD_LEFT + plot_w + 4.0,
-			venue_to_y.call(vlast) + 4.0),
-			"$%.0f" % vlast, HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
-			Color(0.45, 0.8, 1.0))
+		draw_circle(vpts[vpts.size() - 1], 2.5, Palette.NEON_CYAN)
 
 	# --- Index line (thick, red/green) ---
 	if _index_samples.size() > 1:
@@ -168,19 +163,18 @@ func _draw() -> void:
 		draw_circle(pts[pts.size() - 1], 3.0, line_col)
 
 	# --- Labels ---
-	draw_string(_font, Vector2(PAD_LEFT + 2.0, 13.0), "EMPIRE INDEX",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.62, 0.64, 0.72))
+	draw_string(_font, Vector2(PAD_LEFT + 2.0, 12.0), "INDEX",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Palette.PAPER_DIM)
 	draw_string(_font, Vector2(PAD_LEFT + plot_w + 4.0, to_y.call(current) + 4.0),
-		"%d" % int(current), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, line_col)
+		"%d" % roundi(current), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, line_col)
 	if venue_id != &"":
-		draw_string(_font, Vector2(PAD_LEFT + 92.0, 13.0),
-			String(venue_id).to_upper().replace("_", " "),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.45, 0.8, 1.0))
+		draw_string(_font, Vector2(PAD_LEFT + 60.0, 12.0), Venues.ticker(venue_id),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Palette.NEON_CYAN)
 
 	# Gap to quota, bottom-right.
 	var gap := current - _quota
-	var gap_txt := ("+%d over quota" % int(gap)) if gap >= 0.0 \
-		else ("%d to quota" % int(-gap))
+	var gap_txt := ("+%d over quota" % roundi(gap)) if gap >= 0.0 \
+		else ("%d to quota" % roundi(-gap))
 	draw_string(_font, Vector2(PAD_LEFT + 2.0, h - 3.0), gap_txt,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 10,
-		Color(0.5, 0.9, 0.6) if gap >= 0.0 else Color(1.0, 0.6, 0.4))
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+		Palette.UP if gap >= 0.0 else Palette.DOWN)

@@ -155,6 +155,7 @@ func end_run(victory: bool, cause: String = "") -> void:
 		"kills": total_kills,
 		"cause": cause,
 		"venue": String(pending_heist.venue_id) if pending_heist else "",
+		"who": RunState.character_profile.display_name if RunState.character_profile else "The Operator",
 	}
 	if RunState.run_map:
 		summary["stage"] = RunState.run_map.stage_name()
@@ -197,9 +198,9 @@ func start_quick_test() -> void:
 	step = 0
 	room_index = 0
 	RunState.start_run(load("res://main_character.tres"), run_seed)
-	# Practice jobs are forgiving: extra padding so a first look at combat
-	# doesn't end in ten seconds.
-	RunState.add_max_health(6)
+	# Practice jobs are rehearsals: extra padding, and health never drops below
+	# one (see Player.take_damage).
+	RunState.add_max_health(3)
 	RunEconomy.add_bonus(350)
 	for weapon: WeaponItem in ItemPool.weapons():
 		if weapon.id in [&"ricochet", &"breacher"]:
@@ -227,6 +228,6 @@ func queue_scene(path: String) -> Error:
 
 func _commit_scene(path: String) -> void:
 	Controls.release_all()
-	var error := get_tree().change_scene_to_file(path)
-	if error != OK:
-		push_error("Cannot open scene: " + path + " (" + str(error) + ")")
+	var style := "stamp" if path in [ARENA_SCENE, HIDEOUT_SCENE] else "fade"
+	var stamp := "HIDEOUT" if path == HIDEOUT_SCENE else "GO TIME"
+	Transition.change_scene(path, style, stamp)

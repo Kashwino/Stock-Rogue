@@ -16,10 +16,10 @@ func _ready() -> void:
 	add_child(root)
 	var pause := Button.new()
 	pause.text = "PAUSE"
-	pause.add_theme_font_size_override("font_size", 24)
-	pause.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	pause.position = Vector2(-146, 18)
-	pause.size = Vector2(120, 74)
+	pause.add_theme_font_size_override("font_size", 20)
+	pause.position = Vector2(1148, 38)
+	pause.size = Vector2(118, 58)
+	pause.focus_mode = Control.FOCUS_NONE
 	pause.pressed.connect(open_pause)
 	root.add_child(pause)
 	overlay = ColorRect.new()

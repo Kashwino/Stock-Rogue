@@ -20,6 +20,7 @@ TouchInput="*res://touch_input.gd"
 Sfx="*res://sfx.gd"
 Controls="*res://mobile_controls.gd"
 QAProbe="*res://qa_probe.gd"
+Transition="*res://transition.gd"
 
 [display]
 window/size/viewport_width=1280
@@ -123,4 +124,4 @@ debug_menu={
 pointing/emulate_mouse_from_touch=true
 
 [gui]
-theme/custom="res://beta_theme.tres"
+theme/custom="res://assets/ui/noir_theme.tres"
