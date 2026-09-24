@@ -17,6 +17,46 @@ const STAGE_TEASERS := {
 	3: "Doomsday. The Exchange tower, where the Board lists every crew in the city. The Chairman is waiting upstairs.",
 }
 
+## Credits: the name on the case file.
+const CREDITS_NAME := "KASHWINO"
+
+## The prologue: typewriter narration over the rainy skyline, full on a
+## case file's first run.
+const PROLOGUE := [
+	"This city's underworld runs its own exchange. They call it the Board.",
+	"Every crew, every racket, every front is listed. Pull a clean job and your price goes up. Bleed, and it goes down.",
+	"The Chairman sets the quotas. His collectors enforce them. Miss one and you are delisted. Permanently.",
+	"You are a nobody with a borrowed pistol and a blank case file. Climb from the Town rackets to the Exchange tower. Take the Chairman's seat — or become a headline.",
+]
+const PROLOGUE_SHORT := "Case file %d. Same city. Same Board. Same Chairman. A different nobody with a borrowed pistol."
+
+## Stage intro cards: [title, narration, boss teaser].
+const STAGE_INTROS := {
+	0: ["TOWN", "Pawn shops, chop shops and back-room rackets. Everybody on this block pays rent.", "THE LANDLORD owns every door in Town and collects with a shotgun. Make your quota, then knock on his."],
+	1: ["THE CITY", "Banks, offices and two sets of books. Up here the Board keeps receipts.", "THE AUDITOR is already counting your mistakes. Every hit you take goes in his ledger."],
+	2: ["THE WORLD", "Casinos, embassies, diamonds with paperwork. The money here has passports.", "THE AMBASSADOR cannot be touched — officially. Her bodyguards make sure of the rest."],
+	3: ["DOOMSDAY", "The Exchange tower. Every crew in the city is listed on its walls. Yours included.", "THE CHAIRMAN is waiting on the trading floor. He set every quota you ever paid."],
+}
+
+## Winning endings. Index at or above NEW_CHAIRMAN_INDEX at the final
+## extraction takes the seat; otherwise you retire.
+const NEW_CHAIRMAN_INDEX := 600.0
+const EPILOGUE_RETIRED := [
+	"The Chairman went down on his own trading floor, under a ticker that finally stopped.",
+	"By morning the Board had a new rumor: somebody walked out with the whole book and never listed it.",
+	"You sold your seat before anyone could offer you one. The case file was closed, stamped and filed.",
+	"Somewhere warmer, a nobody reads the market pages and doesn't recognise a single name.",
+]
+const EPILOGUE_CHAIRMAN := [
+	"The Chairman went down on his own trading floor. The ticker didn't stop. It just changed names.",
+	"By morning every crew in the city had a new quota, and a new signature at the bottom of the page.",
+	"The collectors came up to the tower with their hats in their hands.",
+	"You set the quotas now. You own the tower. You are the Board.",
+]
+
+static func ending_id(index: float) -> StringName:
+	return &"new_chairman" if index >= NEW_CHAIRMAN_INDEX else &"retired"
+
 const COLLECTOR_OPEN_OK := [
 	"Sit. Let's see if you're worth the paper.",
 	"The Board likes a crew that pays on time. Show me.",
@@ -116,4 +156,15 @@ static func vendor_lines(kind: StringName) -> Array:
 		lines.append("You're bleeding on my floor. Patch yourself up.")
 	if RunState.run_map.next_heist_is_boss():
 		lines.append("The big one's next. Don't walk in light.")
+	if not RunState.positions.is_empty() and kind == &"stocks":
+		lines.append("You're holding paper on %d venue%s. I'd watch the wire." % [RunState.positions.size(), "" if RunState.positions.size() == 1 else "s"])
+	if not RunState.rumors.is_empty() and kind == &"blackmarket":
+		lines.append("That rumor on the wire? Half of them are true. Guess which half.")
+	if RunState.relics.size() >= 3:
+		lines.append("You're carrying a museum in that coat. The Board notices trinkets.")
+	match RunState.run_map.current_stage:
+		2:
+			lines.append("Casinos and consulates now. Pay the doorman in chips, not bullets.")
+		3:
+			lines.append("The tower's lit up tonight. The Chairman's expecting company.")
 	return lines

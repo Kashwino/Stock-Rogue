@@ -74,6 +74,8 @@ func _setup(shot: String) -> Node:
 					RunState.add_relic(StringName(r))
 			if args.has("gold"):
 				RunEconomy.gold = int(args["gold"])
+			if not args.has("intro"):
+				RunState.stage_intros = [0, 1, 2, 3]
 			path = {"map": "res://map_ui_screen.tscn", "hideout": "res://hideout_room.tscn", "heist": "res://heist_floor.tscn"}[shot]
 			if shot == "heist":
 				var step = RunState.run_map.current()
@@ -90,6 +92,20 @@ func _setup(shot: String) -> Node:
 					RunFlow.pending_heist.contract = StringName(args["contract"])
 		"gallery":
 			return _gallery()
+		"prologue":
+			return Prologue.play(self, args.get("full", "1") == "1", int(args.get("slot", "0")))
+		"ending":
+			var seq := EndingSequence.new()
+			seq.freeze_beneath = false
+			seq.summary = {"heists": 12, "index": float(args.get("index", "420")), "gold": 1840, "kills": 96, "who": "The Operator", "clout": 42}
+			seq.ending = Story.ending_id(seq.summary["index"])
+			get_tree().root.add_child(seq)
+			var part := String(args.get("part", ""))
+			if part in ["title", "credits"]:
+				seq._show_title()
+			if part == "credits":
+				seq._roll_credits()
+			return seq
 		"specialist":
 			var popup := SpecialistPopup.new()
 			popup.ids = [StringName(args.get("who", "ghost"))]

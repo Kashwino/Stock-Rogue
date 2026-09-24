@@ -193,6 +193,7 @@ func _run() -> void:
 	await _test_objectives()
 	await _test_build()
 	_test_specialists()
+	await _test_story()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
@@ -205,6 +206,10 @@ func _run() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		check(is_instance_valid(scene), "screen ready " + path)
+		if path == "res://map_ui_screen.tscn":
+			check(scene.find_children("*", "StageIntro", true, false).size() == 1 and 0 in RunState.stage_intros, "a stage opens with its intro card, once")
+			scene.map_ui._maybe_stage_intro()
+			check(scene.find_children("*", "StageIntro", true, false).size() == 1, "the stage intro never repeats")
 		if path == "res://hideout_room.tscn":
 			RunEconomy.gold = 2000
 			for kind: StringName in [&"stocks", &"blackmarket"]:
@@ -819,6 +824,72 @@ func _test_specialists() -> void:
 	RunState.start_run(wolf, 77)
 	check(RunState.max_health == 4 and RunState.profile_value("damage_mult", 1.0) == 1.25, "the Wolf: four hearts, +25% damage")
 	RunState.start_run(load("res://main_character.tres"), 4817)
+
+func _test_story() -> void:
+	check(Story.ending_id(Story.NEW_CHAIRMAN_INDEX - 1.0) == &"retired" and Story.ending_id(Story.NEW_CHAIRMAN_INDEX) == &"new_chairman", "the index decides RETIRED or THE NEW CHAIRMAN")
+	for st in 4:
+		check(Story.STAGE_INTROS.has(st) and Story.STAGE_INTROS[st].size() == 3, "stage %d has an intro card" % st)
+	# Narration: tap finishes a line, the next tap moves on, skip ends it.
+	var text := Narration.new()
+	text.lines = ["one line", "two lines"]
+	var done := [false]
+	text.finished.connect(func(): done[0] = true)
+	get_tree().root.add_child(text)
+	text.advance()
+	check(text._label.visible_characters == text._label.text.length(), "a tap finishes the typing line")
+	text.advance()
+	check(text._label.text == "two lines", "the next tap moves to the next line")
+	text.skip_all()
+	check(done[0], "skipping finishes the narration")
+	text.queue_free()
+	# The prologue: full once per case file, a single line after.
+	Meta.prologue_slots.clear()
+	check(Meta.take_prologue(1) and not Meta.take_prologue(1) and Meta.take_prologue(2), "the full prologue plays on each case file's first run only")
+	var prologue := Prologue.play(self, false, 1)
+	await get_tree().process_frame
+	var lines: Array = prologue.find_children("*", "Narration", true, false)[0].lines
+	check(lines.size() == 1 and String(lines[0]).begins_with("Case file 2"), "later runs get the one-line prologue")
+	prologue.queue_free()
+	var full := Prologue.play(self, true, 0)
+	await get_tree().process_frame
+	check(full.find_children("*", "Narration", true, false)[0].lines.size() == Story.PROLOGUE.size(), "a first run gets the whole prologue")
+	full.queue_free()
+	# The winning ending: epilogue, title, credits, then the unlock card.
+	var seq := EndingSequence.new()
+	seq.freeze_beneath = false
+	seq.summary = {"heists": 11, "index": 700.0, "gold": 900, "kills": 80, "who": "The Operator", "clout": 38, "new_specialists": [&"legend"]}
+	seq.ending = Story.ending_id(700.0)
+	get_tree().root.add_child(seq)
+	await get_tree().process_frame
+	check(seq.ending == &"new_chairman" and seq._narration.lines == Story.EPILOGUE_CHAIRMAN, "a high index plays THE NEW CHAIRMAN epilogue")
+	seq._on_button()
+	check(seq._stage == 1 and seq._title_block != null, "skipping the epilogue slams the title")
+	var titles := seq._title_block.find_children("*", "Label", true, false).map(func(l): return l.text)
+	check("THE NEW CHAIRMAN" in titles, "the ending's title shows")
+	seq._on_button()
+	check(seq._stage == 2 and seq._credits.get_child_count() == EndingSequence.credits_lines().size(), "the credits roll")
+	var credit_text := seq._credits.get_children().map(func(l): return l.text)
+	check(Story.CREDITS_NAME in credit_text, "the credits carry the author's name")
+	seq._finish()
+	var popups := get_tree().root.get_children().filter(func(n): return n is SpecialistPopup)
+	check(seq._stage == 3 and popups.size() == 1, "a first win shows the NEW SPECIALIST card before home")
+	for p: Node in popups:
+		p.queue_free()
+	seq.queue_free()
+	var retired := EndingSequence.new()
+	retired.freeze_beneath = false
+	retired.summary = {"index": 300.0}
+	retired.ending = Story.ending_id(300.0)
+	get_tree().root.add_child(retired)
+	await get_tree().process_frame
+	check(retired._narration.lines == Story.EPILOGUE_RETIRED, "an ordinary win plays RETIRED")
+	retired.queue_free()
+	await get_tree().process_frame
+	# Vendors read the run.
+	RunState.start_run(load("res://main_character.tres"), 4817)
+	RunState.run_map.current_stage = 3
+	check(Story.vendor_lines(&"weapons").any(func(l): return String(l).contains("tower")), "vendors react to the stage")
+	RunState.run_map.current_stage = 0
 
 func _test_lockdown() -> void:
 	RunFlow.pending_heist.modifier = &"lockdown"

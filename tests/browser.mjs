@@ -162,6 +162,11 @@ try {
   await shot('phone-crew-select');
   await tapCard();
   await wait(() => window.stockRogueQA?.scene.endsWith('map_ui_screen.tscn'));
+  await shot('phone-prologue');
+  await tap('SKIP');
+  await page.waitForTimeout(700);
+  await shot('phone-stage-intro');
+  await tap('OPEN THE CASE');
   s = await state();
   assert.equal(s.route_stage, 0);
   assert.equal(s.route_step, 0, 'a new run opens on the first hideout step');

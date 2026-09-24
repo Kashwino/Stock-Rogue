@@ -265,6 +265,9 @@ func _on_crew_chosen(c: Dictionary) -> void:
 		profile = load(path)
 	RunSave.delete_run()          # fresh job in this file
 	RunFlow.start_new_run(profile)
+	# The prologue plays over the scene change: all of it on a case file's
+	# first run, a single line after that.
+	Prologue.play(self, Meta.take_prologue(RunSave.slot), RunSave.slot)
 
 
 ## A paper dossier card: tabbed folder drawn behind child content, a rubber

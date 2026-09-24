@@ -60,6 +60,10 @@ const STAT_DEFAULTS := {
 var stats: Dictionary = STAT_DEFAULTS.duplicate()
 ## Stage bosses put down, by id (lieutenants count only in bosses_killed).
 var bosses_seen: Array = []
+## Case-file slots that have already sat through the full prologue.
+var prologue_slots: Array = []
+## Onboarding hints already shown once (ids from Hints).
+var hints_seen: Array = []
 
 func _ready() -> void:
 	load_meta()
@@ -80,6 +84,8 @@ func save_meta() -> bool:
 		"specialists": specialists,
 		"stats": stats,
 		"bosses_seen": bosses_seen,
+		"prologue_slots": prologue_slots,
+		"hints_seen": hints_seen,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	last_save_ok = f != null
@@ -125,6 +131,12 @@ func load_meta() -> void:
 	bosses_seen = []
 	for b in parsed.get("bosses_seen", []):
 		bosses_seen.append(String(b))
+	prologue_slots = []
+	for slot_index in parsed.get("prologue_slots", []):
+		prologue_slots.append(int(slot_index))
+	hints_seen = []
+	for h in parsed.get("hints_seen", []):
+		hints_seen.append(String(h))
 	if starting_perk not in unlocked_assets or not CATALOG.has(starting_perk) or CATALOG[starting_perk]["kind"] != "perk":
 		starting_perk = &""
 
@@ -225,6 +237,23 @@ func record(stat: String, amount = 1) -> void:
 	save_meta()
 
 ## Keep the best value of a career stat.
+## True the first time a case-file slot starts a run: that run gets the
+## full prologue, later ones one line.
+func take_prologue(slot_index: int) -> bool:
+	if slot_index in prologue_slots:
+		return false
+	prologue_slots.append(slot_index)
+	save_meta()
+	return true
+
+## True (once) when an onboarding hint has not been shown yet; marks it seen.
+func take_hint(id: String) -> bool:
+	if id in hints_seen:
+		return false
+	hints_seen.append(id)
+	save_meta()
+	return true
+
 func record_best(stat: String, value: float) -> void:
 	if value > float(stats.get(stat, 0.0)):
 		stats[stat] = value
@@ -271,4 +300,6 @@ func reset() -> void:
 	specialists.clear()
 	stats = STAT_DEFAULTS.duplicate()
 	bosses_seen.clear()
+	prologue_slots.clear()
+	hints_seen.clear()
 	save_meta()

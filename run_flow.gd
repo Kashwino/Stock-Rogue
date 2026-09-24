@@ -182,7 +182,17 @@ func end_run(victory: bool, cause: String = "") -> void:
 	_show_end_screen(victory, summary)
 
 ## Spawn the death/victory screen over whatever scene is currently loaded.
+## A win plays the ending (RETIRED or THE NEW CHAIRMAN); a death gets the
+## BUSTED front page.
 func _show_end_screen(victory: bool, summary: Dictionary) -> void:
+	if victory:
+		for existing in get_tree().root.get_children():
+			if existing is DeathScreen or existing is EndingSequence:
+				existing.queue_free()
+		summary["ending"] = String(Story.ending_id(float(summary.get("index", 1.0))))
+		var seq := EndingSequence.play(self, summary)
+		seq.add_to_group("end_screen")
+		return
 	if not ResourceLoader.exists("res://death_screen.tscn"):
 		push_error("RunFlow: res://death_screen.tscn missing — returning to menu.")
 		get_tree().paused = false

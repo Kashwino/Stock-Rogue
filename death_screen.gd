@@ -108,7 +108,7 @@ class Headlines:
 		return [h, "Police say %s fell inside %s. Witnesses describe a well-dressed figure, a getaway car that never left, and a stock ticker that would not stop falling." % [who, Venues.sign_name(venue) if venue != &"" else "a downtown building"]]
 
 	static func victory(s: Dictionary) -> Array:
-		if s.get("ending", "") == "chairman":
+		if s.get("ending", "") == "new_chairman":
 			return ["NEW FACE IN THE CHAIRMAN'S SEAT", "The Board has a new chair and nobody will say the name out loud. The index has never been higher."]
 		return ["THE CHAIRMAN FALLS; CREW VANISHES", "The Exchange tower dark tonight. The Board's books are missing. So is the crew that opened them."]
 

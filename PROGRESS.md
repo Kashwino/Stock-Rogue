@@ -31,7 +31,10 @@ current route step:
   `heist_floor.tscn` → extraction → results card → `RunFlow.on_heist_finished`;
 - `QUOTA_GATE` → the collector checks gold on hand + empire index (fail = run over);
 - `ADVANCE` → next stage. Stages: Town, City, World, Doomsday. After the Chairman
-  → ending. Death anywhere → `death_screen.tscn` (spawned on the root).
+  → `EndingSequence` (RETIRED, or THE NEW CHAIRMAN at index 600+; epilogue,
+  title, credits). Death anywhere → `death_screen.tscn` (BUSTED front page,
+  spawned on the root). The crew card plays the `Prologue`; the case wall opens
+  each stage with a `StageIntro` card.
 
 **Route** (`run_map.gd`): Town/City/World = SHOP, HEIST, SHOP, HEIST, SHOP, BOSS,
 QUOTA, ADVANCE; Doomsday = SHOP, HEIST, QUOTA, SHOP, BOSS (Chairman). Gold quota
@@ -94,6 +97,7 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       for every weapon)
 - [x] Phase 9 — characters & meta progression (specialist traits, career stats,
       feat unlocks with NEW SPECIALIST cards, Clout, Connections board)
-- [ ] Phase 10 — story & endings
+- [x] Phase 10 — story & endings (prologue per case file, stage intro cards,
+      state-aware vendors, RETIRED / THE NEW CHAIRMAN endings with credits)
 - [ ] Phase 11 — menus, pause, onboarding, settings
 - [ ] Phase 12 — balance, performance, final QA

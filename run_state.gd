@@ -40,6 +40,8 @@ var relics: Array = []
 ## Golden Parachute fires once per run; so does the Patch Kit.
 var parachute_used := false
 var patch_used := false
+## Stages whose intro card has been shown on the case wall this run.
+var stage_intros: Array = []
 
 func has_relic(id: StringName) -> bool:
 	return id in relics
@@ -81,6 +83,7 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	rumors.clear()
 	job_gear.clear()
 	relics.clear()
+	stage_intros.clear()
 	parachute_used = false
 	patch_used = false
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
@@ -257,6 +260,7 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"relics": relics.map(func(r): return String(r)),
 		"parachute_used": parachute_used,
 		"patch_used": patch_used,
+		"stage_intros": stage_intros.duplicate(),
 	}
 
 func _serialize_market() -> Dictionary:
@@ -304,6 +308,9 @@ func deserialize(data: Dictionary) -> void:
 		if Relics.DATA.has(StringName(r)):
 			relics.append(StringName(r))
 	parachute_used = bool(data.get("parachute_used", false))
+	stage_intros.clear()
+	for st in data.get("stage_intros", []):
+		stage_intros.append(int(st))
 	patch_used = bool(data.get("patch_used", false))
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))

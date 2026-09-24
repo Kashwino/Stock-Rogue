@@ -355,6 +355,28 @@
   colours, with a crew column tracking every feat.
 - The front page lists the Clout the run earned.
 
+## Phase 10 — Story & endings
+
+- **Prologue** (`prologue.gd`, `narration.gd`): four typewriter cards over the
+  rainy skyline the first time a case file starts a run, a single line on every
+  later run of that file. Tap finishes a line, the next tap moves on, SKIP or
+  Esc jumps to the case wall.
+- **Stage intro cards** (`stage_intro.gd`): each stage opens on the case wall
+  with a manila card — stage, one line of narration, the boss waiting at the
+  end of it and a NEXT TARGET stamp. Shown once per stage per run (saved with
+  the run).
+- **Vendors read the run**: new lines for open Fence positions, rumors on the
+  wire, a coat full of relics, and the World and Doomsday stages, on top of the
+  index/quota/grade/boss/health reactions. The collector's sit-down keeps its
+  opening line, verdict and next-stage teaser.
+- **Winning endings** (`ending_sequence.gd`): the city pans past while the
+  epilogue types out, then the title slams down with the run's numbers, then
+  the credits roll (`Story.CREDITS_NAME`, fonts and licence, Godot), then the
+  NEW SPECIALIST card if the win unlocked the Legend, then home.
+  **RETIRED** is the normal win; **THE NEW CHAIRMAN** plays when the Board
+  index is at 600 or more when the Chairman falls. **BUSTED** keeps the front
+  page.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -440,3 +462,10 @@
   catalog, but a player who built Crew Quarters keeps the Wolf and Broker.
 - **A met feat counts as hired** even before the NEW SPECIALIST card has been
   shown (e.g. progress made by an older build).
+- **Prologue trigger** is the crew card that starts a new run (not
+  `RunFlow.start_new_run`), so tests, the practice job and screenshots never
+  see it. "First run" is tracked per case-file slot in the career save.
+- **The ending owns the screen**: the heist under it is disabled and its HUD
+  hidden until the ending hands off to the home screen.
+- **THE NEW CHAIRMAN threshold** starts at index 600 (the last quota gate is
+  492); Phase 12's balance sim tunes it toward about a quarter of wins.

@@ -31,6 +31,16 @@ func _ready() -> void:
 func bind_map(map: RunMap) -> void:
 	run_map = map
 	refresh()
+	_maybe_stage_intro()
+
+## Each stage opens with its intro card, once per run.
+func _maybe_stage_intro() -> void:
+	if run_map.is_complete() or run_map.current_step != 0:
+		return
+	if run_map.current_stage in RunState.stage_intros:
+		return
+	RunState.stage_intros.append(run_map.current_stage)
+	StageIntro.present(self, run_map.current_stage)
 
 func refresh() -> void:
 	_busy = false
