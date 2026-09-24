@@ -107,14 +107,18 @@ try {
   // Move diagonally away from the car while aiming/firing: two independent fingers.
   await cd.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...l }, { id: 2, ...r }] });
   await cd.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, ...move }, { id: 2, x: r.x, y: r.y - 30 }] });
-  await page.waitForTimeout(1400);
+  // Hold both sticks until the player is through the door (software-GL
+  // browsers run at ~12 fps, so allow a few seconds).
+  await page.waitForFunction(() => window.stockRogueQA?.entered && window.stockRogueQA.elapsed > 0, null, { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(200);
   s = await state();
   assert(Math.hypot(s.position[0] - before[0], s.position[1] - before[1]) > 50, 'left touch moves player');
   assert(s.shots > shotsBefore, 'right touch fires while left moves');
   assert(s.entered && s.elapsed > 0.0, 'touch movement enters the building and starts the heist');
   await shot('phone-infiltration');
   await cd.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.waitForTimeout(300);
+  // The probe refreshes every 0.1 s of game time; at ~12 fps allow a moment.
+  await page.waitForFunction(() => { const q = window.stockRogueQA; return q && !q.firing && q.move.every(v => v === 0); }, null, { timeout: 3000 }).catch(() => {});
   s = await state();
   assert(!s.firing && s.move.every(v => v === 0), 'finger release clears both sticks');
   // Walk to the lobby terminal using the movement stick, then open a real short.
@@ -152,7 +156,7 @@ try {
   await tap('RESUME');
   assert(!(await state()).paused, 'resume works');
   await tap('PAUSE');
-  await tap('MENU - LAST CHECKPOINT');
+  await tap('QUIT TO MENU');
   await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
   await tap('PLAY');
   await wait(() => window.stockRogueQA?.scene.endsWith('character_select.tscn'));
@@ -192,7 +196,7 @@ try {
   await wait(() => window.stockRogueQA?.scene.endsWith('heist_floor.tscn'));
   assert.equal((await state()).profile, 'operator', 'selected character enters heist');
   await tap('PAUSE');
-  await tap('MENU - LAST CHECKPOINT');
+  await tap('QUIT TO MENU');
   await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));
   await page.reload();
   await wait(() => window.stockRogueQA?.scene.endsWith('home_screen.tscn'));

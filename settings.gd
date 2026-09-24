@@ -6,10 +6,10 @@ const PATH := "user://settings.cfg"
 const WEB_KEY := "stock-rogue-settings-v1"
 const DEFAULTS := {"master": 0.8, "music": 0.7, "sfx": 0.8, "ui": 0.8, "fullscreen": false,
 	"low_effects": false, "frame_cap": 60, "touch_mode": 0, "shake": 1.0, "dynamic_shadows": false,
-	"post_fx": true, "reduce_flashing": false, "damage_numbers": true}
+	"post_fx": true, "reduce_flashing": false, "damage_numbers": true, "tips": true}
 const AUDIO_KEYS := {"master": "Master", "music": "Music", "sfx": "SFX", "ui": "UI"}
 const FLOAT_KEYS := ["master", "music", "sfx", "ui", "shake"]
-const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers"]
+const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers", "tips"]
 var values: Dictionary = DEFAULTS.duplicate()
 var last_save_error: int = OK
 

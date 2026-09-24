@@ -56,31 +56,28 @@ func open_terminal() -> void:
 	col.custom_minimum_size = Vector2(800, 0)
 	col.add_theme_constant_override("separation", 16)
 	center.add_child(col)
-	var title := Label.new()
-	title.text = "MARKET ACCESS - ONE MOVE PER HEIST"
-	title.add_theme_font_size_override("font_size", 28)
-	col.add_child(title)
+	col.add_child(VisualTheme.label("LOBBY TERMINAL  ·  ONE MOVE PER HEIST", "KickerLabel", 20))
+	col.add_child(VisualTheme.label("MARKET ACCESS", "TitleLabel", 48))
 	_target = OptionButton.new()
 	_target.custom_minimum_size.y = 64
 	var scene := get_tree().current_scene
 	var index := 0
 	for asset: CriminalAsset in RunState.market.assets:
-		_target.add_item(String(asset.id).to_upper() + "  $" + "%.2f" % asset.current_price)
+		_target.add_item("%s   %s   $%.2f" % [Venues.ticker(asset.id), Venues.display_name(asset.id), asset.current_price])
 		_target.set_item_metadata(index, asset.id)
 		if scene is HeistFloor and asset.id == scene.get("_venue"):
 			_target.select(index)
 		index += 1
 	col.add_child(_target)
-	_status = Label.new()
+	_status = VisualTheme.label("", "MonoLabel", 20)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status.custom_minimum_size.y = 58
-	_status.text = "Gold: %d   |   Heat: %.0f" % [RunEconomy.gold, scene.heat]
-	_status.add_theme_font_size_override("font_size", 22)
+	_status.custom_minimum_size.y = 40
+	_status.text = "$%d ON HAND   ·   HEAT %.0f" % [RunEconomy.gold, scene.heat]
 	col.add_child(_status)
 	for key: String in MarketOps.OPERATIONS:
 		var op: Dictionary = MarketOps.OPERATIONS[key]
 		var button := Button.new()
-		button.text = "%s  |  %d GOLD  |  +%.0f HEAT\n%s" % [op["name"], op["cost"], op["heat"], op["detail"]]
+		button.text = "%s   ·   $%d   ·   +%.0f HEAT\n%s" % [op["name"], op["cost"], op["heat"], op["detail"]]
 		button.custom_minimum_size.y = 94
 		button.add_theme_font_size_override("font_size", 21)
 		button.pressed.connect(_trade.bind(key))
@@ -92,6 +89,7 @@ func open_terminal() -> void:
 	back.pressed.connect(close_terminal)
 	col.add_child(back)
 	get_tree().paused = true
+	VisualTheme.focus_first(col)
 
 func _trade(operation: String) -> void:
 	if used:

@@ -326,6 +326,7 @@ func _open_station(kind: StringName) -> void:
 		_active_panel.show()
 		_restore_vendor_state(kind)
 		_refresh_gold_label()
+		VisualTheme.focus_first(_active_panel)
 		return
 	match kind:
 		&"weapons": _active_panel = _build_weapon_dealer()
@@ -335,6 +336,7 @@ func _open_station(kind: StringName) -> void:
 		_panels[kind] = _active_panel
 		_vendor_state[kind] = _capture_vendor_state()
 		add_child(_active_panel)
+		VisualTheme.focus_first.call_deferred(_active_panel)
 
 func _close_panel() -> void:
 	if _active_panel:

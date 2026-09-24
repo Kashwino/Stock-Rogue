@@ -102,7 +102,7 @@ func _on_input(event: InputEvent) -> void:
 		_next()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
+	if (event is InputEventKey or event is InputEventJoypadButton) and event.pressed and not event.is_echo():
 		_next()
 		get_viewport().set_input_as_handled()
 

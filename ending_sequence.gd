@@ -78,6 +78,7 @@ func _ready() -> void:
 	_button.size = Vector2(150, 56)
 	_button.pressed.connect(_on_button)
 	_root.add_child(_button)
+	_button.grab_focus.call_deferred()
 
 func _on_button() -> void:
 	match _stage:

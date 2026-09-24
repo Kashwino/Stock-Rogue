@@ -22,13 +22,13 @@ func _process(_delta: float) -> void:
 	var touch: bool = TouchInput.touch_active and Settings.values["touch_mode"] != 2
 	var show := is_instance_valid(player) and not get_tree().paused and not touch and not Transition.busy
 	_mark.visible = show
-	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if show and TouchInput.pad_aim() == Vector2.ZERO else Input.MOUSE_MODE_VISIBLE
+	var pad := TouchInput.last_device == "pad"
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if show else Input.MOUSE_MODE_VISIBLE
 	if not show:
 		return
-	var pad := TouchInput.pad_aim()
-	if pad != Vector2.ZERO:
+	if pad:
 		var screen_player := player.get_global_transform_with_canvas().origin
-		_mark.position = screen_player + pad * 170.0
+		_mark.position = _mark.position.lerp(screen_player + player.aim_direction() * 170.0, 0.5)
 	else:
 		_mark.position = _mark.get_viewport().get_mouse_position()
 	var weapon: WeaponItem = player.loadout.get_active() if player.loadout else null

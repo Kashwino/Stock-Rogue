@@ -25,6 +25,7 @@ const KINDS := [
 ]
 
 func _ready() -> void:
+	add_to_group("loot_pickups")
 	# Player is layer 4; only the player should trip a pickup.
 	collision_layer = 0
 	collision_mask = Layers.PLAYER

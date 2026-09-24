@@ -62,6 +62,7 @@ func _rebuild() -> void:
 	back.custom_minimum_size.y = 60
 	back.pressed.connect(_on_back)
 	body.add_child(back)
+	VisualTheme.focus_first(body)
 
 func _equipped_line() -> String:
 	var perk := String(Meta.CATALOG[Meta.starting_perk]["name"]) if Meta.CATALOG.has(Meta.starting_perk) else "none"

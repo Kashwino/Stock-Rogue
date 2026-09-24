@@ -312,6 +312,15 @@ static func _label_variation(theme: Theme, name: String, f: Font, size: int, col
 	theme.set_color("font_color", name, color)
 
 # ------------------------------------------------------------ helpers ------
+## Give keyboard / controller focus to the first usable button under `root`
+## (deferred, so freshly built panels have laid out first).
+static func focus_first(root: Node) -> void:
+	for b: Node in root.find_children("*", "BaseButton", true, false):
+		var button := b as BaseButton
+		if button.is_visible_in_tree() and not button.disabled and button.focus_mode != Control.FOCUS_NONE:
+			button.grab_focus.call_deferred()
+			return
+
 ## Build a Label in one call. `role` is a theme variation (HeadingLabel...).
 static func label(text: String, role: String = "", size: int = 0, color: Color = Color(0, 0, 0, 0)) -> Label:
 	var l := Label.new()

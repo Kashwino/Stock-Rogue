@@ -4,6 +4,9 @@ var move := Vector2.ZERO
 var aim := Vector2.RIGHT
 var firing := false
 var touch_active := false
+## The last kind of input used — "keys" (keyboard and mouse), "pad" or
+## "touch" — so aiming and on-screen prompts follow the player's hands.
+var last_device := "keys"
 ## Every action the game reads. They are defined in project.godot; this list
 ## only exists to fail loudly (and patch in keyboard defaults) if one is gone.
 const REQUIRED := {
@@ -36,6 +39,25 @@ func _ready() -> void:
 
 func movement() -> Vector2:
 	return (move + Input.get_vector("move_left", "move_right", "move_up", "move_down")).limit_length(1.0)
+
+func device() -> String:
+	if touch_active and Settings.values.get("touch_mode", 0) != 2:
+		return "touch"
+	return last_device
+
+func using_pad() -> bool:
+	return device() == "pad"
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.4):
+		last_device = "pad"
+	elif event is InputEventScreenTouch or event is InputEventScreenDrag:
+		last_device = "touch"
+	elif event is InputEventKey:
+		last_device = "keys"
+	elif (event is InputEventMouseButton or (event is InputEventMouseMotion and event.relative.length() > 4.0)) \
+			and event.device != InputEvent.DEVICE_ID_EMULATION:
+		last_device = "keys"
 
 ## Right-stick aim from a controller, or ZERO when the stick is centred.
 func pad_aim() -> Vector2:

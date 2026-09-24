@@ -141,9 +141,19 @@ func _process_move() -> void:
 			if not silent_steps:
 				Audio.play("footstep", global_position)
 
+## Controller aim: the right stick, or the way you're walking when it rests.
+var _pad_aim := Vector2.RIGHT
+
 func aim_direction() -> Vector2:
 	if TouchInput.touch_active and Settings.values["touch_mode"] != 2:
 		return TouchInput.aim
+	if TouchInput.last_device == "pad":
+		var stick := TouchInput.pad_aim()
+		if stick != Vector2.ZERO:
+			_pad_aim = stick
+		elif TouchInput.movement().length() > 0.3:
+			_pad_aim = TouchInput.movement().normalized()
+		return _pad_aim
 	var direction := get_global_mouse_position() - global_position
 	return direction.normalized() if direction.length() > 1.0 else Vector2.RIGHT
 

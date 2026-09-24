@@ -99,5 +99,7 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
       feat unlocks with NEW SPECIALIST cards, Clout, Connections board)
 - [x] Phase 10 — story & endings (prologue per case file, stage intro cards,
       state-aware vendors, RETIRED / THE NEW CHAIRMAN endings with credits)
-- [ ] Phase 11 — menus, pause, onboarding, settings
+- [x] Phase 11 — menus, pause, onboarding, settings (job-file pause screen,
+      one-time contextual tips, tips toggle, controller aim + focus, prompts
+      per device)
 - [ ] Phase 12 — balance, performance, final QA

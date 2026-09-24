@@ -84,8 +84,8 @@ func _on_gui_input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or _done:
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
+	if (event is InputEventKey or event is InputEventJoypadButton) and event.pressed and not event.is_echo():
+		if (event is InputEventKey and event.keycode == KEY_ESCAPE) or (event is InputEventJoypadButton and event.button_index == JOY_BUTTON_START):
 			skip_all()
 		else:
 			advance()

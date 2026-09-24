@@ -126,6 +126,10 @@ func _ready() -> void:
 	hooks.floor_host = self
 	add_child(hooks)
 	add_child(PauseMenu.new())
+	if Settings.values.get("tips", true) and OnboardingHints.pending():
+		var hints := OnboardingHints.new()
+		hints.host = self
+		add_child(hints)
 	camera = get_node_or_null("Camera2D")
 	if camera == null:
 		camera = Camera2D.new()
@@ -647,8 +651,8 @@ func _process(delta: float) -> void:
 	var want := Vector2.ZERO
 	if TouchInput.touch_active and Settings.values["touch_mode"] != 2:
 		want = TouchInput.aim * (60.0 if TouchInput.firing else 20.0)
-	elif TouchInput.pad_aim() != Vector2.ZERO:
-		want = TouchInput.pad_aim() * 70.0
+	elif TouchInput.last_device == "pad":
+		want = player.aim_direction() * (70.0 if TouchInput.pad_aim() != Vector2.ZERO else 30.0)
 	else:
 		want = (get_global_mouse_position() - player.global_position).limit_length(460.0) * 0.16
 	fx.lead = fx.lead.lerp(want, clampf(delta * 4.0, 0.0, 1.0))

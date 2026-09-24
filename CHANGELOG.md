@@ -377,6 +377,31 @@
   index is at 600 or more when the Chairman falls. **BUSTED** keeps the front
   page.
 
+## Phase 11 — Menus, pause, onboarding, settings
+
+- **Pause screen** rebuilt to match the rest of the game: the job's case file
+  (venue, objective as the HUD words it, conditions, heat, bag, time on the
+  job) beside RESUME / SETTINGS / QUIT TO MENU, and a controls card for the
+  hands on the controls right now. Quitting keeps the run; it resumes from
+  the case wall. The touch PAUSE button hides while anything else has the game
+  paused (job report, lobby terminal).
+- **Onboarding hints** (`onboarding_hints.gd`): on a fresh save the first
+  heists show one-time tips as their moment comes — move/aim, the provoke
+  rule, shooting, reloading, loot, heat, the getaway car, fire exits. Each is
+  remembered in the career save and never repeats; a new **Tutorial tips**
+  setting turns them off. Tips name the right buttons for keyboard,
+  controller or touch.
+- **Settings** now cover Master / Effects / Music / Interface volume, screen
+  shake, low effects, post-processing, dynamic shadows, reduce flashing,
+  damage numbers, tutorial tips, fullscreen, frame cap and touch controls.
+- **Controller**: the right stick now actually aims the gun (it only moved
+  the crosshair before); with the stick at rest you aim where you walk. The
+  last device used drives prompts, and every menu, vendor panel, terminal,
+  the ending and the story cards can be driven with a pad (focus lands on the
+  first control; any button advances a story card, START skips).
+- The lobby **market terminal** got the stamped title treatment and shows
+  venue names instead of internal ids.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -469,3 +494,8 @@
   hidden until the ending hands off to the home screen.
 - **THE NEW CHAIRMAN threshold** starts at index 600 (the last quota gate is
   492); Phase 12's balance sim tunes it toward about a quarter of wins.
+- **Tips use the HUD's fonts.** A tip card in a new font size stalled a frame
+  long enough on software-GL phones to cost a player a quarter-second of
+  movement; reusing the HUD's already-rendered font/size pairs removed it.
+- **Browser suite waits for state**, not fixed timeouts, at the two touch steps
+  that depend on frame rate (software-GL Chromium runs the game at ~12 fps).

@@ -60,9 +60,18 @@ func _run() -> void:
 	check(get_tree().paused and floor_scene.active_elapsed == clock_before, "pause freezes grading time")
 	check(floor_scene.heat == heat_before and RunState.market.price_of(&"bank_job") == price_before, "pause freezes heat and market")
 	check(player.global_position == position_before and RunState.loadout.reloading, "pause freezes player and reload timer")
+	check(pause._job != null and pause._job.find_children("*", "Label", true, false).size() >= 3, "the pause screen shows the job's case file")
+	var pause_buttons := pause.menu.find_children("*", "Button", true, false).map(func(b): return b.text)
+	check(pause_buttons == ["RESUME", "SETTINGS", "QUIT TO MENU"], "pause offers Resume / Settings / Quit to Menu")
+	pause._open_settings()
+	check(pause._settings_box.visible and not pause.menu.visible, "settings open from the pause screen")
+	pause.settings_panel.closed.emit()
+	check(not pause._settings_box.visible and pause.menu.visible, "settings close back to the pause screen")
+	check(PauseMenu.controls_text("pad").contains("RT fire") and PauseMenu.controls_text("keys").contains("R reload"), "the controls card follows the device")
 	pause.close_pause()
 	await get_tree().create_timer(1.7).timeout
 	check(not RunState.loadout.reloading, "reload resumes after pause")
+	await _test_onboarding()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -824,6 +833,38 @@ func _test_specialists() -> void:
 	RunState.start_run(wolf, 77)
 	check(RunState.max_health == 4 and RunState.profile_value("damage_mult", 1.0) == 1.25, "the Wolf: four hearts, +25% damage")
 	RunState.start_run(load("res://main_character.tres"), 4817)
+
+func _test_onboarding() -> void:
+	var player := floor_scene.player
+	var hints_nodes := floor_scene.find_children("*", "OnboardingHints", true, false)
+	check(hints_nodes.size() == 1, "a fresh save's heist carries onboarding hints")
+	var hints: OnboardingHints = hints_nodes[0]
+	for device: String in ["keys", "pad", "touch"]:
+		for id: String in OnboardingHints.ORDER:
+			var words := OnboardingHints.text(id, device)
+			check(words[0] != "" and words[1] != "", "hint %s reads on %s" % [id, device])
+	check(OnboardingHints.text("reload", "pad")[1].begins_with("X") and OnboardingHints.text("reload", "keys")[1].begins_with("R"), "hints name the right button")
+	check(hints._due("move") and hints._due("provoke"), "move and provoke hints come due inside the building")
+	await get_tree().create_timer(1.2).timeout
+	var first := hints._showing
+	check(first != "" and first in Meta.hints_seen, "the first hint that comes due shows and is remembered")
+	check(not Meta.take_hint(first), "a seen hint never shows again")
+	hints._clock = 0.0
+	await get_tree().create_timer(0.8).timeout
+	check("move" in Meta.hints_seen and "provoke" in Meta.hints_seen, "hints queue one after another")
+	# Controller: the right stick aims, and the last device drives prompts.
+	var pad_event := InputEventJoypadButton.new()
+	pad_event.pressed = true
+	TouchInput._input(pad_event)
+	check(TouchInput.device() == "pad", "a controller button switches prompts to the controller")
+	Input.action_press("aim_up", 1.0)
+	check(player.aim_direction().distance_to(Vector2.UP) < 0.05, "the right stick aims")
+	Input.action_release("aim_up")
+	check(player.aim_direction().distance_to(Vector2.UP) < 0.05, "aim holds when the stick is released")
+	var key_event := InputEventKey.new()
+	key_event.pressed = true
+	TouchInput._input(key_event)
+	check(TouchInput.device() == "keys", "the keyboard takes prompts back")
 
 func _test_story() -> void:
 	check(Story.ending_id(Story.NEW_CHAIRMAN_INDEX - 1.0) == &"retired" and Story.ending_id(Story.NEW_CHAIRMAN_INDEX) == &"new_chairman", "the index decides RETIRED or THE NEW CHAIRMAN")

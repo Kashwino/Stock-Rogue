@@ -52,6 +52,25 @@ func _run() -> void:
 			scene.call(extra)
 		for i in 30:
 			await get_tree().process_frame
+	if args.has("hint"):
+		Meta.hints_seen.clear()
+		var hints := get_tree().root.find_children("*", "OnboardingHints", true, false)
+		if not hints.is_empty():
+			hints[0]._show(String(args["hint"]))
+		for i in 30:
+			await get_tree().process_frame
+	if args.has("terminal"):
+		var terminal := get_tree().get_first_node_in_group("market_terminal")
+		if terminal:
+			terminal.open_terminal()
+		for i in 20:
+			await get_tree().process_frame
+	if args.has("pause"):
+		var pause := get_tree().get_first_node_in_group("pause_menu")
+		if pause:
+			pause.open_pause()
+		for i in 20:
+			await get_tree().process_frame
 	var image := get_viewport().get_texture().get_image()
 	image.save_png(out)
 	print("SHOT SAVED ", out, " ", image.get_size())

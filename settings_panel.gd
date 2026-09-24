@@ -32,6 +32,7 @@ func _ready() -> void:
 	_toggle(right, "Dynamic shadows", "dynamic_shadows")
 	_toggle(right, "Reduce flashing", "reduce_flashing")
 	_toggle(right, "Damage numbers", "damage_numbers")
+	_toggle(right, "Tutorial tips", "tips")
 	var full := CheckButton.new()
 	full.text = "Fullscreen (tap to apply)"
 	full.button_pressed = Settings.values["fullscreen"]
@@ -68,6 +69,16 @@ func _ready() -> void:
 	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.add_child(status)
 	Settings.save_failed.connect(_on_save_failed)
+	# Keyboard / controller: land on the first slider whenever the panel opens.
+	visibility_changed.connect(_focus_default)
+	_focus_default.call_deferred()
+
+func _focus_default() -> void:
+	if not is_visible_in_tree():
+		return
+	var sliders := find_children("*", "HSlider", true, false)
+	if not sliders.is_empty():
+		(sliders[0] as Control).grab_focus.call_deferred()
 
 func _on_back() -> void:
 	closed.emit()
