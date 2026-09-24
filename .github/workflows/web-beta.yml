@@ -83,6 +83,11 @@ jobs:
             export_presets.cfg
             .gitignore
             BETA_NOTES.md
+            CHANGELOG.md
+            PROGRESS.md
+            TESTING.md
+            tools
+            assets
             rooms
             layouts
             audio

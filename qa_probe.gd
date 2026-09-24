@@ -25,9 +25,8 @@ func _process(delta: float) -> void:
 		"left": [left.x, left.y],
 		"right": [right.x, right.y],
 		"move": [TouchInput.move.x, TouchInput.move.y], "firing": TouchInput.firing}
-	if scene is PrepLobby:
+	if scene is HideoutRoom:
 		data["position"] = [scene._walker.position.x, scene._walker.position.y]
-		data["selected_crew"] = scene.selected
 	if RunState.run_map:
 		data["route_stage"] = RunState.run_map.current_stage
 		data["route_step"] = RunState.run_map.current_step

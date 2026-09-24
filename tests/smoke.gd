@@ -14,8 +14,9 @@ func _run() -> void:
 	RunFlow.run_seed = 4817
 	RunState.start_run(load("res://main_character.tres"), 4817)
 	RunState.add_max_health(20)
-	RunFlow.pending_heist = MapNode.new()
+	RunFlow.pending_heist = MapNode.new(MapNode.Type.BOSS)
 	RunFlow.pending_heist.venue_id = &"bank_job"
+	RunFlow.pending_heist.boss_id = &"auditor"
 	check(ItemPool.weapons().size() == 20, "20 weapons in catalog")
 	check(ItemPool.rewardable_weapons().size() == 16, "three career weapons gated from rewards")
 	_test_progression()
@@ -147,11 +148,8 @@ func _run() -> void:
 	boss.clock = 0.0
 	boss._physics_process(0.02)
 	check(boss.phase == 2 and boss.attack == AuditorBoss.Attack.DECLARE_CHARGE, "margin-call phase declares charge")
-	var prior_stage := RunState.run_map.current_stage
-	RunState.run_map.current_stage = 3
 	floor_scene._extract()
-	check(not floor_scene._extracting, "final boss cannot be skipped by extraction")
-	RunState.run_map.current_stage = prior_stage
+	check(not floor_scene._extracting, "boss heist cannot be skipped by extraction")
 	boss.take_damage(9999)
 	check(floor_scene.marked, "boss death marks heist and triggers reward")
 	await get_tree().create_timer(0.2).timeout
@@ -173,7 +171,9 @@ func _run() -> void:
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	# Construct the remaining production screens to catch missing node references.
-	for path: String in ["res://home_screen.tscn", "res://character_select.tscn", "res://map_ui_screen.tscn", "res://hideout_room.tscn", "res://prep_lobby.tscn"]:
+	RunState.start_run(load("res://main_character.tres"), 4817)
+	RunFlow.practice = true
+	for path: String in ["res://home_screen.tscn", "res://character_select.tscn", "res://map_ui_screen.tscn", "res://hideout_room.tscn"]:
 		var scene: Node = load(path).instantiate()
 		get_tree().root.add_child(scene)
 		get_tree().current_scene = scene
@@ -182,15 +182,21 @@ func _run() -> void:
 		check(is_instance_valid(scene), "screen ready " + path)
 		if path == "res://hideout_room.tscn":
 			RunEconomy.gold = 2000
-			scene._open_station(&"market")
+			for kind: StringName in [&"stocks", &"blackmarket"]:
+				scene._open_station(kind)
+				await get_tree().process_frame
+				var panel: CanvasLayer = scene._active_panel
+				var gold_before := RunEconomy.gold
+				var purchase: Button = panel.find_children("*", "Button", true, false).filter(func(b): return b.text == "Buy")[0]
+				purchase.pressed.emit()
+				check(RunEconomy.gold < gold_before and purchase.disabled, "vendor sells an offer and debits gold: " + String(kind))
+				scene._close_panel()
+				scene._open_station(kind)
+				check(scene._active_panel == panel and purchase.disabled, "reopening a vendor does not restock: " + String(kind))
+				scene._close_panel()
+			scene._open_station(&"weapons")
 			await get_tree().process_frame
-			var panel: CanvasLayer = scene._active_panel
-			var purchase: Button = panel.find_children("*", "Button", true, false).filter(func(b): return b.text == "Buy")[0]
-			purchase.pressed.emit()
-			check(RunEconomy.gold < 2000 and purchase.disabled, "unified market buys weapon and debits gold")
-			scene._close_panel()
-			scene._open_station(&"market")
-			check(scene._active_panel == panel and purchase.disabled, "reopening market does not restock purchases")
+			check(scene._active_panel != null and scene._case_opened.size() == 3, "weapon dealer shows three sealed cases")
 			scene._close_panel()
 		scene.queue_free()
 		await get_tree().process_frame
@@ -222,6 +228,8 @@ func _test_modifiers() -> void:
 		for h in a.stages[s].size():
 			for i in a.stages[s][h].options.size():
 				var node: MapNode = a.stages[s][h].options[i]
+				if node.is_boss():
+					continue
 				tags[node.modifier] = true
 				check(node.modifier == b.stages[s][h].options[i].modifier, "map modifier deterministic")
 	check(tags.size() == 3, "all three map modifiers appear")
@@ -360,29 +368,39 @@ func _test_projectiles() -> void:
 	await get_tree().process_frame
 
 func _test_route() -> void:
-	var markets := 0
-	var empty := 0
-	for seed_value in range(1, 31):
+	check(is_equal_approx(RunMap.stock_quota_for(0), 120.0) and roundi(RunMap.stock_quota_for(1)) == 227 and roundi(RunMap.stock_quota_for(2)) == 350 and roundi(RunMap.stock_quota_for(3)) == 492, "stock gates 120 / 227 / 350 / 492")
+	for seed_value in range(1, 21):
 		var route := RunMap.new()
 		route.generate(seed_value)
-		check(route.stages.map(func(s): return s.size()) == [3, 3, 3, 1], "exact 3 Town / 3 City / 3 Capital / 1 final")
-		for i in 10:
-			var choice: RunMap.Step = route.current()
-			check(choice.kind == RunMap.StepKind.HEIST_CHOICE, "no forced markets or quota gates")
-			check(choice.options.size() == 1 if i == 9 else choice.options.size() >= 2 and choice.options.size() <= 4, "correct location count")
-			if choice.market_available: markets += 1
-			else: empty += 1
-			if i == 9:
-				check(choice.options[0].type == MapNode.Type.BOSS, "final node is explicit boss")
-			route.choose_option(0)
+		check(route.stages.map(func(s): return s.size()) == [8, 8, 8, 5], "route shape per stage")
+		check(is_equal_approx(route.current_quota(), 380.0), "first gold gate is 380")
+		var heists := 0
+		var bosses := 0
+		var gates := 0
+		var previous := -1
+		var guard := 0
+		while not route.is_complete() and guard < 100:
+			guard += 1
+			var step: RunMap.Step = route.current()
+			if step.kind == RunMap.StepKind.HEIST_CHOICE:
+				heists += 1
+				check(previous == RunMap.StepKind.SHOP, "the hideout comes before every heist choice")
+				if step.is_boss:
+					bosses += 1
+					check(step.options.size() == 1 and step.options[0].is_boss() and step.options[0].boss_id != &"", "boss step offers exactly one named boss")
+				else:
+					check(step.options.size() >= 2 and step.options.size() <= 4, "2-4 heist options")
+			elif step.kind == RunMap.StepKind.QUOTA_GATE:
+				gates += 1
+				route.quota_block += 1
+			previous = step.kind
 			route.advance_step()
-		check(route.is_complete(), "run ends after tenth score")
-		route.restore_progress(7)
-		check(route.current_stage == 2 and route.current_step == 1, "old checkpoint migrates by completed scores")
-		route.current().market_visited = true
-		var restored := RunMap.new()
-		restored.generate(seed_value)
-		restored.restore_progress(7)
-		restored.restore_markets(route.visited_markets())
-		check(restored.current().market_visited, "visited market preserved on resume")
-	check(markets > 0 and empty > 0, "RNG includes and omits optional markets")
+		check(heists == 11 and bosses == 4 and gates == 4, "11 heists, 4 stage bosses, 4 quota gates")
+		var migrated := RunMap.new()
+		migrated.generate(seed_value)
+		migrated.restore_progress(4)
+		check(migrated.heists_done == 4 and migrated.current_stage == 1, "old saves migrate by completed heists")
+		var exact := RunMap.new()
+		exact.generate(seed_value)
+		exact.restore_position(2, 3, 2, 5)
+		check(exact.current_stage == 2 and exact.current_step == 3 and exact.quota_block == 2, "v3 saves restore their exact step")

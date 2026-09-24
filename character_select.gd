@@ -24,7 +24,7 @@ const CREW := [
 		"role": "All-rounder", "unlocked": true,
 		"blurb": "Steady hands, no habits, no records. The one every fence trusts.",
 		"hearts": "♥♥♥", "trait": "volatility x1.0 to x2.5",
-		"profile": "res://main_character.tres",
+		"profile": "res://crew_operator.tres",
 	},
 	{
 		"id": &"ghost", "name": "THE GHOST", "mono": "G",
@@ -32,6 +32,7 @@ const CREW := [
 		"blurb": "Nobody ever heard them coming. Nobody ever heard them leave.",
 		"hearts": "♥♥", "trait": "volatility x1.5 to x3.0\nsilent movement, guards hear nothing",
 		"unlock": "Slip out a fire exit 5 times",
+		"profile": "res://crew_ghost.tres",
 	},
 	{
 		"id": &"wolf", "name": "THE WOLF", "mono": "W",
@@ -39,6 +40,7 @@ const CREW := [
 		"blurb": "Doesn't case the place. Doesn't need to.",
 		"hearts": "♥♥♥♥", "trait": "volatility x0.8 to x2.0\nhits harder, bleeds louder",
 		"unlock": "Put down 3 bosses",
+		"profile": "res://crew_wolf.tres",
 	},
 	{
 		"id": &"broker", "name": "THE BROKER", "mono": "B",
@@ -46,6 +48,7 @@ const CREW := [
 		"blurb": "Half the trades on the feed are theirs. The other half are lies.",
 		"hearts": "♥♥", "trait": "volatility x2.0 to x4.0\nstock swings amplified both ways",
 		"unlock": "Reach Index 350 in one run",
+		"profile": "res://crew_broker.tres",
 	},
 	{
 		"id": &"legend", "name": "THE LEGEND", "mono": "L",
@@ -53,6 +56,7 @@ const CREW := [
 		"blurb": "Retired once already. This time it's personal — and it's all in.",
 		"hearts": "♥", "trait": "volatility x3.0 flat\none life, all in",
 		"unlock": "Retire — win a full run",
+		"profile": "res://crew_legend.tres",
 	},
 ]
 
@@ -210,7 +214,7 @@ func _make_file_card(i: int) -> Control:
 	if active:
 		status.text = "JOB IN PROGRESS"
 		status.add_theme_color_override("font_color", GOLD)
-		var stage_names := ["Town", "City", "Capital", "Final Boss"]
+		var stage_names := ["Town", "City", "World", "Doomsday"]
 		var st: int = clampi(int(data.get("stage", 0)), 0, 3)
 		detail.text = "Reached: %s\nGold on hand: ⦿ %d\n\nOpen the file to pick the job back up." % [
 			stage_names[st], int(data.get("gold", 0))]
@@ -238,7 +242,7 @@ func _on_file_chosen(i: int) -> void:
 		# Resume the job exactly where the file left off.
 		RunFlow.continue_run()
 	else:
-		RunFlow.open_preparation()
+		_show_crew()
 
 # -------------------------------------------------------- phase 2: crew -----
 func _show_crew() -> void:
@@ -266,7 +270,7 @@ func _show_crew() -> void:
 	_back_button(foot, "← Case files", _show_case_files)
 
 func _make_crew_card(c: Dictionary) -> Control:
-	var unlocked: bool = c["unlocked"]
+	var unlocked: bool = c["unlocked"] or Meta.is_specialist_unlocked(c["id"])
 	var card := Button.new()
 	card.custom_minimum_size = Vector2(196, 340)
 	card.focus_mode = Control.FOCUS_ALL if unlocked else Control.FOCUS_NONE

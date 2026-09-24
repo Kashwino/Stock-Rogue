@@ -43,7 +43,6 @@ func set_chest_ui(ui) -> void:
 
 func _process(_delta: float) -> void:
 	if _player_in_range and not _used and Input.is_action_just_pressed("interact"):
-		pass # Debug logging removed.
 		_open()
 
 func _on_body_entered(body: Node) -> void:
@@ -73,7 +72,6 @@ func _open() -> void:
 	# Weapon chests exclude the starter pistol -- every player already has it.
 	var pool: Array = ItemPool.rewardable_weapons() if kind == Kind.WEAPON else ItemPool.upgrades()
 	var items := LootRoller.roll_items(pool, tier, reveal_count, rng)
-	pass # Debug logging removed.
 	if items.is_empty():
 		push_warning("WorldChest: loot roll returned nothing — pool size "
 			+ str(pool.size()) + ". Falling back to the raw pool.")

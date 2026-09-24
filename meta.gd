@@ -28,6 +28,7 @@ var high_score: float = 0.0
 var runs_played: int = 0
 var runs_survived: int = 0
 var tutorial_seen: bool = false
+var specialists: Array[StringName] = []          # unlocked crew beyond the Operator
 var total_profit: float = 0.0                    # lifetime cash earned
 
 func _ready() -> void:
@@ -45,6 +46,7 @@ func save_meta() -> bool:
 		"intel": intel,
 		"starting_perk": String(starting_perk),
 		"extraction_receipts": extraction_receipts,
+		"specialists": specialists,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	last_save_ok = f != null
@@ -78,8 +80,20 @@ func load_meta() -> void:
 	unlocked_assets.clear()
 	for a in parsed.get("unlocked_assets", []):
 		unlocked_assets.append(StringName(a))
+	specialists.clear()
+	for sp in parsed.get("specialists", []):
+		specialists.append(StringName(sp))
 	if starting_perk not in unlocked_assets or not CATALOG.has(starting_perk) or CATALOG[starting_perk]["kind"] != "perk":
 		starting_perk = &""
+
+## Specialists unlock through feats (tracked in Phase 9 stats). Crews hired
+## through the beta's Crew Quarters stay hired.
+func is_specialist_unlocked(id: StringName) -> bool:
+	if id == &"operator":
+		return true
+	if id in specialists:
+		return true
+	return id in [&"wolf", &"broker"] and &"room_crew" in unlocked_assets
 
 func purchase(id: StringName) -> String:
 	if not CATALOG.has(id):
@@ -152,4 +166,5 @@ func reset() -> void:
 	runs_survived = 0
 	tutorial_seen = false
 	total_profit = 0.0
+	specialists.clear()
 	save_meta()

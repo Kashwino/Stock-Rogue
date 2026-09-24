@@ -109,8 +109,8 @@ func _process(delta: float) -> void:
 		return
 
 	var scene := get_tree().current_scene
-	if scene is HeistFloor and RunState.run_map and RunState.run_map.current_stage == 3 and not scene.marked:
-		_label.text = "DEFEAT THE AUDITOR BEFORE ESCAPING"
+	if scene is HeistFloor and scene.requires_boss_kill():
+		_label.text = "THE BOSS STILL STANDS — NO RUNNING"
 		return
 
 	var inside := global_position.distance_to(_player.global_position) <= zone_radius

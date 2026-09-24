@@ -68,6 +68,8 @@ var quiet_seconds := 0.0
 var _security_status: Label
 var tactical_map: HeistMap
 var _status_clock := 0.0
+var boss_heist := false
+var boss_id: StringName = &""
 
 func _ready() -> void:
 	director = EnemyDirector.new()
@@ -100,6 +102,8 @@ func _build_floor() -> void:
 		_rarity = 0
 		_venue = &"pickpocket"
 
+	boss_heist = RunFlow.pending_heist != null and RunFlow.pending_heist.is_boss()
+	boss_id = RunFlow.pending_heist.boss_id if boss_heist else &""
 	var room_count: int = ROOMS_BY_STAGE.get(stage, 10) + int(_rarity / 2.0)
 	var quota_level: int = RunState.run_map.quota_block if RunState.run_map else 0
 	var exit_count: int = clampi(quota_level + 1, 1, 4)
@@ -108,7 +112,7 @@ func _build_floor() -> void:
 
 	generator = FloorGenerator.new()
 	add_child(generator)
-	if (stage == 0 and heist_index <= 1) or _venue == &"bank_job":
+	if boss_id == &"auditor":
 		generator.generate_authored()
 	else:
 		generator.generate(
@@ -125,7 +129,7 @@ func _build_floor() -> void:
 			room.spawn_count = 0
 		elif room.has_meta("is_boss"):
 			room.spawn_count = 1
-			room.enemy_scene = load("res://auditor_boss.tscn") if stage == 3 or RunSave.slot == RunSave.SLOT_COUNT else load("res://enemy.tscn")
+			room.enemy_scene = load("res://auditor_boss.tscn") if boss_heist else load("res://enemy.tscn")
 		elif room.get_meta("chest_kind", "") == "":
 			var base: int = room.get("spawn_count")
 			room.set("spawn_count", base + int(_rarity * 0.75))
@@ -167,7 +171,6 @@ func _build_floor() -> void:
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
 	_heat_timer = reinforcement_interval
-	RunFlow.on_room_entered(0)
 
 func _spawn_player() -> void:
 	var scene = load("res://player.tscn")
@@ -433,7 +436,6 @@ func _become_marked() -> void:
 	RunEconomy.add_bonus(_rng.randi_range(250, 400) * loot_multiplier())
 	if live:
 		live.report_shock(0.70 if ShortBook.targets(_venue) else 1.30, &"boss")
-	pass # Debug logging removed.
 
 # ------------------------------------------------- heat & reinforcements ----
 func _process(delta: float) -> void:
@@ -453,7 +455,6 @@ func _process(delta: float) -> void:
 		car.arm()
 		# The clock starts when you go in, not while you're casing the street.
 		_heist_start = Time.get_ticks_msec() / 1000.0
-		pass # Debug logging removed.
 
 	# Nothing escalates while you're still on the street casing the place.
 	if car and not car.armed:
@@ -531,7 +532,6 @@ func _spawn_reinforcements() -> void:
 	van.approach_from = wall_world + outward * 900.0
 	van.squad_deployed.connect(_on_squad_deployed)
 	add_child(van)
-	pass # Debug logging removed.
 
 ## Two toughened specialists, escalating with heat. Always exactly 2 kinds —
 ## the point is a readable duo, not a growing roster.
@@ -555,7 +555,6 @@ func _close_next_exit() -> void:
 	for g: Dictionary in generator.exits:
 		if g.get("open", false):
 			generator.close_exit(g)
-			pass # Debug logging removed.
 			return
 
 # ---------------------------------------------------------- extraction ------
@@ -597,7 +596,6 @@ func _check_extraction() -> void:
 	var remaining: float = maxf(fire_exit_hold - _fire_hold, 0.0)
 	_prompt.text = "SLIPPING OUT THE FIRE EXIT…  %.1f" % remaining
 	if _fire_hold >= fire_exit_hold:
-		pass # Debug logging removed.
 		_extract()
 
 ## Nearest OPEN fire exit within reach, or {}.
@@ -608,8 +606,12 @@ func _fire_exit_in_reach() -> Dictionary:
 			return g
 	return {}
 
+## Boss heists are mandatory kills: the car will not leave while he stands.
+func requires_boss_kill() -> bool:
+	return boss_heist and not marked
+
 func _extract() -> void:
-	if RunState.run_map and RunState.run_map.current_stage == 3 and not marked:
+	if requires_boss_kill():
 		return
 	if _extracting:
 		return
@@ -617,7 +619,7 @@ func _extract() -> void:
 	Engine.time_scale = 1.0
 	# Settle at the combat price, before the extraction grade changes it.
 	var short_result := ShortBook.settle(true)
-	var receipt := "%s:%s:%s" % [RunState.run_id, RunState.run_map.current_stage, RunState.run_map.current_step]
+	var receipt := "%s:%s:%s" % [RunState.run_id, RunState.run_map.current_stage if RunState.run_map else 0, RunState.run_map.current_step if RunState.run_map else 0]
 	var earned_intel := Meta.award_extraction(receipt, _kills, security_disabled, marked)
 	var elapsed: float = active_elapsed
 	var stats := {
@@ -660,7 +662,6 @@ func _on_player_died() -> void:
 	if _extracting:
 		return
 	_extracting = true
-	pass # Debug logging removed.
 	if _prompt:
 		_prompt.hide()
 	RunState.sync_from_player(player)

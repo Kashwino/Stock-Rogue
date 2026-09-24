@@ -123,7 +123,6 @@ func _build() -> void:
 # ------------------------------------------------------------------- open ---
 ## items: Array of WeaponItem/UpgradeItem. tier_name: e.g. "Airdrop".
 func open_chest(items: Array, tier_name: String = "") -> void:
-	pass # Debug logging removed.
 	if items.is_empty():
 		push_warning("ChestUI: opened with no items — nothing to choose.")
 		return
@@ -149,7 +148,6 @@ func open_chest(items: Array, tier_name: String = "") -> void:
 
 	if not _cards.is_empty():
 		_cards[0].grab_focus()
-	pass # Debug logging removed.
 
 func _make_card(item) -> Button:
 	var card := Button.new()
@@ -248,7 +246,6 @@ func _stats_text(item) -> String:
 func _claim(item) -> void:
 	if not _open:
 		return
-	pass # Debug logging removed.
 	_open = false
 	get_tree().paused = false          # hand control back before anything else
 	item_chosen.emit(item)

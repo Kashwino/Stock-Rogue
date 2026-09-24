@@ -1,8 +1,8 @@
 extends RefCounted
 class_name MapNode
 
-## A single node on the run map. Nodes stack vertically within a stage and the
-## player advances upward. Mystery (?) nodes hide their true type until reached.
+## A single heist option on the run map. Mystery (?) nodes hide their true type
+## until reached. Boss nodes carry the stage boss id and use a signature building.
 
 enum Type { HEIST, SHOP, MYSTERY, QUOTA_GATE, BOSS, ADVANCE }
 
@@ -12,12 +12,14 @@ var hidden_type: Type = Type.HEIST   # what a MYSTERY resolves into when reveale
 var completed: bool = false
 
 # Heist-specific (ignored for non-heist nodes):
-var room_rarity: int = 0             # maps to Room.RoomRarity
+var stage: int = 0
+var room_rarity: int = 0             # heist difficulty 0..4
 var venue_id: StringName = &""       # which stock this heist moves
-var is_valuable: bool = false        # flagged high-reward (may be a disguised boss)
+var is_valuable: bool = false        # flagged high-reward
+var boss_id: StringName = &""        # landlord / auditor / ambassador / chairman
 var modifier: StringName = &""
 const MODIFIERS := {
-	&"heavy_police": ["HEAVY POLICE RESPONSE", "2x loot. Police deploy at half the heat, twice as often."],
+	&"heavy_police": ["HEAVY POLICE RESPONSE", "Loot x1.5. Police deploy at half the heat, twice as often."],
 	&"lockdown": ["LOCKDOWN", "Fire exits sealed. Escape through the main door."],
 	&"insider": ["INSIDER", "Full building layout revealed on your map."],
 }
@@ -42,6 +44,9 @@ func display_type() -> Type:
 ## Reveal a mystery node, turning it into its hidden type.
 func reveal() -> void:
 	revealed = true
+
+func is_boss() -> bool:
+	return display_type() == Type.BOSS
 
 func label() -> String:
 	match display_type():

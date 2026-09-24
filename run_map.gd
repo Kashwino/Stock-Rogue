@@ -1,50 +1,62 @@
 extends RefCounted
 class_name RunMap
 
-## The whole-run map. Stages (Town -> City -> World -> Doomsday), each a sequence
-## of CHOICE STEPS. A heist step offers 2-4 heist options; the player picks one.
-## After each heist comes a skippable shop step (skipping may reveal a secret).
-## Quota gate after every 2 heists.
+## The whole-run route. Four stages (Town -> City -> World -> Doomsday), each a
+## sequence of steps. The hideout (SHOP) comes before EVERY heist choice, a
+## stage ends with a mandatory BOSS heist in the stage's signature building, and
+## the Board's collector checks the books at each QUOTA_GATE.
+##
+##   Town / City / World:  SHOP, HEIST, SHOP, HEIST, SHOP, BOSS, QUOTA, ADVANCE
+##   Doomsday:             SHOP, HEIST, QUOTA, SHOP, BOSS (the Chairman)
+##
+## A HEIST_CHOICE step offers 2-4 heist options; a boss step is a HEIST_CHOICE
+## with exactly one BOSS option.
 
 enum Stage { TOWN, CITY, WORLD, DOOMSDAY }
 enum StepKind { HEIST_CHOICE, SHOP, QUOTA_GATE, ADVANCE }
 
 const STAGE_NAMES := {
 	Stage.TOWN: "Town", Stage.CITY: "City",
-	Stage.WORLD: "Capital", Stage.DOOMSDAY: "Final Boss",
+	Stage.WORLD: "World", Stage.DOOMSDAY: "Doomsday",
 }
-const HEISTS_PER_STAGE := {
-	Stage.TOWN: 3, Stage.CITY: 3, Stage.WORLD: 3, Stage.DOOMSDAY: 1,
+## Ordinary heists before the stage boss.
+const REGULAR_HEISTS := {
+	Stage.TOWN: 2, Stage.CITY: 2, Stage.WORLD: 2, Stage.DOOMSDAY: 1,
 }
+## Heist difficulty ("room rarity") floor per stage; options roll +0..1.
 const STAGE_RARITY_FLOOR := {
-	Stage.TOWN: 0, Stage.CITY: 1, Stage.WORLD: 2, Stage.DOOMSDAY: 4,
+	Stage.TOWN: 0, Stage.CITY: 1, Stage.WORLD: 2, Stage.DOOMSDAY: 3,
 }
 const STAGE_VENUES := {
 	Stage.TOWN:     [&"pickpocket", &"corner_racket", &"chop_shop"],
-	Stage.CITY:     [&"cat_burglar", &"safecracker", &"bank_job"],
-	Stage.WORLD:    [&"museum", &"diamond_exchange", &"casino_skim"],
-	Stage.DOOMSDAY: [&"central_bank_hack", &"reactor_sabotage"],
+	Stage.CITY:     [&"cat_burglar", &"safecracker", &"bank_job", &"fence"],
+	Stage.WORLD:    [&"museum", &"diamond_exchange", &"casino_skim", &"transit_ambush", &"crypto_launder"],
+	Stage.DOOMSDAY: [&"central_bank_hack", &"reactor_sabotage", &"crypto_launder"],
+}
+## The mandatory boss heist that closes each stage: boss id + the venue it moves.
+const STAGE_BOSSES := {
+	Stage.TOWN: [&"landlord", &"corner_racket"],
+	Stage.CITY: [&"auditor", &"bank_job"],
+	Stage.WORLD: [&"ambassador", &"diamond_exchange"],
+	Stage.DOOMSDAY: [&"chairman", &"cartel_cartel"],
 }
 
-const HEISTS_PER_QUOTA := 2
-## Gold demanded at each gate. Growth is steep (2.1x) because player income
-## scales explosively with heist rarity — a rarity-4 building pays ~70x what a
-## rarity-0 one does, so a flat curve becomes trivial by the third gate.
-##   gate 0: 450   gate 1: 945   gate 2: 1984   gate 3: 4167
+## Gold the collector wants to SEE at each gate (a threshold, not a payment).
+##   gate 0: 380   gate 1: 760   gate 2: 1520   gate 3: 3040
 const BASE_QUOTA := 380.0
 const QUOTA_GROWTH := 2.0
 const MIN_OPTIONS := 2
 const MAX_OPTIONS := 4
+const ROUTE_VERSION := 3
 
 ## A single step in a stage. HEIST_CHOICE steps hold `options` (Array[MapNode]);
 ## other kinds are single fixed steps.
 class Step:
 	var kind: int
 	var options: Array = []          # MapNode list for HEIST_CHOICE
-	var market_available: bool = false
-	var market_visited: bool = false
-	var skippable: bool = false      # shops are skippable
+	var skippable: bool = false      # the hideout can be skipped
 	var chosen_index: int = -1       # which option the player picked
+	var is_boss: bool = false
 	func _init(k: int) -> void:
 		kind = k
 
@@ -56,24 +68,19 @@ var current_stage: int = 0
 var current_step: int = 0
 var heists_done: int = 0
 var quota_block: int = 0
+var run_seed: int = 0
 
 var _rng := RandomNumberGenerator.new()
 
-func generate(run_seed: int = 0) -> void:
-	if run_seed != 0:
-		_rng.seed = run_seed
+func generate(seed_value: int = 0) -> void:
+	run_seed = seed_value
+	if seed_value != 0:
+		_rng.seed = seed_value
 	else:
 		_rng.randomize()
 	stages.clear()
 	for s in stage_order:
 		stages.append(_build_stage(s))
-	# Independent of the map RNG: existing save seeds keep their original choices.
-	for s in stages.size():
-		for h in stages[s].size():
-			var choice: Step = stages[s][h]
-			for i in choice.options.size():
-				var tags: Array = [&"heavy_police", &"lockdown", &"insider"]
-				choice.options[i].modifier = tags[(absi(hash(str(run_seed) + ":" + str(s) + ":" + str(h))) + i) % 3]
 	current_stage = 0
 	current_step = 0
 	heists_done = 0
@@ -81,38 +88,55 @@ func generate(run_seed: int = 0) -> void:
 
 func _build_stage(stage: int) -> Array:
 	var steps: Array = []
-	var heists: int = HEISTS_PER_STAGE[stage]
 	var floor_rarity: int = STAGE_RARITY_FLOOR[stage]
 	var venues: Array = STAGE_VENUES[stage]
-
-	for h in heists:
+	for h in REGULAR_HEISTS[stage]:
+		var shop := Step.new(StepKind.SHOP)
+		shop.skippable = true
+		steps.append(shop)
 		var choice := Step.new(StepKind.HEIST_CHOICE)
-		choice.market_available = stage != Stage.DOOMSDAY and _rng.randf() < 0.45
-		var count := 1 if stage == Stage.DOOMSDAY else _rng.randi_range(MIN_OPTIONS, MAX_OPTIONS)
+		var count := _rng.randi_range(MIN_OPTIONS, MAX_OPTIONS)
 		for i in count:
-			var node := _make_heist_option(floor_rarity, venues)
-			if stage == Stage.DOOMSDAY:
-				node.type = MapNode.Type.BOSS
-				node.venue_id = &"central_bank_hack"
-				node.is_valuable = true
-			choice.options.append(node)
+			choice.options.append(_make_heist_option(stage, floor_rarity, venues, h, i))
 		steps.append(choice)
+	if stage == Stage.DOOMSDAY:
+		steps.append(Step.new(StepKind.QUOTA_GATE))
+		var last_shop := Step.new(StepKind.SHOP)
+		last_shop.skippable = true
+		steps.append(last_shop)
+		steps.append(_boss_step(stage, floor_rarity))
+	else:
+		var boss_shop := Step.new(StepKind.SHOP)
+		boss_shop.skippable = true
+		steps.append(boss_shop)
+		steps.append(_boss_step(stage, floor_rarity))
+		steps.append(Step.new(StepKind.QUOTA_GATE))
+		steps.append(Step.new(StepKind.ADVANCE))
 	return steps
 
-func _make_heist_option(floor_rarity: int, venues: Array) -> MapNode:
+func _boss_step(stage: int, floor_rarity: int) -> Step:
+	var step := Step.new(StepKind.HEIST_CHOICE)
+	step.is_boss = true
+	var node := MapNode.new(MapNode.Type.BOSS)
+	node.stage = stage
+	node.room_rarity = mini(floor_rarity + 1, 4)
+	node.boss_id = STAGE_BOSSES[stage][0]
+	node.venue_id = STAGE_BOSSES[stage][1]
+	node.is_valuable = true
+	step.options.append(node)
+	return step
+
+func _make_heist_option(stage: int, floor_rarity: int, venues: Array, heist_index: int, option_index: int) -> MapNode:
 	var node := MapNode.new(MapNode.Type.HEIST)
-	node.room_rarity = floor_rarity + _rng.randi_range(0, 2)
+	node.stage = stage
+	node.room_rarity = floor_rarity + _rng.randi_range(0, 1)
 	node.venue_id = venues[_rng.randi() % venues.size()]
 	node.is_valuable = _rng.randf() < 0.3
+	# Modifiers come from an independent hash so later content passes can add
+	# roll types without reshuffling every other choice on a seed.
+	var tags: Array = [&"heavy_police", &"lockdown", &"insider"]
+	node.modifier = tags[(absi(hash(str(run_seed) + ":" + str(stage) + ":" + str(heist_index))) + option_index) % tags.size()]
 	return node
-
-func _global_heist_index(stage: int, heist_in_stage: int) -> int:
-	var idx := 0
-	for i in stage_order.size():
-		if stage_order[i] == stage:
-			return idx + heist_in_stage
-		idx += HEISTS_PER_STAGE[stage_order[i]]
-	return idx + heist_in_stage
 
 # --- Progression ---
 func current() -> Step:
@@ -123,10 +147,12 @@ func current() -> Step:
 		return null
 	return steps[current_step]
 
+func current_kind() -> int:
+	var step := current()
+	return step.kind if step else -1
+
 ## Look ahead to the NEXT HEIST_CHOICE step's options without advancing.
-## Used by the hideout's Black Market so its stock reflects "the case" coming
-## up — the player hasn't picked a target yet, so this reflects the whole set
-## of options rather than one specific pick.
+## The hideout's Black Market stocks for "the case" coming up.
 func peek_next_heist_options() -> Array:
 	if current_stage >= stages.size():
 		return []
@@ -137,6 +163,16 @@ func peek_next_heist_options() -> Array:
 			return s.options
 	return []
 
+## True when the next heist on the route is the stage's boss.
+func next_heist_is_boss() -> bool:
+	var options := peek_next_heist_options()
+	return options.size() == 1 and options[0].type == MapNode.Type.BOSS
+
+## First option of the next heist choice (dev tools and screenshots use this).
+func first_heist_option() -> MapNode:
+	var options := peek_next_heist_options()
+	return options[0] if not options.is_empty() else MapNode.new()
+
 ## Pick an option on the current HEIST_CHOICE step. Returns the chosen MapNode.
 func choose_option(index: int) -> MapNode:
 	var step := current()
@@ -146,21 +182,21 @@ func choose_option(index: int) -> MapNode:
 		return null
 	step.chosen_index = index
 	var node: MapNode = step.options[index]
-	# Reveal a mystery when selected (you commit before knowing? -> reveal on enter).
 	if node.type == MapNode.Type.MYSTERY:
 		node.reveal()
-	if node.is_combat():
-		heists_done += 1
 	return node
 
 ## Advance to the next step. Returns the new current Step (or null at run end).
 func advance_step() -> Step:
+	var finished := current()
+	if finished and finished.kind == StepKind.HEIST_CHOICE:
+		heists_done += 1
 	current_step += 1
 	var steps: Array = stages[current_stage]
 	if current_step >= steps.size():
 		current_stage += 1
 		current_step = 0
-		quota_block = current_stage
+		quota_block = maxi(quota_block, current_stage)
 		if current_stage >= stages.size():
 			return null
 	return current()
@@ -168,30 +204,19 @@ func advance_step() -> Step:
 func current_quota() -> float:
 	return BASE_QUOTA * pow(QUOTA_GROWTH, quota_block)
 
-## The empire index (see RunState.empire_index) the mob demands at this gate.
-## The index is a run-wide AVERAGE across ~15 venues, so a single heist barely
-## moves it: even a flawless one lifts the index ~5 points.
-##
-## These bars are deliberately ABOVE what heists alone can reach. Two perfect
-## heists get you to ~110; the first gate wants 120. The gap is closed by buying
-## market operations in the shop — the stock economy is a required system, not
-## an optional bonus.
-## Same underlying difficulty as ever (market must grow 20% for gate 0, then
-## 15% more per gate) expressed on the 1-start scale: 120, 227, 350, 492.
+## The empire index the Board demands at this gate: 120, 227, 350, 492.
+## The index is a run-wide AVERAGE across every venue, so heists alone fall
+## short: two flawless jobs reach ~110. Market operations close the gap.
 func current_stock_quota() -> float:
-	var ratio_bar := 1.20 * pow(1.15, quota_block)
+	return stock_quota_for(quota_block)
+
+static func stock_quota_for(block: int) -> float:
+	var ratio_bar := 1.20 * pow(1.15, block)
 	return 1.0 + (ratio_bar - 1.0) * 595.0
 
-## Combined gate: needs the GOLD payment AND the empire index. Passing either
-## alone is not enough — a rich crew with a crashed market still gets cut off.
+## Combined gate: needs the GOLD on hand AND the empire index.
 func check_quota_full(gold: int, stock_index: float) -> bool:
 	var met := gold >= current_quota() and stock_index >= current_stock_quota()
-	if met:
-		quota_block += 1
-	return met
-
-func check_quota(gold: int) -> bool:
-	var met := gold >= current_quota()
 	if met:
 		quota_block += 1
 	return met
@@ -201,25 +226,48 @@ func stage_name() -> String:
 		return "Complete"
 	return STAGE_NAMES[stage_order[current_stage]]
 
+static func name_of_stage(stage: int) -> String:
+	return STAGE_NAMES.get(stage, "Complete")
+
 func is_complete() -> bool:
 	return current_stage >= stages.size()
 
+func is_final_stage() -> bool:
+	return current_stage == Stage.DOOMSDAY
+
+## Total heists on the route (regular + bosses), for progress displays.
+func total_heists() -> int:
+	var n := 0
+	for steps: Array in stages:
+		for s: Step in steps:
+			if s.kind == StepKind.HEIST_CHOICE:
+				n += 1
+	return n
+
+## Restore an exact saved position (route_version 3 saves).
+func restore_position(stage: int, step: int, block: int, done: int) -> void:
+	current_stage = clampi(stage, 0, stages.size())
+	current_step = 0 if current_stage >= stages.size() else clampi(step, 0, stages[current_stage].size() - 1)
+	quota_block = clampi(block, 0, 4)
+	heists_done = maxi(done, 0)
+
+## Migrate an older save (different route shape) by completed-heist count:
+## park the run on the first step after that many heists, gear intact.
 func restore_progress(completed: int) -> void:
-	var n := clampi(completed, 0, 10)
-	current_stage = mini(n / 3, 3) if n < 10 else 4
-	current_step = n % 3 if n < 9 else 0
-	heists_done = n
-	quota_block = mini(current_stage, 3)
-
-func visited_markets() -> Array:
-	var visits: Array = []
-	for s in stages.size():
-		for h in stages[s].size():
-			if stages[s][h].market_visited:
-				visits.append("%d:%d" % [s, h])
-	return visits
-
-func restore_markets(visits: Array) -> void:
-	for s in stages.size():
-		for h in stages[s].size():
-			stages[s][h].market_visited = ("%d:%d" % [s, h]) in visits
+	var remaining := maxi(completed, 0)
+	current_stage = 0
+	current_step = 0
+	heists_done = 0
+	quota_block = 0
+	while remaining > 0 and not is_complete():
+		var step := current()
+		if step.kind == StepKind.HEIST_CHOICE:
+			remaining -= 1
+		elif step.kind == StepKind.QUOTA_GATE:
+			quota_block += 1
+		advance_step()
+	# Never resume inside a gate we did not actually face: step back onto a
+	# preceding hideout if the migration landed past the last heist.
+	if is_complete():
+		current_stage = stages.size() - 1
+		current_step = stages[current_stage].size() - 1

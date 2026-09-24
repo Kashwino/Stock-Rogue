@@ -30,7 +30,8 @@ const WALL_THICK := 24.0
 var _walker: HideoutWalker
 var _stations: Array = []
 var _active_panel: CanvasLayer = null
-var _market_layer: CanvasLayer = null
+var _panels: Dictionary = {}          # kind -> CanvasLayer, built once per visit
+var _vendor_state: Dictionary = {}    # kind -> per-panel widget references
 var _active_gold_label: Label = null
 var _near_station: Dictionary = {}
 var _near_door: bool = false
@@ -47,7 +48,6 @@ func _ready() -> void:
 	_build_stations()
 	_build_door()
 	_build_hud_hint()
-	pass # Debug logging removed.
 
 ## If these actions aren't in the project's Input Map, movement/interaction
 ## fail completely but silently -- no crash, no error, the room just looks
@@ -140,7 +140,9 @@ func _build_walker() -> void:
 
 # -------------------------------------------------------------- stations ---
 func _build_stations() -> void:
-	_make_station(&"market", "NIGHT MARKET", "Weapons / upgrades / perks / stocks", Vector2(300, 140), GOLD)
+	_make_station(&"weapons", "WEAPON DEALER", "Sealed cases", Vector2(110, 130), Color(0.85, 0.4, 0.35))
+	_make_station(&"stocks", "THE FENCE", "Market moves", Vector2(300, 110), GOLD)
+	_make_station(&"blackmarket", "BLACK MARKET", "Gear for the next job", Vector2(490, 130), Color(0.6, 0.4, 0.85))
 
 func _make_station(kind: StringName, title: String, subtitle: String,
 		pos: Vector2, tint: Color) -> void:
@@ -258,8 +260,9 @@ func _on_door_exited(b: Node) -> void:
 		_door_prompt.hide()
 
 func _leave_hideout() -> void:
-	RunFlow.save()
-	RunFlow.queue_scene("res://map_ui_screen.tscn")
+	if _active_panel:
+		return
+	RunFlow.leave_hideout()
 
 # --------------------------------------------------------------- overlay ---
 func _build_hud_hint() -> void:
@@ -273,37 +276,48 @@ func _build_hud_hint() -> void:
 	l.add_theme_color_override("font_color", Color(0.55, 0.55, 0.6))
 	l.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	l.offset_top = 14
-	layer.add_child(l)
+	var ui := Control.new()
+	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(ui)
+	ui.add_child(l)
+	var leave := Button.new()
+	leave.text = "TO THE JOB BOARD"
+	leave.position = Vector2(930, 22)
+	leave.size = Vector2(320, 70)
+	leave.pressed.connect(_leave_hideout)
+	ui.add_child(leave)
 
 # ============================================================== STATIONS ===
 func _open_station(kind: StringName) -> void:
 	if _active_panel:
 		return
 	_walker.movement_enabled = false
+	# Each vendor's panel is built once per visit and only hidden on close, so
+	# its offers, opened cases and escalating reroll price persist until you
+	# walk out — closing and reopening is never a free reroll.
+	if _panels.has(kind) and is_instance_valid(_panels[kind]):
+		_active_panel = _panels[kind]
+		_active_panel.show()
+		_restore_vendor_state(kind)
+		_refresh_gold_label()
+		return
 	match kind:
-		&"market":
-			if is_instance_valid(_market_layer):
-				_active_panel = _market_layer
-				_active_panel.show()
-				_refresh_gold_label()
-				return
-			_market_layer = _build_market()
-			_active_panel = _market_layer
 		&"weapons": _active_panel = _build_weapon_dealer()
 		&"stocks": _active_panel = _build_stock_manipulation()
 		&"blackmarket": _active_panel = _build_black_market()
 	if _active_panel:
+		_panels[kind] = _active_panel
+		_vendor_state[kind] = _capture_vendor_state()
 		add_child(_active_panel)
 
 func _close_panel() -> void:
 	if _active_panel:
-		if _active_panel == _market_layer:
-			_active_panel.hide()
-		else:
-			_active_panel.queue_free()
+		for kind in _panels:
+			if _panels[kind] == _active_panel:
+				_vendor_state[kind] = _capture_vendor_state()
+		_active_panel.hide()
 		_active_panel = null
-	if not is_instance_valid(_market_layer):
-		_active_gold_label = null
 	_walker.movement_enabled = true
 	if RunState.active:
 		RunFlow.save()
@@ -985,31 +999,20 @@ func _buy_blueprints() -> void:
 	RunState.add_max_health(1)
 	RunState.add_stat_mod(&"fire_rate", 0.0, 0.92)
 
-func _build_market() -> CanvasLayer:
-	var frame := _panel_frame("NIGHT MARKET", "ONE STOP / GOLD PURCHASES FOR THIS RUN", GOLD)
-	var body: VBoxContainer = frame["body"]
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(860, 380)
-	body.add_child(scroll)
-	var offers := VBoxContainer.new()
-	offers.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(offers)
-	var weapons: Array = ItemPool.rewardable_weapons()
-	weapons.shuffle()
-	for i in mini(3, weapons.size()):
-		var w: WeaponItem = weapons[i]
-		_item_row(offers, w.display_name, "WEAPON / " + w.rarity_name(), 120 + 80 * w.rarity,
-			w.rarity_color(), _market_weapon.bind(w))
-	var stock_offers: Array = [
-		{"name": "Spread Rumors", "desc": "STOCKS / +25% to weakest venue", "price": 120, "accent": GOLD, "cb": _op_pump_weak},
-		{"name": "Market Manipulation", "desc": "STOCKS / +8% to every venue", "price": 260, "accent": GOLD, "cb": _op_pump_all},
-	]
-	for perk: Array in [[&"fast_hands", "Fast Hands", 220], [&"scavenger", "Scavenger", 260], [&"cool_head", "Cool Head", 240]]:
-		if not RunState.has_perk(perk[0]):
-			stock_offers.append({"name": perk[1], "desc": "PERK / active for this run", "price": perk[2], "accent": VisualTheme.TEAL, "cb": _buy_perk.bind(perk[0])})
-	for offer: Dictionary in _black_market_offer_generator() + stock_offers:
-		_item_row(offers, offer["name"], offer["desc"], offer["price"], offer["accent"], offer["cb"])
-	return frame["layer"]
+## The shared vendor helpers keep "current panel" references in member vars;
+## snapshot and restore them so several cached panels can coexist.
+func _capture_vendor_state() -> Dictionary:
+	return {"offers_col": _offers_col, "reroll_button": _reroll_button,
+		"reroll_cost": _reroll_cost, "generator": _offer_generator,
+		"offers": _current_offers, "gold_label": _active_gold_label}
 
-func _market_weapon(w: WeaponItem) -> void:
-	RunState.loadout.equip(w)
+func _restore_vendor_state(kind: StringName) -> void:
+	var st: Dictionary = _vendor_state.get(kind, {})
+	if st.is_empty():
+		return
+	_offers_col = st["offers_col"]
+	_reroll_button = st["reroll_button"]
+	_reroll_cost = st["reroll_cost"]
+	_offer_generator = st["generator"]
+	_current_offers = st["offers"]
+	_active_gold_label = st["gold_label"]

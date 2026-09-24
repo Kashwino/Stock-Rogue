@@ -63,7 +63,7 @@ func _run() -> void:
 		made += _build_room("large_%02d" % (i + 1),
 			Vector2(MODULE.x * 2, MODULE.y * 2), all_sides, 8)
 
-	pass # Debug logging removed.
+	print("Room generator: wrote %d room scenes to " % made + OUT_DIR)
 
 
 func _build_room(room_name: String, size: Vector2, door_sides: Array,

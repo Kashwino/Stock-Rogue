@@ -52,7 +52,6 @@ func generate(run_seed: int, room_count: int = 12, exit_count: int = 1) -> void:
 	_clear()
 	_load_templates()
 
-	pass # Debug logging removed.
 
 	if _templates_small.is_empty():
 		push_error("FloorGenerator: no room templates in " + ROOMS_DIR
@@ -88,7 +87,6 @@ func generate(run_seed: int, room_count: int = 12, exit_count: int = 1) -> void:
 			tpl = _pick_from(_templates_medium)
 		_grow_with(tpl)
 
-	pass # Debug logging removed.
 	if rooms.size() < 2:
 		push_error("FloorGenerator: only " + str(rooms.size())
 			+ " room placed. Room scenes are probably missing room_size — "
