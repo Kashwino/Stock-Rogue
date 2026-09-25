@@ -2,7 +2,10 @@ extends Node
 ## Performance bench: a real World-stage heist with 50 guards hunting the
 ## player on screen while the player holds the trigger. Reports the CPU cost
 ## of a frame (scripts + physics) and the live node / bullet counts.
-##   godot --headless --path . res://tools/perf_bench.tscn [-- variant=no_crowd|no_fire|no_enemy_process|no_enemy_physics|no_overhead]
+##   godot --headless --path . res://tools/perf_bench.tscn [-- variant=no_crowd|no_fire|no_enemy_process|no_enemy_physics|no_overhead|massacre]
+## `massacre`: Full gore, and every 20 frames five guards die violently
+## (overkills: sprays, gibs, pools, bodies) and five fresh ones take their
+## place, so the crowd stays at 50 while the floor fills with evidence.
 ## Headless has no GPU, so this measures the game's own work per frame; the
 ## budget for 60 fps leaves most of 16.7 ms to the renderer.
 
@@ -85,11 +88,38 @@ func _run() -> void:
 	get_tree().physics_frame.connect(_on_step)
 	var with_step: Array = []
 	var without_step: Array = []
+	var massacre := variant == "massacre"
+	if massacre:
+		Settings.values["gore"] = Settings.GORE_FULL
+		floor_scene.gore._read_settings()
+	var killed := 0
+	var kill_ms: Array = []
+	var all_ms: Array = []
 	for i in FRAMES:
+		if massacre and i % 20 == 10:
+			var k0 := Time.get_ticks_usec()
+			for k in 5:
+				crowd = crowd.filter(func(e): return is_instance_valid(e) and not e._dead)
+				if crowd.is_empty():
+					break
+				var victim: Enemy = crowd.pop_front()
+				victim.note_hit({"source": &"bullet", "dir": (victim.global_position - player.global_position).normalized(), "force": 320.0, "by_player": true, "point_blank": true, "pellets": 6})
+				victim.take_damage(victim.health + 4)
+				killed += 1
+				var offset := Vector2.from_angle(randf() * TAU) * randf_range(180, 420)
+				var fresh := floor_scene.spawn_companion(owner, kinds[killed % kinds.size()], offset)
+				if fresh:
+					fresh.global_position = player.global_position + offset
+					fresh.hunting = true
+					fresh.max_health = 99999
+					fresh.health = 99999
+					crowd.append(fresh)
+			kill_ms.append((Time.get_ticks_usec() - k0) / 1000.0)
 		var t0 := Time.get_ticks_usec()
 		var steps_before := _steps
 		await get_tree().process_frame
 		var ms := (Time.get_ticks_usec() - t0) / 1000.0
+		all_ms.append(ms)
 		process_ms.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 		var stepped := _steps - steps_before
 		if stepped == 1:
@@ -112,6 +142,13 @@ func _run() -> void:
 		print("PERF frame without physics %.2f ms, physics step %.2f ms -> a 60 fps frame costs %.2f ms of CPU (budget 16.7)" % [frame, step, frame + step])
 		print("PERF worst frames with a step: p95 %.2f ms  max %.2f ms" % [with_step[int(with_step.size() * 0.95)], with_step[-1]])
 	print("PERF wall ms per frame %.2f  (~%.0f fps CPU-bound, no GPU)" % [wall, 1000.0 / wall])
+	if massacre:
+		kill_ms.sort()
+		all_ms.sort()
+		print("PERF five violent kills in one frame: avg %.2f ms  max %.2f ms   (frame p99 %.2f ms, max %.2f ms)" % [avg.call(kill_ms), kill_ms[-1], all_ms[int(all_ms.size() * 0.99)], all_ms[-1]])
+		print("PERF massacre: %d killed  corpses %d (cap %d)  gibs %d (cap %d)  live marks %d  stamps %d" % [killed,
+			get_tree().get_nodes_in_group("corpse").size(), Corpse.CAP, floor_scene.gore.active_gibs(), Gore.GIB_CAP,
+			floor_scene.gore.live_marks(), floor_scene.gore.stamps])
 	floor_scene.queue_free()
 	RunState.end_run(false)
 	Audio.silence()

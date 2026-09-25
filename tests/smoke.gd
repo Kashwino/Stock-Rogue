@@ -1550,8 +1550,29 @@ func _test_debug_menu() -> void:
 	check(debug.available(), "the debug menu is available in debug builds")
 	debug.open()
 	var labels: Array = debug._root.find_children("*", "Button", true, false).map(func(b): return b.text)
-	for want: String in ["+$500", "INDEX 120", "DOOMSDAY", "THE CHAIRMAN'S JOB", "AUDITOR", "BUSTED", "RETIRED", "THE NEW CHAIRMAN", "SPAWN", "SPAWN ELITE", "KILL BOSS"]:
+	for want: String in ["+$500", "INDEX 120", "DOOMSDAY", "THE CHAIRMAN'S JOB", "AUDITOR", "RETIRED", "NEW CHAIRMAN", "BLACK MONDAY",
+			"LANDLORD'S CHAIR", "5-STAR", "SPAWN", "SPAWN ELITE", "FORCE KNEEL", "VERDICT CARD", "FRENZY", "GORE DUMMY", "EXPLOSIVE PROP", "ALL FLIPPED"]:
 		check(want in labels, "debug menu offers " + want)
+	# Combo, verdicts, gore dummy and props from the menu.
+	debug._combo_tier(4)
+	check(floor_scene.combo.live and floor_scene.combo.tier == 4, "debug jumps the combo to FRENZY")
+	floor_scene.combo._end()
+	debug._set_verdicts("mixed")
+	check(Verdicts.executed(&"landlord") and Verdicts.flipped(&"auditor") and Verdicts.shaken(&"ambassador"), "debug sets mixed verdicts")
+	debug._set_verdicts("")
+	check(RunState.verdicts.is_empty(), "and clears them")
+	debug._gore_dummy()
+	var dummies := get_tree().get_nodes_in_group("enemies").filter(func(e): return e.overhead.tag == "GORE DUMMY")
+	check(dummies.size() == 1 and dummies[0].surrendered, "debug spawns a gore dummy with its hands up")
+	for d in dummies:
+		d.queue_free()
+	debug.open()
+	debug._explosive_prop()
+	var props := floor_scene.get_children().filter(func(c): return c is ExplosiveProp)
+	check(props.size() == 1, "debug drops an explosive prop in front of you")
+	for pr in props:
+		pr.queue_free()
+	debug.open()
 	check(get_tree().paused, "the debug menu pauses while open")
 	var gold := RunEconomy.gold
 	debug._add_gold(500)

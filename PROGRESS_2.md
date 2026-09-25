@@ -69,8 +69,8 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Meta: verdict counts, endings seen, early endings; Legend = any final ending
 
 ## Phase 9 — Settings, performance, balance, QA
-- [ ] Settings: Gore, Blood style, Dynamic music, combo HUD scale
-- [ ] Budgets: 60 fps with 50 enemies + Full gore; caps
-- [ ] balance_sim: combo, verdict payouts, early vs full-run Clout
-- [ ] Debug menu additions
-- [ ] TESTING.md, CHANGELOG.md, this file complete; zero errors on a full run
+- [x] Settings: Gore, Blood style, Dynamic music, combo HUD scale
+- [x] Budgets: 60 fps with 50 enemies + Full gore; caps
+- [x] balance_sim: combo, verdict payouts, early vs full-run Clout
+- [x] Debug menu additions
+- [x] TESTING.md, CHANGELOG.md, this file complete; zero errors on a full run

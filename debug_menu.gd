@@ -2,7 +2,10 @@ extends CanvasLayer
 ## Autoload "Debug": the F1 developer menu. Only in debug builds (running from
 ## the editor, a debug export, or with Log.DEBUG on); release exports never
 ## open it. Add gold, set the Board index, jump to any stage or the Chairman's
-## job, start any boss job, spawn any guard next to you, and play each ending.
+## job, start any boss job, set the run's verdicts, spawn any guard next to
+## you, play any of the eleven endings or a BUSTED front page. In a heist:
+## combo points and tiers, WANTED stars, a gore dummy, an explosive prop, and
+## force the boss to his knees (then open his VERDICT card).
 ## Debug endings and boss jobs run as practice, so they never touch the career.
 ## Pauses the tree while open (and restores it on close).
 
@@ -86,8 +89,18 @@ func _build() -> void:
 		["THE CHAIRMAN'S JOB", _chairman_job]])
 	_row("BOSS JOBS", [["LANDLORD", _boss_job.bind(&"landlord")], ["AUDITOR", _boss_job.bind(&"auditor")],
 		["AMBASSADOR", _boss_job.bind(&"ambassador")], ["CHAIRMAN", _boss_job.bind(&"chairman")]])
-	_row("ENDINGS", [["BUSTED", _ending.bind(&"busted")], ["RETIRED", _ending.bind(&"retired")],
-		["THE NEW CHAIRMAN", _ending.bind(&"new_chairman")]])
+	_row("VERDICTS", [["ALL EXECUTED", _set_verdicts.bind("execute")], ["ALL FLIPPED", _set_verdicts.bind("flip")],
+		["ALL SHAKEN", _set_verdicts.bind("shake")], ["MIXED", _set_verdicts.bind("mixed")], ["CLEAR", _set_verdicts.bind("")]])
+	var endings: Array = []
+	for id: StringName in Endings.ORDER:
+		endings.append([Endings.title(id).replace("THE ", ""), _ending.bind(id)])
+	_row("EARLY", endings.slice(0, 3))
+	_row("FINAL", endings.slice(3, 7))
+	_row("", endings.slice(7))
+	_row("BUSTED", [["LANDLORD", _busted.bind("boss:landlord")], ["AUDITOR", _busted.bind("boss:auditor")],
+		["AMBASSADOR", _busted.bind("boss:ambassador")], ["CHAIRMAN", _busted.bind("boss:chairman")],
+		["5-STAR", _busted.bind("police")], ["BLAST", _busted.bind("explosion")], ["SNIPER", _busted.bind("kind:LASER SNIPER")],
+		["QUOTA", _busted.bind("quota")]])
 	if in_heist:
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 8)
@@ -102,7 +115,11 @@ func _build() -> void:
 		line.add_child(_kind)
 		line.add_child(_button("SPAWN", _spawn_enemy.bind(false)))
 		line.add_child(_button("SPAWN ELITE", _spawn_enemy.bind(true)))
-		_row("HEIST", [["HEAL", _heal], ["KILL BOSS", _kill_boss], ["MAX HEAT", _max_heat]])
+		_row("HEIST", [["HEAL", _heal], ["FORCE KNEEL", _kill_boss], ["VERDICT CARD", _verdict_card], ["MAX HEAT", _max_heat]])
+		_row("COMBO", [["+5 PTS", _combo_points.bind(5)], ["+20 PTS", _combo_points.bind(20)],
+			["FRENZY", _combo_tier.bind(4)], ["BLACK SWAN", _combo_tier.bind(5)], ["PANIC SELL", _combo_panic]])
+		_row("WANTED", [["0", _stars.bind(0)], ["1", _stars.bind(1)], ["2", _stars.bind(2)], ["3", _stars.bind(3)], ["4", _stars.bind(4)], ["5", _stars.bind(5)]])
+		_row("GORE", [["GORE DUMMY", _gore_dummy], ["EXPLOSIVE PROP", _explosive_prop]])
 	_body.add_child(_button("CLOSE", close))
 
 func _row(title: String, entries: Array) -> void:
@@ -212,19 +229,109 @@ func _practice() -> void:
 	RunSave.slot = RunSave.SLOT_COUNT
 	RunFlow.practice = true
 
+## Any of the eleven endings, as practice.
 func _ending(which: StringName) -> void:
 	_ensure_run()
 	_practice()
 	close()
 	match which:
-		&"busted":
-			RunFlow.end_run(false, "")
-		&"retired":
-			set_index(Story.NEW_CHAIRMAN_INDEX - 200.0)
-			RunFlow.end_run(true)
 		&"new_chairman":
 			set_index(Story.NEW_CHAIRMAN_INDEX + 50.0)
-			RunFlow.end_run(true)
+		&"seat_at_table":
+			set_index(Story.NEW_CHAIRMAN_INDEX - 200.0)
+	RunFlow.end_run(true, "", which)
+
+## A BUSTED front page for `cause` ("boss:landlord", "police", "quota"...).
+func _busted(cause: String) -> void:
+	_ensure_run()
+	_practice()
+	close()
+	if cause != "quota":
+		RunFlow.death_where = "VAULT, MARLOWE EXCHANGE"
+	RunFlow.end_run(false, cause)
+
+## Every stage boss's verdict at once ("mixed": one of each).
+func _set_verdicts(v: String) -> void:
+	_ensure_run()
+	RunState.verdicts.clear()
+	RunState.fear = 0
+	RunState.loyalty = 0
+	RunState.greed = 0
+	var mixed := ["execute", "flip", "shake"]
+	for i in Verdicts.STAGE_BOSSES.size():
+		var pick: String = mixed[i] if v == "mixed" else v
+		if pick != "":
+			RunState.record_verdict(Verdicts.STAGE_BOSSES[i], StringName(pick))
+	RunState.suspicious_stage = -1
+	_refresh_status()
+
+func _floor() -> HeistFloor:
+	return get_tree().current_scene as HeistFloor
+
+func _verdict_card() -> void:
+	var floor_scene := _floor()
+	if floor_scene and is_instance_valid(floor_scene.boss) and floor_scene.boss.kneeling:
+		close()
+		floor_scene.open_verdict(floor_scene.boss)
+
+func _combo_points(n: int) -> void:
+	var floor_scene := _floor()
+	if floor_scene and floor_scene.combo:
+		floor_scene.combo.add_points(n)
+
+func _combo_tier(t: int) -> void:
+	var floor_scene := _floor()
+	if floor_scene and floor_scene.combo:
+		var need := floor_scene.combo.threshold(t) - (floor_scene.combo.points if floor_scene.combo.live else 0)
+		floor_scene.combo.add_points(maxi(1, need))
+
+func _combo_panic() -> void:
+	var floor_scene := _floor()
+	if floor_scene and floor_scene.combo:
+		floor_scene.combo.on_player_hurt()
+
+## WANTED stars: heat to that star's threshold (stars never drop, so 0 only
+## clears a fresh heist's heat).
+func _stars(n: int) -> void:
+	var floor_scene := _floor()
+	if floor_scene == null or floor_scene.wanted == null:
+		return
+	floor_scene.heat = Wanted.THRESHOLDS[n - 1] if n > 0 else 0.0
+	if n == 0:
+		floor_scene.wanted.stars = 0
+	floor_scene.wanted.on_heat(floor_scene.heat)
+	_refresh_status()
+
+## A guard that just stands there with his hands up: shoot him to test gore.
+func _gore_dummy() -> void:
+	var floor_scene := _floor()
+	if floor_scene == null:
+		return
+	var owner: Enemy = null
+	for e: Enemy in get_tree().get_nodes_in_group("enemies"):
+		if e.get_parent() is BuildingRoom and not (e is Boss):
+			owner = e
+			break
+	if owner == null:
+		return
+	var dummy := floor_scene.spawn_companion(owner, Enemy.Kind.GRUNT, Vector2.ZERO)
+	if dummy:
+		dummy.global_position = floor_scene.player.global_position + floor_scene.player.aim_direction() * 140.0
+		dummy.max_health = 12
+		dummy.health = 12
+		dummy.stand_down()
+		dummy.overhead.tag = "GORE DUMMY"
+	close()
+
+func _explosive_prop() -> void:
+	var floor_scene := _floor()
+	if floor_scene == null:
+		return
+	var prop := ExplosiveProp.new()
+	prop.kind = ExplosiveProp.STAGE_KINDS[clampi(floor_scene.stage_index(), 0, ExplosiveProp.STAGE_KINDS.size() - 1)][0]
+	floor_scene.add_child(prop)
+	prop.global_position = floor_scene.player.global_position + floor_scene.player.aim_direction() * 120.0
+	close()
 
 func _spawn_enemy(elite: bool) -> void:
 	var floor_scene := get_tree().current_scene as HeistFloor

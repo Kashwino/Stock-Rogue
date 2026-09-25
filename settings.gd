@@ -7,7 +7,7 @@ const WEB_KEY := "stock-rogue-settings-v1"
 const DEFAULTS := {"master": 0.8, "music": 0.7, "sfx": 0.8, "ui": 0.8, "fullscreen": false,
 	"low_effects": false, "frame_cap": 60, "touch_mode": 0, "shake": 1.0, "dynamic_shadows": false,
 	"post_fx": true, "reduce_flashing": false, "damage_numbers": true, "tips": true,
-	"gore": 2, "blood_style": 0, "dynamic_music": true}
+	"gore": 2, "blood_style": 0, "dynamic_music": true, "combo_hud_scale": 1.0}
 ## Gore: 0 off (sparks and dust, bodies fade), 1 low (particles and short-lived
 ## marks), 2 full (decals that stay, pools, gibs, footprints).
 ## Blood style: 0 red, 1 noir (ink-black with a red rim).
@@ -59,6 +59,9 @@ func _sanitize() -> void:
 	if not (values["blood_style"] is int or values["blood_style"] is float) or int(values["blood_style"]) not in [0, 1]:
 		values["blood_style"] = DEFAULTS["blood_style"]
 	values["blood_style"] = int(values["blood_style"])
+	if not (values["combo_hud_scale"] is float or values["combo_hud_scale"] is int) or not is_finite(float(values["combo_hud_scale"])):
+		values["combo_hud_scale"] = DEFAULTS["combo_hud_scale"]
+	values["combo_hud_scale"] = clampf(float(values["combo_hud_scale"]), 0.75, 1.5)
 
 func set_setting(key: String, value: Variant) -> void:
 	if not DEFAULTS.has(key):

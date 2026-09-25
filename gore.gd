@@ -327,6 +327,10 @@ func _take_gib() -> Gib:
 	_gibs.append(oldest)
 	return oldest
 
+## Live (not yet baked) blood marks, for the perf bench.
+func live_marks() -> int:
+	return _live.size()
+
 func active_gibs() -> int:
 	var n := 0
 	for g: Gib in _gibs:

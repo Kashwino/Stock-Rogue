@@ -67,6 +67,7 @@ try {
   await tap('SETTINGS');
   await slider(0, 0.37);
   await slider(1, 0.62);
+  await tap('DISPLAY');
   await tap('Low effects');
   let saved = (await state()).settings;
   assert(saved.low_effects);

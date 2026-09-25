@@ -57,6 +57,11 @@ func _run() -> void:
 			scene.call(extra)
 		for i in 30:
 			await get_tree().process_frame
+	if args.has("tab"):
+		for panel in get_tree().root.find_children("*", "SettingsPanel", true, false):
+			panel.show_page(String(args["tab"]))
+		for i in 10:
+			await get_tree().process_frame
 	if args.has("card") and scene is HeistFloor and scene.boss:
 		# The VERDICT card over a kneeling boss (then=debug_kill_boss first).
 		scene.player.global_position = scene.boss.global_position + Vector2(0, 80)

@@ -692,6 +692,30 @@
 - **Career**: endings seen (and busts), early endings, verdict counts. The
   Legend now unlocks on any final ending; an early ending never counts.
 
+## Brief 2 · Phase 9 — Settings, performance, balance, QA
+
+- **Settings in tabs** (SOUND / DISPLAY / EFFECTS / HUD) so everything fits
+  a phone in landscape; new: Combo panel size (75-150%), alongside Gore,
+  Blood style and Dynamic music. Every Brief 2 effect honours Screen shake
+  (trauma and punch are scaled by it) and Reduce flashing (banners, tier
+  slams, star flashes, sirens' lights and now the kill-confirm flash).
+- **Performance**: `tools/perf_bench.tscn -- variant=massacre` runs 50
+  hunting guards with Full gore while five of them die violently every 20
+  frames: ~9.7 ms of CPU per 60 fps frame, p99 ~13 ms, with the caps holding
+  (40 bodies — the oldest baked into the floor — and 80 gibs).
+- **Balance**: `tools/balance_sim.py` now simulates verdicts (EXECUTE's full
+  shock and cash, FLIP's half shock with Safehouse Rent / Cooked Books,
+  SHAKE DOWN's quota share with the Black Ledger's leverage) and deals.
+  Win rates for all-execute / all-flip / all-shake runs sit within 6 points;
+  deals pay 11 / 18 / 26 Clout against ~41 for a won run.
+- **Debug menu**: set every stage boss's verdict, play any of the eleven
+  endings or eight BUSTED front pages; in a heist, combo points and tiers,
+  a panic sell, WANTED 0-5, a gore dummy, an explosive prop, FORCE KNEEL and
+  the VERDICT card.
+- `TESTING.md`: the Brief 2 checklist (kill feel, gore, evidence, takedowns,
+  combo break vs cash-out, stars 0 → 5 and the music, verdicts, the finale,
+  routes to every ending, CASE CLOSED).
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -883,3 +907,8 @@
 - **(Brief 2) "What got you"** is the last thing that hurt you: the round's
   shooter, a blast, a boss's hazard. At five stars any non-boss, non-blast
   death is reported as the manhunt.
+- **(Brief 2) Settings became tabs**: with Gore, Blood, Dynamic music and
+  the combo size the single page no longer fit 720 px (and Brief 3 adds HUD
+  settings); the browser suite now taps DISPLAY before Low effects.
+- **(Brief 2) The frame budget is measured on the CPU** (headless, no GPU),
+  as in Brief 1: the massacre bench's p99 is the number that matters.

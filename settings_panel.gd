@@ -1,79 +1,51 @@
 extends VBoxContainer
 class_name SettingsPanel
-## Settings, laid out in two columns so it fits a phone in landscape:
-## volumes and shake on the left, display/effects toggles on the right.
+## Settings in four tabs so everything fits a phone in landscape:
+##   SOUND    volumes, Dynamic music
+##   DISPLAY  low effects, post-processing, shadows, fullscreen, frame rate,
+##            touch controls
+##   EFFECTS  screen shake, reduce flashing, damage numbers, tips, gore, blood
+##   HUD      combo panel size
 ## Every change applies immediately and persists (Settings autoload).
 signal closed
 var status: Label
+var pages: Dictionary = {}
+var tabs: Dictionary = {}
+var current := ""
+
+const PAGE_SIZE := Vector2(900, 330)
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(900, 0)
 	add_theme_constant_override("separation", 10)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	add_child(head)
 	var title := VisualTheme.label("SETTINGS", "HeadingLabel", 30)
-	add_child(title)
-	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 36)
-	add_child(cols)
-	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(420, 0)
-	left.add_theme_constant_override("separation", 2)
-	cols.add_child(left)
-	var right := VBoxContainer.new()
-	right.custom_minimum_size = Vector2(420, 0)
-	right.add_theme_constant_override("separation", 4)
-	cols.add_child(right)
-	_slider(left, "Master volume", "master")
-	_slider(left, "Effects volume", "sfx")
-	_slider(left, "Music volume", "music")
-	_slider(left, "Interface volume", "ui")
-	_slider(left, "Screen shake", "shake")
-	_toggle(right, "Low effects", "low_effects")
-	_toggle(right, "Post-processing", "post_fx")
-	_toggle(right, "Dynamic shadows", "dynamic_shadows")
-	_toggle(right, "Reduce flashing", "reduce_flashing")
-	_toggle(right, "Damage numbers", "damage_numbers")
-	_toggle(right, "Tutorial tips", "tips")
-	_toggle(right, "Dynamic music", "dynamic_music")
-	var full := CheckButton.new()
-	full.text = "Fullscreen (tap to apply)"
-	full.button_pressed = Settings.values["fullscreen"]
-	full.custom_minimum_size.y = 44
-	full.toggled.connect(_on_fullscreen)
-	right.add_child(full)
-	var options := HBoxContainer.new()
-	options.add_theme_constant_override("separation", 12)
-	add_child(options)
-	var rate := OptionButton.new()
-	rate.add_item("60 FPS", 60)
-	rate.add_item("30 FPS - battery saver", 30)
-	rate.select(0 if Settings.values["frame_cap"] == 60 else 1)
-	rate.custom_minimum_size = Vector2(300, 52)
-	rate.item_selected.connect(_on_rate.bind(rate))
-	options.add_child(rate)
-	var touch := OptionButton.new()
-	for label in ["Touch controls: automatic", "Touch controls: on", "Touch controls: off"]:
-		touch.add_item(label)
-	touch.select(int(Settings.values["touch_mode"]))
-	touch.custom_minimum_size = Vector2(360, 52)
-	touch.item_selected.connect(_on_touch)
-	options.add_child(touch)
-	var gore_row := HBoxContainer.new()
-	gore_row.add_theme_constant_override("separation", 12)
-	add_child(gore_row)
-	var gore := OptionButton.new()
-	for label in ["Gore: off", "Gore: low", "Gore: full"]:
-		gore.add_item(label)
-	gore.select(int(Settings.values["gore"]))
-	gore.custom_minimum_size = Vector2(300, 52)
-	gore.item_selected.connect(_on_choice.bind("gore"))
-	gore_row.add_child(gore)
-	var blood := OptionButton.new()
-	for label in ["Blood: red", "Blood: noir (ink with a red rim)"]:
-		blood.add_item(label)
-	blood.select(int(Settings.values["blood_style"]))
-	blood.custom_minimum_size = Vector2(360, 52)
-	blood.item_selected.connect(_on_choice.bind("blood_style"))
-	gore_row.add_child(blood)
+	title.custom_minimum_size = Vector2(190, 0)
+	head.add_child(title)
+	for tab: String in ["SOUND", "DISPLAY", "EFFECTS", "HUD"]:
+		var b := Button.new()
+		b.text = tab
+		b.toggle_mode = true
+		b.custom_minimum_size = Vector2(160, 48)
+		b.pressed.connect(show_page.bind(tab))
+		head.add_child(b)
+		tabs[tab] = b
+	var holder := Control.new()
+	holder.custom_minimum_size = PAGE_SIZE
+	add_child(holder)
+	for tab: String in tabs:
+		var page := HBoxContainer.new()
+		page.add_theme_constant_override("separation", 36)
+		page.size = PAGE_SIZE
+		page.hide()
+		holder.add_child(page)
+		pages[tab] = page
+	_build_sound(_columns("SOUND"))
+	_build_display(_columns("DISPLAY"))
+	_build_effects(_columns("EFFECTS"))
+	_build_hud(_columns("HUD"))
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 20)
 	add_child(foot)
@@ -87,16 +59,81 @@ func _ready() -> void:
 	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.add_child(status)
 	Settings.save_failed.connect(_on_save_failed)
-	# Keyboard / controller: land on the first slider whenever the panel opens.
+	show_page("SOUND")
+	# Keyboard / controller: land on the page's first control whenever the
+	# panel opens.
 	visibility_changed.connect(_focus_default)
 	_focus_default.call_deferred()
 
+## Two columns on a tab's page: [left, right].
+func _columns(tab: String) -> Array:
+	var out: Array = []
+	for i in 2:
+		var col := VBoxContainer.new()
+		col.custom_minimum_size = Vector2(432, 0)
+		col.add_theme_constant_override("separation", 4)
+		pages[tab].add_child(col)
+		out.append(col)
+	return out
+
+func _build_sound(cols: Array) -> void:
+	_slider(cols[0], "Master volume", "master")
+	_slider(cols[0], "Effects volume", "sfx")
+	_slider(cols[0], "Music volume", "music")
+	_slider(cols[1], "Interface volume", "ui")
+	_toggle(cols[1], "Dynamic music", "dynamic_music")
+
+func _build_display(cols: Array) -> void:
+	_toggle(cols[0], "Low effects", "low_effects")
+	_toggle(cols[0], "Post-processing", "post_fx")
+	_toggle(cols[0], "Dynamic shadows", "dynamic_shadows")
+	var full := CheckButton.new()
+	full.text = "Fullscreen (tap to apply)"
+	full.button_pressed = Settings.values["fullscreen"]
+	full.custom_minimum_size.y = 44
+	full.toggled.connect(_on_fullscreen)
+	cols[0].add_child(full)
+	var rate := OptionButton.new()
+	rate.add_item("60 FPS", 60)
+	rate.add_item("30 FPS - battery saver", 30)
+	rate.select(0 if Settings.values["frame_cap"] == 60 else 1)
+	rate.custom_minimum_size = Vector2(360, 52)
+	rate.item_selected.connect(_on_rate.bind(rate))
+	cols[1].add_child(rate)
+	var touch := OptionButton.new()
+	for label in ["Touch controls: automatic", "Touch controls: on", "Touch controls: off"]:
+		touch.add_item(label)
+	touch.select(int(Settings.values["touch_mode"]))
+	touch.custom_minimum_size = Vector2(360, 52)
+	touch.item_selected.connect(_on_touch)
+	cols[1].add_child(touch)
+
+func _build_effects(cols: Array) -> void:
+	_slider(cols[0], "Screen shake", "shake")
+	_toggle(cols[0], "Reduce flashing", "reduce_flashing")
+	_toggle(cols[0], "Damage numbers", "damage_numbers")
+	_toggle(cols[0], "Tutorial tips", "tips")
+	_choice(cols[1], ["Gore: off", "Gore: low", "Gore: full"], "gore")
+	_choice(cols[1], ["Blood: red", "Blood: noir (ink with a red rim)"], "blood_style")
+
+func _build_hud(cols: Array) -> void:
+	_slider(cols[0], "Combo panel size", "combo_hud_scale", 0.75, 1.5)
+
+func show_page(tab: String) -> void:
+	current = tab
+	for t: String in pages:
+		pages[t].visible = t == tab
+		tabs[t].set_pressed_no_signal(t == tab)
+	_focus_default()
+
 func _focus_default() -> void:
-	if not is_visible_in_tree():
+	if not is_visible_in_tree() or not pages.has(current):
 		return
-	var sliders := find_children("*", "HSlider", true, false)
-	if not sliders.is_empty():
-		(sliders[0] as Control).grab_focus.call_deferred()
+	for c: Node in pages[current].find_children("*", "Control", true, false):
+		var control := c as Control
+		if control.focus_mode != Control.FOCUS_NONE and (control is Range or control is BaseButton):
+			control.grab_focus.call_deferred()
+			return
 
 func _on_back() -> void:
 	closed.emit()
@@ -118,12 +155,21 @@ func _on_rate(index: int, rate: OptionButton) -> void:
 func _on_touch(index: int) -> void:
 	Settings.set_setting("touch_mode", index)
 
-func _slider(parent: Control, text: String, key: String) -> void:
+func _choice(parent: Control, labels: Array, key: String) -> void:
+	var option := OptionButton.new()
+	for label in labels:
+		option.add_item(label)
+	option.select(int(Settings.values[key]))
+	option.custom_minimum_size = Vector2(400, 52)
+	option.item_selected.connect(_on_choice.bind(key))
+	parent.add_child(option)
+
+func _slider(parent: Control, text: String, key: String, lo := 0.0, hi := 1.0) -> void:
 	var label := VisualTheme.label(text + "  %d%%" % roundi(float(Settings.values[key]) * 100.0), "", 18)
 	parent.add_child(label)
 	var slider := HSlider.new()
-	slider.min_value = 0.0
-	slider.max_value = 1.0
+	slider.min_value = lo
+	slider.max_value = hi
 	slider.step = 0.01
 	slider.value = Settings.values[key]
 	slider.custom_minimum_size.y = 38

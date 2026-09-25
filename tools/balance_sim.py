@@ -5,7 +5,9 @@ Re-verifies the run economy against the brief's invariants with every income
 source the game has now: floor valuables and room-clear gold (measured by
 tools/loot_census.gd), grade shocks with contract decay, the live venue price
 during a heist (a port of LiveStock), objective shocks and fees, Fence
-positions, Market Manipulation, market news and boss shocks.
+positions, Market Manipulation, market news, boss shocks and the boss
+verdicts (EXECUTE / FLIP / SHAKE DOWN payouts and passives, TAKE HIS DEAL's
+early ending and its Clout).
 
 Constants are read from the GDScript sources so the sim follows the code.
 
@@ -58,12 +60,19 @@ STORY = src("story.gd")
 POSITIONS = src("positions.gd")
 VENUES_SRC = src("venues.gd")
 COMBO_SRC = src("combo.gd")
+VERDICTS_SRC = src("verdicts.gd")
+META_SRC = src("meta.gd")
 
 INDEX_SCALE = const(RUN_STATE, "INDEX_SCALE")
 BASE_QUOTA = const(RUN_MAP, "BASE_QUOTA")
 QUOTA_GROWTH = const(RUN_MAP, "QUOTA_GROWTH")
 NEW_CHAIRMAN_INDEX = const(STORY, "NEW_CHAIRMAN_INDEX")
 BASE_LEVERAGE = const(POSITIONS, "BASE_LEVERAGE")
+SHAKE_SHARE = const(VERDICTS_SRC, "SHAKE_SHARE")
+RENT_BASE = const(VERDICTS_SRC, "RENT_BASE")
+DEAL_SHARE = const(VERDICTS_SRC, "DEAL_SHARE")
+DEAL_CLOUT_BONUS = const(VERDICTS_SRC, "DEAL_CLOUT_BONUS")
+FIRST_ENDING_CLOUT = const(META_SRC, "FIRST_ENDING_CLOUT")
 START_GOLD = int(re.search(r"starting_gold: int = (\d+)", src("run_economy.gd")).group(1))
 
 _grade_block = GRADER[GRADER.index("func _grade_to_stock_delta"):]
@@ -168,7 +177,7 @@ def rally(rng, kills, stage, block, skill):
     return min(gold, COMBO_CAP[min(stage, len(COMBO_CAP) - 1)]), mults, pumps
 
 
-def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None, kill_mults=None, pumps=()):
+def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None, kill_mults=None, pumps=(), crash_mult=1.0):
     """Port of LiveStock over one heist: returns the venue's price multiplier.
     `kill_mults`: the combo multiplier on each kill's gain; `pumps`: combo
     cash-out moves."""
@@ -194,7 +203,7 @@ def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None, kill
             apply(sign * GAIN_KILL * m)
             killed += 1
         for _ in range(hurt_ticks.count(t)):
-            apply(-sign * CRASH_DAMAGE)
+            apply(-sign * CRASH_DAMAGE * crash_mult)
         if t == boss_tick:
             shock = boss_shock if not inverted else 2.0 - boss_shock
             momentum = max(-MAX_MOMENTUM, min(MAX_MOMENTUM, momentum + (shock - 1.0) * 0.05))
@@ -211,16 +220,22 @@ def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None, kill
     return max(p, 0.01)
 
 
-def heist(rng, market, gold, stage, venue, skill, contracts, hit=False, boss=False):
-    """One job: moves `market` in place and returns the gold it paid."""
+def heist(rng, market, gold, stage, venue, skill, contracts, hit=False, boss=False, verdict="execute", run=None):
+    """One job: moves `market` in place and returns the gold it paid.
+    `verdict` (boss jobs): execute = full shock + his cash, flip = half
+    shock, shake = no shock + a share of the quota. `run` carries passives."""
     s = SKILL[skill]
+    run = run or {}
     job = rng.choice(CENSUS[stage])
     par = 15.0 * job["rooms"]
     kills = int(job["guards"] * s["clear"])
     ratio = market[venue]
     combo_gold, kill_mults, pumps = rally(rng, kills, stage, stage, skill)
-    live = live_move(rng, kills, par * s["pace"], s["damage"], inverted=hit, boss_shock=1.30 if boss else None,
-                     kill_mults=kill_mults, pumps=pumps)
+    shock = None
+    if boss:
+        shock = {"execute": 1.30, "flip": 1.15, "shake": None}.get(verdict, 1.30)
+    live = live_move(rng, kills, par * s["pace"], s["damage"], inverted=hit, boss_shock=shock,
+                     kill_mults=kill_mults, pumps=pumps, crash_mult=0.75 if run.get("cooked") else 1.0)
     delta = GRADE_DELTA[s["grade"]]
     if hit:
         delta = 2.0 - delta
@@ -237,8 +252,10 @@ def heist(rng, market, gold, stage, venue, skill, contracts, hit=False, boss=Fal
             fee, shock = OBJECTIVES[obj]
             paid += fee * (stage + 1)
             live *= (2.0 - shock) if hit else shock
-    else:
+    elif verdict == "execute":
         paid += rng.randint(8, 12) * (18 + 8 * stage) * s["loot"]
+    elif verdict == "shake":
+        paid += BASE_QUOTA * QUOTA_GROWTH ** run.get("block", stage) * SHAKE_SHARE
     market[venue] = max(ratio * live * delta, 0.01)
     # The wire between jobs: one story, usually a headline on one venue.
     roll = rng.random()
@@ -329,23 +346,35 @@ def check_shorts(rng, runs):
     ]
 
 
-def full_run(rng, skill):
-    """A whole run by one kind of player. Returns (won, final index)."""
+STAGE_BOSS_IDS = ["landlord", "auditor", "ambassador"]
+
+
+def clout_for(cleared, bosses, index, won, combo=0):
+    """Meta.clout_for (without the first-time ending bonus)."""
+    return max(1, cleared * 3 + bosses * 2 + int(max(index, 0.0) / 60.0) + (8 if won else 0) + min(3, combo // 20))
+
+
+def full_run(rng, skill, policy="execute", deal_at=None):
+    """A whole run by one kind of player handing down `policy` on every stage
+    boss (or taking the deal at stage `deal_at`). Returns (outcome, final
+    index, Clout) with outcome "won", "died" or "deal"."""
     market, contracts = new_market(), {}
     gold = START_GOLD
     block = 0
+    run = {"block": 0}
     for stage in range(4):
         jobs = 2 if stage < 3 else 1
-        visits = 0
         for job in range(jobs + 1):
             boss = job == jobs
             if boss and stage == 3:
                 # Doomsday: the quota sits before the Chairman.
                 if not gate(market, gold, block):
-                    return False, index_of(market)
+                    return "died", index_of(market), clout_for(stage, stage, index_of(market), False)
                 block += 1
+            run["block"] = block
             # Hideout before every job: manipulate when the gate needs it.
-            visits += 1
+            if run.get("rent"):
+                gold += RENT_BASE * (1 + block)
             gold = hideout(rng, market, gold, block, stage)
             venue = STAGE_BOSS_VENUE[stage] if boss else rng.choice(STAGE_VENUES[stage])
             long_stake = 0
@@ -353,16 +382,26 @@ def full_run(rng, skill):
                 long_stake = 100
                 gold -= long_stake
                 entry = market[venue]
-            gold += heist(rng, market, gold, stage, venue, skill, contracts, boss=boss)
+            gold += heist(rng, market, gold, stage, venue, skill, contracts, boss=boss, verdict=policy, run=run)
             if long_stake:
-                gold += max(0, int(long_stake * (1.0 + BASE_LEVERAGE * (market[venue] - entry) / entry)))
+                lev = BASE_LEVERAGE + (1.0 if run.get("ledger") else 0.0)
+                gold += max(0, int(long_stake * (1.0 + lev * (market[venue] - entry) / entry)))
             if boss and stage == 3:
                 gold += rng.randint(400, 600)
+            if boss and stage < 3:
+                if deal_at == stage:
+                    return "deal", index_of(market), clout_for(stage + 1, stage + 1, index_of(market), False) + int(DEAL_CLOUT_BONUS)
+                boss_id = STAGE_BOSS_IDS[stage]
+                if policy == "flip":
+                    run["rent"] = run.get("rent") or boss_id == "landlord"
+                    run["cooked"] = run.get("cooked") or boss_id == "auditor"
+                elif policy == "shake":
+                    run["ledger"] = run.get("ledger") or boss_id == "auditor"
         if stage < 3:
             if not gate(market, gold, block):
-                return False, index_of(market)
+                return "died", index_of(market), clout_for(stage, stage + 1, index_of(market), False)
             block += 1
-    return True, index_of(market)
+    return "won", index_of(market), clout_for(4, 4, index_of(market), True)
 
 
 def gate(market, gold, block):
@@ -417,7 +456,8 @@ def check_endings(rng, runs):
     by_skill = {}
     for _ in range(runs):
         skill = rng.choices([m[0] for m in mix], weights=[m[1] for m in mix])[0]
-        won, idx = full_run(rng, skill)
+        outcome, idx, _ = full_run(rng, skill)
+        won = outcome == "won"
         by_skill.setdefault(skill, []).append(won)
         if won:
             wins.append(idx)
@@ -432,6 +472,60 @@ def check_endings(rng, runs):
     return [("THE NEW CHAIRMAN is roughly a quarter of wins", 0.15 <= share <= 0.35)]
 
 
+def check_verdicts(rng, runs):
+    """Every stage boss handed the same verdict, by a typical player."""
+    print("Verdicts (typical player, the same verdict on every stage boss):")
+    rows = {}
+    for policy in ("execute", "flip", "shake"):
+        outcomes, idx, clout = [], [], []
+        for _ in range(runs // 2):
+            o, i, c = full_run(rng, "typical", policy)
+            outcomes.append(o == "won")
+            if o == "won":
+                idx.append(i)
+            clout.append(c)
+        rate = sum(outcomes) / len(outcomes)
+        rows[policy] = (rate, statistics.median(idx) if idx else 0.0, statistics.mean(clout))
+        print("  %-8s win rate %4.0f%%   winners' index median %4.0f   Clout mean %4.1f" % (policy, 100 * rate, rows[policy][1], rows[policy][2]))
+    rates = [r[0] for r in rows.values()]
+    print("  shake-down gold: $%.0f / $%.0f / $%.0f  ·  Safehouse Rent $%.0f-$%.0f a visit"
+          % tuple([BASE_QUOTA * QUOTA_GROWTH ** b * SHAKE_SHARE for b in range(3)] + [RENT_BASE * 2, RENT_BASE * 4]))
+    return [
+        ("no verdict policy dominates (win rates within 15 points)", max(rates) - min(rates) <= 0.15),
+        ("EXECUTE keeps the strongest index (it takes the full shock)", rows["execute"][1] >= rows["shake"][1]),
+    ]
+
+
+def check_deals(rng, runs):
+    """TAKE HIS DEAL vs playing on: the deal is a real temptation, but
+    finishing the run pays more."""
+    print("Deals vs full runs (typical player, executing bosses):")
+    deal_clout = {}
+    for stage in range(3):
+        cl = []
+        for _ in range(runs // 4):
+            o, _, c = full_run(rng, "typical", "execute", deal_at=stage)
+            if o == "deal":
+                cl.append(c)
+        deal_clout[stage] = statistics.median(cl) if cl else 0
+    wins, deaths, reached = [], [], 0
+    for _ in range(runs // 2):
+        o, _, c = full_run(rng, "typical", "execute")
+        if o == "won":
+            wins.append(c)
+        else:
+            deaths.append(c)
+    full = statistics.median(wins) if wins else 0
+    ev = (sum(wins) + sum(deaths)) / max(1, len(wins) + len(deaths))
+    for stage in range(3):
+        print("  deal at the %-10s median Clout %4.1f  (+%d the first time)" % (STAGE_BOSS_IDS[stage], deal_clout[stage], int(3)))
+    print("  full run: win median Clout %4.1f  (+%d the first time), expected Clout playing on %.1f" % (full, int(FIRST_ENDING_CLOUT), ev))
+    return [
+        ("a deal always pays less Clout than a won run", all(deal_clout[s] < full for s in range(3))),
+        ("the Ambassador's deal is a real temptation (close to the expected value of playing on)", deal_clout[2] >= ev * 0.6),
+    ]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--runs", type=int, default=2000)
@@ -440,7 +534,7 @@ def main():
     rng = random.Random(args.seed)
     print("Stock Rogue balance sim — %d venues, index scale %.0f, live momentum cap %.3f\n" % (len(VENUES), INDEX_SCALE, MAX_MOMENTUM))
     results = []
-    for check in (check_stock_gate, check_gold_gate, check_shorts, check_combo, check_endings):
+    for check in (check_stock_gate, check_gold_gate, check_shorts, check_combo, check_endings, check_verdicts, check_deals):
         results += check(rng, args.runs)
         print()
     failed = 0

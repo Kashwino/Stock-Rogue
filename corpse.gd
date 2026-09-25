@@ -127,7 +127,8 @@ func confirm_flash() -> void:
 func _process(delta: float) -> void:
 	if _flash > 0.0:
 		_flash = maxf(0.0, _flash - delta * 5.0)
-		_kit.modulate = Color(0.55, 0.52, 0.52).lerp(Color(2.2, 2.0, 1.9), _flash)
+		var peak := Color(1.3, 1.25, 1.2) if Settings.values.get("reduce_flashing", false) else Color(2.2, 2.0, 1.9)
+		_kit.modulate = Color(0.55, 0.52, 0.52).lerp(peak, _flash)
 	if velocity.length() > 4.0:
 		var step := velocity * delta
 		var space := get_world_2d().direct_space_state

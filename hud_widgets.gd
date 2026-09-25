@@ -434,8 +434,8 @@ class ComboPanel extends Control:
 		position = Vector2(1040, 506)
 		size = Vector2(226, 128)
 		pivot_offset = Vector2(size.x, 0)
-		var s := float(Settings.values.get("combo_hud_scale", 1.0))
-		scale = Vector2(s, s)
+		_apply_scale()
+		Settings.changed.connect(_apply_scale)
 		_count = VisualTheme.label("0", "", 40, Palette.PAPER)
 		_count.add_theme_font_override("font", VisualTheme.font("heading_bold"))
 		_count.position = Vector2(12, 2)
@@ -454,6 +454,11 @@ class ComboPanel extends Control:
 		add_child(_log)
 		modulate.a = 0.0
 		hide()
+
+	## The Combo panel size setting (75-150%).
+	func _apply_scale() -> void:
+		var s := float(Settings.values.get("combo_hud_scale", 1.0))
+		scale = Vector2(s, s)
 
 	func bind_combo(c: Combo) -> void:
 		combo = c
