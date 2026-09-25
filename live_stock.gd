@@ -26,6 +26,10 @@ signal player_moved(pct: float)
 ## Pull back toward the venue's base price each tick. Without this, a long
 ## heist could drift the stock ±30% on luck alone and swamp the player's grade.
 @export var mean_reversion: float = 0.004
+## Momentum is the market "running on" after news. Capped so a single big
+## shock (a boss kill, a pump) can't keep drifting the price for tens of
+## percent afterwards: at most ~4% of follow-through.
+const MAX_MOMENTUM := 0.012
 
 ## The Auditor's AUDIT window doubles the crash from damage.
 var damage_multiplier := 1.0
@@ -63,6 +67,7 @@ func _background_tick() -> void:
 	# instead of the price jittering around a fixed point.
 	_momentum = _momentum * momentum_retention \
 		+ _rng.randfn(0.0, noise_amplitude) * (1.0 - momentum_retention)
+	_momentum = clampf(_momentum, -MAX_MOMENTUM, MAX_MOMENTUM)
 	var move := _momentum + _rng.randfn(0.0, noise_amplitude * 0.5)
 	# Occasional larger orders hitting the book.
 	if _rng.randf() < 0.03:
@@ -101,7 +106,7 @@ func _apply(pct: float) -> void:
 	pct = _specialist(pct)
 	# A player action doesn't just move the price once — it pushes the market's
 	# momentum, so a good run builds a visible rally and a bad one bleeds out.
-	_momentum += pct * 0.35
+	_momentum = clampf(_momentum + pct * 0.35, -MAX_MOMENTUM, MAX_MOMENTUM)
 	_apply_raw(pct * _current_vol())
 	player_moved.emit(pct * _current_vol())
 
@@ -163,7 +168,7 @@ func _specialist(pct: float) -> float:
 
 func report_shock(multiplier: float, kind: StringName = &"grade") -> void:
 	multiplier = 1.0 + _specialist(multiplier - 1.0)
-	_momentum += (multiplier - 1.0) * 0.5
+	_momentum = clampf(_momentum + (multiplier - 1.0) * 0.05, -MAX_MOMENTUM, MAX_MOMENTUM)
 	_apply_raw(multiplier - 1.0)
 	player_moved.emit(multiplier - 1.0)
 	market_event.emit(kind, absf(multiplier - 1.0))

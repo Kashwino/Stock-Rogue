@@ -1,3 +1,8 @@
+> **Historical.** These are the release notes of the 0.5 mobile beta, kept
+> for reference. The game has moved on (quota gates, the three-vendor hideout,
+> crew unlocked by feats, four bosses, three endings): see `CHANGELOG.md`,
+> `PROGRESS.md` and `TESTING.md` for the current game.
+
 # Stock Rogue 0.5 — the ten scores and safehouse
 
 - PLAY > case file now opens a walkable preparation lobby. Choose the Operator

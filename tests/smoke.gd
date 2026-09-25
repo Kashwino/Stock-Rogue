@@ -72,6 +72,8 @@ func _run() -> void:
 	await get_tree().create_timer(1.7).timeout
 	check(not RunState.loadout.reloading, "reload resumes after pause")
 	await _test_onboarding()
+	_test_fx_pools()
+	_test_debug_menu()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -834,6 +836,49 @@ func _test_specialists() -> void:
 	check(RunState.max_health == 4 and RunState.profile_value("damage_mult", 1.0) == 1.25, "the Wolf: four hearts, +25% damage")
 	RunState.start_run(load("res://main_character.tres"), 4817)
 
+func _test_debug_menu() -> void:
+	var debug := get_node("/root/Debug")
+	check(debug.available(), "the debug menu is available in debug builds")
+	debug.open()
+	var labels: Array = debug._root.find_children("*", "Button", true, false).map(func(b): return b.text)
+	for want: String in ["+$500", "INDEX 120", "DOOMSDAY", "THE CHAIRMAN'S JOB", "AUDITOR", "BUSTED", "RETIRED", "THE NEW CHAIRMAN", "SPAWN", "SPAWN ELITE", "KILL BOSS"]:
+		check(want in labels, "debug menu offers " + want)
+	check(get_tree().paused, "the debug menu pauses while open")
+	var gold := RunEconomy.gold
+	debug._add_gold(500)
+	check(RunEconomy.gold == gold + 500, "debug adds gold")
+	var index := RunState.empire_index()
+	debug._set_index(350.0)
+	check(absf(RunState.empire_index() - 350.0) < 0.5, "debug sets the Board index")
+	debug.set_index(index)
+	var before := get_tree().get_nodes_in_group("enemies").size()
+	debug._kind.select(debug._kind.get_item_index(Enemy.Kind.SNIPER))
+	debug._spawn_enemy(true)
+	var spawned := get_tree().get_nodes_in_group("enemies")
+	check(spawned.size() == before + 1, "debug spawns a guard next to the player")
+	check(not debug.opened and not get_tree().paused, "spawning closes the menu and unpauses")
+	var newest: Enemy = null
+	for e: Enemy in spawned:
+		if e.kind == Enemy.Kind.SNIPER and e.elite_tag != "":
+			newest = e
+	check(newest != null, "the spawned guard is the chosen kind, as an elite")
+	if newest:
+		newest.queue_free()
+
+func _test_fx_pools() -> void:
+	var fx := floor_scene.fx
+	var at := floor_scene.player.global_position
+	for i in 120:
+		fx.casing(at, Vector2.RIGHT)
+		fx.bullet_hole(at)
+		fx.spark(at, Vector2.UP)
+		fx.blood(at, Vector2.LEFT)
+	check(fx._casings.size() == CombatFX.CASING_CAP and fx._holes.size() == CombatFX.HOLE_CAP, "casings and bullet holes are pooled at their caps")
+	check(fx._sparks.size() == CombatFX.SPARK_CAP and fx._blood.size() == CombatFX.BLOOD_CAP, "sparks and blood are pooled at their caps")
+	var first: Node = fx._casings[0]
+	fx.casing(at, Vector2.RIGHT)
+	check(is_instance_valid(first) and fx._casings.size() == CombatFX.CASING_CAP, "a full pool reuses its oldest node instead of freeing it")
+
 func _test_onboarding() -> void:
 	var player := floor_scene.player
 	var hints_nodes := floor_scene.find_children("*", "OnboardingHints", true, false)
@@ -898,8 +943,8 @@ func _test_story() -> void:
 	# The winning ending: epilogue, title, credits, then the unlock card.
 	var seq := EndingSequence.new()
 	seq.freeze_beneath = false
-	seq.summary = {"heists": 11, "index": 700.0, "gold": 900, "kills": 80, "who": "The Operator", "clout": 38, "new_specialists": [&"legend"]}
-	seq.ending = Story.ending_id(700.0)
+	seq.summary = {"heists": 11, "index": 900.0, "gold": 900, "kills": 80, "who": "The Operator", "clout": 38, "new_specialists": [&"legend"]}
+	seq.ending = Story.ending_id(900.0)
 	get_tree().root.add_child(seq)
 	await get_tree().process_frame
 	check(seq.ending == &"new_chairman" and seq._narration.lines == Story.EPILOGUE_CHAIRMAN, "a high index plays THE NEW CHAIRMAN epilogue")

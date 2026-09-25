@@ -26,6 +26,7 @@ var _holes: Array = []
 var _casings: Array = []
 var _numbers: Array = []
 var _sparks: Array = []
+var _blood: Array = []
 var _layer: Node2D            # world-space FX parent (set by the heist)
 
 func _ready() -> void:
@@ -134,48 +135,72 @@ func muzzle(at: Vector2, direction: Vector2, big := false) -> void:
 	t.tween_callback(flash.queue_free)
 
 # ----------------------------------------------------------------- debris ---
+# Sparks, bullet holes, casings and blood are pooled: each kind keeps a fixed
+# set of nodes and reuses the oldest when it runs out, so a long firefight
+# never allocates or frees FX nodes.
+const SPARK_CAP := 48
+const BLOOD_CAP := 40
+
+enum Debris { SPARK, HOLE, CASING, BLOOD }
+
+## A fresh FX node. (Built here, not via a `Spark.new` Callable: exported
+## release builds can't resolve `new` as a member of an inner class.)
+func _make(kind: Debris) -> Node2D:
+	match kind:
+		Debris.SPARK:
+			return Spark.new()
+		Debris.HOLE:
+			return Hole.new()
+		Debris.CASING:
+			return Casing.new()
+	return Blood.new()
+
+func _reuse(pool: Array, cap: int, kind: Debris) -> Node2D:
+	for i in range(pool.size() - 1, -1, -1):
+		if not is_instance_valid(pool[i]):
+			pool.remove_at(i)
+	for n: Node2D in pool:
+		if not n.visible:
+			pool.erase(n)
+			pool.append(n)
+			return n
+	if pool.size() < cap:
+		var fresh: Node2D = _make(kind)
+		world().add_child(fresh)
+		pool.append(fresh)
+		return fresh
+	var oldest: Node2D = pool.pop_front()
+	pool.append(oldest)
+	return oldest
+
 func spark(at: Vector2, normal: Vector2, color: Color = Color(1.0, 0.8, 0.4)) -> void:
 	if _low():
 		return
-	var s := Spark.new()
-	s.color = color
-	s.normal = normal if normal != Vector2.ZERO else Vector2.from_angle(randf() * TAU)
-	world().add_child(s)
+	var s := _reuse(_sparks, SPARK_CAP, Debris.SPARK) as Spark
+	s.restart(color, normal if normal != Vector2.ZERO else Vector2.from_angle(randf() * TAU))
 	s.global_position = at
 
 func bullet_hole(at: Vector2) -> void:
-	var hole := Hole.new()
-	world().add_child(hole)
+	var hole := _reuse(_holes, HOLE_CAP, Debris.HOLE)
 	hole.global_position = at
 	hole.z_index = -2
-	_holes.append(hole)
-	while _holes.size() > HOLE_CAP:
-		var old = _holes.pop_front()
-		if is_instance_valid(old):
-			old.queue_free()
+	hole.show()
 
 func casing(at: Vector2, direction: Vector2) -> void:
 	if _low():
 		return
-	var c := Casing.new()
+	var c := _reuse(_casings, CASING_CAP, Debris.CASING) as Casing
 	var side := Vector2(-direction.y, direction.x)
-	c.velocity = side * randf_range(90, 160) - direction * randf_range(10, 40)
-	world().add_child(c)
+	c.restart(side * randf_range(90, 160) - direction * randf_range(10, 40))
 	c.global_position = at
-	_casings.append(c)
-	while _casings.size() > CASING_CAP:
-		var old = _casings.pop_front()
-		if is_instance_valid(old):
-			old.queue_free()
 
 func blood(at: Vector2, direction: Vector2) -> void:
 	if _low():
 		return
-	var b := Blood.new()
-	b.direction = direction
-	world().add_child(b)
-	b.global_position = at
+	var b := _reuse(_blood, BLOOD_CAP, Debris.BLOOD) as Blood
 	b.z_index = -3
+	b.global_position = at
+	b.restart(direction)
 
 # ---------------------------------------------------------------- numbers ---
 func damage_number(at: Vector2, amount: int, color: Color = Palette.PAPER) -> void:
@@ -237,12 +262,21 @@ class Spark extends Node2D:
 	func _ready() -> void:
 		material = StreetArt._unshaded()
 		z_index = 22
+	func restart(tint: Color, toward: Vector2) -> void:
+		color = tint
+		normal = toward
+		_life = 0.0
+		_dirs.clear()
 		for i in 6:
 			_dirs.append(normal.rotated(randf_range(-1.0, 1.0)) * randf_range(40, 140))
+		show()
+		set_process(true)
+		queue_redraw()
 	func _process(delta: float) -> void:
 		_life += delta
 		if _life > 0.18:
-			queue_free()
+			hide()
+			set_process(false)
 			return
 		queue_redraw()
 	func _draw() -> void:
@@ -264,8 +298,15 @@ class Casing extends Node2D:
 	var _age := 0.0
 	func _ready() -> void:
 		z_index = -1
-		_spin = randf_range(-20, 20)
 		queue_redraw()
+	func restart(kick: Vector2) -> void:
+		velocity = kick
+		_spin = randf_range(-20, 20)
+		_age = 0.0
+		rotation = 0.0
+		modulate.a = 1.0
+		show()
+		set_process(true)
 	func _process(delta: float) -> void:
 		_age += delta
 		if _age < 0.35:
@@ -275,20 +316,30 @@ class Casing extends Node2D:
 		elif _age > 3.0:
 			modulate.a = maxf(0.0, 1.0 - (_age - 3.0))
 			if _age > 4.0:
-				queue_free()
+				hide()
+				set_process(false)
 	func _draw() -> void:
 		draw_rect(Rect2(-3, -1.5, 6, 3), Color("c9a24a"))
 		draw_rect(Rect2(-3, -1.5, 2, 3), Color("8a6a2a"))
 
 class Blood extends Node2D:
 	var direction := Vector2.RIGHT
-	func _ready() -> void:
-		queue_redraw()
-		var tw := create_tween()
-		tw.tween_interval(8.0)
-		tw.tween_property(self, "modulate:a", 0.0, 2.0)
-		tw.tween_callback(queue_free)
-	func _draw() -> void:
+	var _drops: Array = []
+	var _fade: Tween
+	func restart(toward: Vector2) -> void:
+		direction = toward
+		_drops.clear()
 		for i in 5:
-			var p := direction.normalized().rotated(randf_range(-0.6, 0.6)) * randf_range(4, 22)
-			draw_circle(p, randf_range(1.5, 4.0), Color(0.35, 0.03, 0.04, 0.8))
+			_drops.append([direction.normalized().rotated(randf_range(-0.6, 0.6)) * randf_range(4, 22), randf_range(1.5, 4.0)])
+		modulate.a = 1.0
+		show()
+		queue_redraw()
+		if _fade:
+			_fade.kill()
+		_fade = create_tween()
+		_fade.tween_interval(8.0)
+		_fade.tween_property(self, "modulate:a", 0.0, 2.0)
+		_fade.tween_callback(hide)
+	func _draw() -> void:
+		for d: Array in _drops:
+			draw_circle(d[0], d[1], Color(0.35, 0.03, 0.04, 0.8))

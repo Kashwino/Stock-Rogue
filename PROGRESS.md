@@ -2,10 +2,12 @@
 
 Read this first after a context reset: continue from the first unchecked item.
 Branch: `codex/mobile-web-beta` (see CHANGELOG → Decisions). Commit after every
-phase as `phase N: <summary>`. Verify with `tools/run_tests.sh` (headless import +
-settings round-trip + smoke suite) and, for UI flows, the Web export +
+phase as `phase N: <summary>`. Verify with `tools/run_tests.sh` (static sweep +
+headless import + settings round-trip + smoke suite + end-to-end loop),
+`python3 tools/balance_sim.py`, and, for UI flows, the Web export +
 `node tests/browser.mjs`. Visual checks: `xvfb-run -a godot --path .
 --rendering-driver opengl3 res://tools/screenshot.tscn -- shot=<preset> out=<png>`.
+TESTING.md lists every check and the manual route.
 
 ## Architecture
 
@@ -20,7 +22,8 @@ live run: loadout, health, market, perks, positions), `RunFlow` (route position 
 scene changes), `Noise` (AI hearing bus), `TouchInput` (virtual sticks + input
 map guard), `Audio` (audio.gd: SFX pools, loops, layered music), `Controls` (mobile_controls.gd touch overlay),
 `QAProbe` (read-only browser telemetry behind `?qa=1`), `Transition` (scene
-changes behind a shutter/stamp).
+changes behind a shutter/stamp), `Debug` (debug_menu.gd — the F1 developer
+menu, debug builds only).
 
 **Loop:** `home_screen.tscn` → `character_select.tscn` (case files → crew
 cards) → `RunFlow.start_new_run` → `map_ui_screen.tscn` (the case wall) shows the
@@ -31,7 +34,7 @@ current route step:
   `heist_floor.tscn` → extraction → results card → `RunFlow.on_heist_finished`;
 - `QUOTA_GATE` → the collector checks gold on hand + empire index (fail = run over);
 - `ADVANCE` → next stage. Stages: Town, City, World, Doomsday. After the Chairman
-  → `EndingSequence` (RETIRED, or THE NEW CHAIRMAN at index 600+; epilogue,
+  → `EndingSequence` (RETIRED, or THE NEW CHAIRMAN at index 800+; epilogue,
   title, credits). Death anywhere → `death_screen.tscn` (BUSTED front page,
   spawned on the root). The crew card plays the `Prologue`; the case wall opens
   each stage with a `StageIntro` card.
@@ -102,4 +105,25 @@ code; anything that pauses sets PROCESS_MODE_ALWAYS and unpauses on exit.
 - [x] Phase 11 — menus, pause, onboarding, settings (job-file pause screen,
       one-time contextual tips, tips toggle, controller aim + focus, prompts
       per device)
-- [ ] Phase 12 — balance, performance, final QA
+- [x] Phase 12 — balance, performance, final QA (balance sim + loot census,
+      live-price momentum cap, NEW CHAIRMAN at 800, pooled FX, perf bench,
+      F1 debug menu, end-to-end loop test, static sweep, TESTING.md)
+
+## Definition of Done
+
+- [x] Clean launch; full loop Home → Case Files → Crew → Hideout → Heist →
+      Results → … → Chairman → ending → credits → Home with no errors
+      (`tests/full_loop.gd`, browser suite).
+- [x] Themed UI, procedural characters / environments / props, lighting,
+      post-process, transitions — no debug placeholders.
+- [x] SFX on every action; layered heist music; volume settings.
+- [x] 17 enemy types plus elites, civilians, cameras, alarm panels, radio calls.
+- [x] 4 named multi-phase stage bosses in authored arenas.
+- [x] Contracts vs Hits, long/short positions, live loot multiplier, market news.
+- [x] 6 objective types and 8 map modifiers on the map cards.
+- [x] 20 relics, 6 weapon mods, a trait on every weapon.
+- [x] All 5 specialists with feat unlocks; Clout and the Connections board.
+- [x] Prologue, stage intros, vendor dialogue, 3 endings, credits.
+- [x] Pause menu, full settings, onboarding hints, debug menu.
+- [x] Dead files removed, debug prints gated, CHANGELOG / TESTING / PROGRESS
+      complete, everything committed (on `codex/mobile-web-beta`).

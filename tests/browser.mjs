@@ -27,6 +27,12 @@ async function point(x, y) {
   const r = await page.locator('#canvas').boundingBox();
   return { x: r.x + x * r.width / s.viewport[0], y: r.y + y * r.height / s.viewport[1] };
 }
+// Wait until the game has run a few more frames and the probe has refreshed
+// (software-GL Chromium runs the game at ~12 fps, so fixed delays are flaky).
+async function settle(frames = 4) {
+  const start = (await state())?.frame ?? 0;
+  await page.waitForFunction(f => (window.stockRogueQA?.frame ?? 0) >= f, start + frames, { timeout: 5000 }).catch(() => {});
+}
 async function tap(text) {
   await wait(t => window.stockRogueQA?.controls.some(c => c.text === t) && !window.stockRogueQA.transition, text);
   const s = await state();
@@ -34,6 +40,7 @@ async function tap(text) {
   const p = await point(c.rect[0] + c.rect[2] / 2, c.rect[1] + c.rect[3] / 2);
   await page.touchscreen.tap(p.x, p.y);
   await page.waitForTimeout(250);
+  await settle();
 }
 async function tapCard() {
   await wait(() => !window.stockRogueQA?.transition);

@@ -65,6 +65,10 @@ func _run() -> void:
 			terminal.open_terminal()
 		for i in 20:
 			await get_tree().process_frame
+	if args.has("debug"):
+		get_node("/root/Debug").open()
+		for i in 20:
+			await get_tree().process_frame
 	if args.has("pause"):
 		var pause := get_tree().get_first_node_in_group("pause_menu")
 		if pause:

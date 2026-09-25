@@ -37,9 +37,18 @@ jobs:
           if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-write.log"; then exit 1; fi
           timeout 30s godot --headless --path . res://tests/settings_test.tscn -- read 2>&1 | tee "$RUNNER_TEMP/godot/settings-read.log"
           if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-read.log"; then exit 1; fi
-          timeout 90s godot --verbose --headless --path . res://tests/smoke.tscn 2>&1 | tee "$RUNNER_TEMP/godot/smoke.log"
+          timeout 180s godot --verbose --headless --path . res://tests/smoke.tscn 2>&1 | tee "$RUNNER_TEMP/godot/smoke.log"
           if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/smoke.log"; then exit 1; fi
           grep -q 'TEST SUITE COMPLETE' "$RUNNER_TEMP/godot/smoke.log"
+      - name: Play the whole loop end to end
+        run: |
+          timeout 180s godot --headless --path . res://tests/full_loop.tscn 2>&1 | tee "$RUNNER_TEMP/godot/loop.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/loop.log"; then exit 1; fi
+          grep -q 'FULL LOOP COMPLETE' "$RUNNER_TEMP/godot/loop.log"
+      - name: Check the economy invariants
+        run: python3 tools/balance_sim.py --runs 800
+      - name: Static sweep (paths, input actions, signal targets, style rules)
+        run: python3 tools/sweep.py
       - name: Export single-threaded browser build
         run: |
           mkdir -p build/web

@@ -21,6 +21,7 @@ Audio="*res://audio.gd"
 Controls="*res://mobile_controls.gd"
 QAProbe="*res://qa_probe.gd"
 Transition="*res://transition.gd"
+Debug="*res://debug_menu.gd"
 
 [display]
 window/size/viewport_width=1280

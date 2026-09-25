@@ -1,0 +1,346 @@
+{
+	"0": [
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 344,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "corner_racket"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 328,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "chop_shop"
+		},
+		{
+			"clear_gold": 452.5,
+			"floor_loot": 1009,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "corner_racket"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 344,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "chop_shop"
+		},
+		{
+			"clear_gold": 452.5,
+			"floor_loot": 469,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "chop_shop"
+		},
+		{
+			"clear_gold": 452.5,
+			"floor_loot": 484,
+			"guards": 37,
+			"rooms": 11,
+			"venue": "pickpocket"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 316,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "corner_racket"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 300,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "pickpocket"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 298,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "chop_shop"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 321,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "pickpocket"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 324,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "chop_shop"
+		},
+		{
+			"clear_gold": 412.3,
+			"floor_loot": 321,
+			"guards": 36,
+			"rooms": 11,
+			"venue": "chop_shop"
+		}
+	],
+	"1": [
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 526,
+			"guards": 45,
+			"rooms": 13,
+			"venue": "cat_burglar"
+		},
+		{
+			"clear_gold": 670.0,
+			"floor_loot": 643,
+			"guards": 59,
+			"rooms": 14,
+			"venue": "safecracker"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 593,
+			"guards": 44,
+			"rooms": 13,
+			"venue": "bank_job"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 572,
+			"guards": 44,
+			"rooms": 13,
+			"venue": "fence"
+		},
+		{
+			"clear_gold": 670.0,
+			"floor_loot": 645,
+			"guards": 59,
+			"rooms": 14,
+			"venue": "safecracker"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 561,
+			"guards": 45,
+			"rooms": 13,
+			"venue": "fence"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 559,
+			"guards": 44,
+			"rooms": 13,
+			"venue": "safecracker"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 560,
+			"guards": 44,
+			"rooms": 13,
+			"venue": "safecracker"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 526,
+			"guards": 44,
+			"rooms": 13,
+			"venue": "fence"
+		},
+		{
+			"clear_gold": 670.0,
+			"floor_loot": 689,
+			"guards": 59,
+			"rooms": 14,
+			"venue": "cat_burglar"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 526,
+			"guards": 45,
+			"rooms": 13,
+			"venue": "fence"
+		},
+		{
+			"clear_gold": 467.5,
+			"floor_loot": 576,
+			"guards": 45,
+			"rooms": 13,
+			"venue": "bank_job"
+		}
+	],
+	"2": [
+		{
+			"clear_gold": 1048.0,
+			"floor_loot": 1055,
+			"guards": 85,
+			"rooms": 16,
+			"venue": "casino_skim"
+		},
+		{
+			"clear_gold": 724.0,
+			"floor_loot": 684,
+			"guards": 74,
+			"rooms": 16,
+			"venue": "crypto_launder"
+		},
+		{
+			"clear_gold": 1048.0,
+			"floor_loot": 1107,
+			"guards": 85,
+			"rooms": 16,
+			"venue": "transit_ambush"
+		},
+		{
+			"clear_gold": 1048.0,
+			"floor_loot": 1028,
+			"guards": 85,
+			"rooms": 16,
+			"venue": "transit_ambush"
+		},
+		{
+			"clear_gold": 1048.0,
+			"floor_loot": 1060,
+			"guards": 85,
+			"rooms": 16,
+			"venue": "casino_skim"
+		},
+		{
+			"clear_gold": 1048.0,
+			"floor_loot": 1119,
+			"guards": 85,
+			"rooms": 16,
+			"venue": "transit_ambush"
+		},
+		{
+			"clear_gold": 724.0,
+			"floor_loot": 740,
+			"guards": 73,
+			"rooms": 16,
+			"venue": "crypto_launder"
+		},
+		{
+			"clear_gold": 724.0,
+			"floor_loot": 702,
+			"guards": 73,
+			"rooms": 16,
+			"venue": "crypto_launder"
+		},
+		{
+			"clear_gold": 1048.0,
+			"floor_loot": 2291,
+			"guards": 85,
+			"rooms": 16,
+			"venue": "transit_ambush"
+		},
+		{
+			"clear_gold": 724.0,
+			"floor_loot": 702,
+			"guards": 73,
+			"rooms": 16,
+			"venue": "transit_ambush"
+		},
+		{
+			"clear_gold": 1048.0,
+			"floor_loot": 1060,
+			"guards": 85,
+			"rooms": 16,
+			"venue": "transit_ambush"
+		},
+		{
+			"clear_gold": 724.0,
+			"floor_loot": 690,
+			"guards": 73,
+			"rooms": 16,
+			"venue": "diamond_exchange"
+		}
+	],
+	"3": [
+		{
+			"clear_gold": 2320.0,
+			"floor_loot": 1637,
+			"guards": 117,
+			"rooms": 19,
+			"venue": "reactor_sabotage"
+		},
+		{
+			"clear_gold": 1156.0,
+			"floor_loot": 1325,
+			"guards": 97,
+			"rooms": 18,
+			"venue": "central_bank_hack"
+		},
+		{
+			"clear_gold": 2320.0,
+			"floor_loot": 1547,
+			"guards": 117,
+			"rooms": 19,
+			"venue": "crypto_launder"
+		},
+		{
+			"clear_gold": 2320.0,
+			"floor_loot": 1658,
+			"guards": 117,
+			"rooms": 19,
+			"venue": "reactor_sabotage"
+		},
+		{
+			"clear_gold": 1156.0,
+			"floor_loot": 1384,
+			"guards": 97,
+			"rooms": 18,
+			"venue": "reactor_sabotage"
+		},
+		{
+			"clear_gold": 2320.0,
+			"floor_loot": 1656,
+			"guards": 117,
+			"rooms": 19,
+			"venue": "reactor_sabotage"
+		},
+		{
+			"clear_gold": 1156.0,
+			"floor_loot": 1295,
+			"guards": 97,
+			"rooms": 18,
+			"venue": "central_bank_hack"
+		},
+		{
+			"clear_gold": 1156.0,
+			"floor_loot": 1335,
+			"guards": 97,
+			"rooms": 18,
+			"venue": "reactor_sabotage"
+		},
+		{
+			"clear_gold": 1156.0,
+			"floor_loot": 1310,
+			"guards": 97,
+			"rooms": 18,
+			"venue": "reactor_sabotage"
+		},
+		{
+			"clear_gold": 2320.0,
+			"floor_loot": 1593,
+			"guards": 117,
+			"rooms": 19,
+			"venue": "reactor_sabotage"
+		},
+		{
+			"clear_gold": 1156.0,
+			"floor_loot": 1262,
+			"guards": 97,
+			"rooms": 18,
+			"venue": "central_bank_hack"
+		},
+		{
+			"clear_gold": 2320.0,
+			"floor_loot": 3149,
+			"guards": 117,
+			"rooms": 19,
+			"venue": "reactor_sabotage"
+		}
+	]
+}

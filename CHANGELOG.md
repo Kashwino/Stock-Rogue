@@ -374,7 +374,7 @@
   the credits roll (`Story.CREDITS_NAME`, fonts and licence, Godot), then the
   NEW SPECIALIST card if the win unlocked the Legend, then home.
   **RETIRED** is the normal win; **THE NEW CHAIRMAN** plays when the Board
-  index is at 600 or more when the Chairman falls. **BUSTED** keeps the front
+  index is at 800 or more when the Chairman falls (tuned by the balance sim). **BUSTED** keeps the front
   page.
 
 ## Phase 11 — Menus, pause, onboarding, settings
@@ -401,6 +401,51 @@
   first control; any button advances a story card, START skips).
 - The lobby **market terminal** got the stamped title treatment and shows
   venue names instead of internal ids.
+
+## Phase 12 — Balance, performance, final QA
+
+- **`tools/balance_sim.py`** (stdlib Python) re-verifies the economy with every
+  income source: floor loot and room-clear gold measured in real buildings by
+  **`tools/loot_census.gd`**, grade shocks with contract decay, a port of the
+  live venue price during a heist, objectives, Fence positions, Market
+  Manipulation, market news and boss shocks. Constants are read from the
+  scripts. All invariants hold: two flawless heists reach index ~77 (p95 113)
+  against the first gate of 120; two Market Manipulations on top reach ~189;
+  a typical player already has the first $380 after one heist (median $774,
+  $1264 after two, before spending), comfortably inside "about two heists";
+  a $100 short plus a HIT on that venue pays ~$72 and costs ~14 index.
+- **Live venue price fix**: a shock (a boss kill, a pump) fed the price's
+  momentum so hard that it kept drifting tens of percent afterwards (+76% on
+  one boss kill). Momentum is now capped at 1.2% per tick and shocks feed it
+  a tenth as much, so a big event runs on by a few percent at most.
+- **THE NEW CHAIRMAN** now needs index 800 (the sim puts ~90% of winners above
+  600, ~25–30% above 800).
+- **Performance**: sparks, bullet holes, casings and blood are pooled like
+  bullets and damage numbers (fixed sets reused oldest-first). New
+  **`tools/perf_bench.gd`**: 50 guards hunting the player on screen while he
+  fires costs about 10 ms of CPU per 60 fps frame (base heist ~8.4 ms), with
+  physics keeping real time; distance sleeping stays on.
+- **F1 debug menu** (`debug_menu.gd`, autoload `Debug`; debug builds or
+  `Log.DEBUG` only): add gold, set the Board index, jump to any stage or the
+  Chairman's job, start any boss job, spawn any guard (or an elite) beside
+  you, heal, kill the boss, max heat, and play BUSTED / RETIRED / THE NEW
+  CHAIRMAN. Boss jobs and endings run as practice in the practice slot.
+- **End-to-end test** (`tests/full_loop.gd`, in `tools/run_tests.sh` and CI):
+  Home → case file → crew → prologue → stage card → hideout → heist → job
+  report → Doomsday quota → the Chairman → ending → credits → NEW SPECIALIST
+  → Home, through the real scene changes, with no errors.
+- **Static sweep** (`tools/sweep.py`, in the test script and CI): resource
+  paths, input actions, signal targets, guarded scene changes, tabs, no
+  `Label2D`, no method named `bind`, no constructor passed as a Callable, no
+  bare `print()` in game code. The sweep found nothing; the browser suite
+  found one real bug (below).
+- Fixed: pooled FX were built through `Spark.new`-style Callables, which the
+  editor accepts but the exported Web build can't compile — caught by the
+  browser suite before release.
+- Removed three scripts nothing used any more (`contract_art.gd`,
+  `hud_frame.gd`, `route_map_art.gd`).
+- **TESTING.md**: every automated check, and a 10–15 minute manual route from a
+  fresh career through each ending.
 
 ## Decisions
 
@@ -492,10 +537,20 @@
   see it. "First run" is tracked per case-file slot in the career save.
 - **The ending owns the screen**: the heist under it is disabled and its HUD
   hidden until the ending hands off to the home screen.
-- **THE NEW CHAIRMAN threshold** starts at index 600 (the last quota gate is
-  492); Phase 12's balance sim tunes it toward about a quarter of wins.
+- **THE NEW CHAIRMAN threshold** is index 800, not the brief's "~600": the
+  balance sim puts ~90% of winning runs above 600 but ~25% above 800, and
+  "about a quarter of wins" is the intent.
 - **Tips use the HUD's fonts.** A tip card in a new font size stalled a frame
   long enough on software-GL phones to cost a player a quarter-second of
   movement; reusing the HUD's already-rendered font/size pairs removed it.
 - **Browser suite waits for state**, not fixed timeouts, at the two touch steps
   that depend on frame rate (software-GL Chromium runs the game at ~12 fps).
+- **Debug menu gate**: "only when DEBUG" is read as debug builds (editor runs
+  and debug exports) or `Log.DEBUG`; release exports never open it.
+- **Debug jobs are practice**: boss jobs and endings started from F1 run in
+  the practice slot, so they can't overwrite a case file or the career.
+- **Performance target** is measured as CPU time per frame in a headless
+  bench (no GPU in CI); ~10 ms with 50 hunting guards leaves the renderer
+  ~6.7 ms for 60 fps.
+- **Browser suite waits on frames**, not milliseconds: the QA probe reports
+  the frame counter and every tap waits for the game to advance.
