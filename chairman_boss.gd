@@ -259,6 +259,7 @@ class MarginFloor extends Node2D:
 			if arena.has_point(p) and state[strip_at(p.x)] == 2 and in_hazard(p.x):
 				_hurt = 1.0
 				host.player.last_hit_dir = Vector2.UP
+				host.player.last_hit_by = "boss:chairman"
 				host.player.take_damage(1)
 		queue_redraw()
 

@@ -54,7 +54,7 @@ func _build_main_menu() -> Control:
 	panel.add_theme_stylebox_override("panel", VisualTheme.panel(Palette.GOLD_DIM, 24))
 	wrap.add_child(panel)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 12)
+	col.add_theme_constant_override("separation", 10)
 	panel.add_child(col)
 	col.add_child(VisualTheme.label("YOUR NEXT MOVE", "KickerLabel", 18))
 	var first := _button("PLAY", _on_play, true)
@@ -63,6 +63,7 @@ func _build_main_menu() -> Control:
 		col.add_child(_button("CONTINUE", _on_continue))
 	col.add_child(_button("QUICK HEIST", RunFlow.start_quick_test))
 	col.add_child(_button("CONNECTIONS", _on_network))
+	col.add_child(_button("CASE CLOSED", _on_gallery))
 	col.add_child(_button("SETTINGS", _on_open_settings))
 	if not OS.has_feature("web"):
 		col.add_child(_button("QUIT", _on_quit))
@@ -75,7 +76,7 @@ func _build_main_menu() -> Control:
 func _button(text: String, action: Callable, primary := false) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(320, 62)
+	button.custom_minimum_size = Vector2(320, 56)
 	if primary:
 		button.theme_type_variation = "PrimaryButton"
 	button.pressed.connect(action)
@@ -109,6 +110,17 @@ func _on_network() -> void:
 func _on_network_closed(center: Control) -> void:
 	center.queue_free()
 	_main_menu.show()
+
+## CASE CLOSED: the endings gallery.
+func _on_gallery() -> void:
+	_main_menu.hide()
+	var gallery := CaseClosed.new()
+	_root.add_child(gallery)
+	gallery.closed.connect(_on_gallery_closed)
+
+func _on_gallery_closed() -> void:
+	_main_menu.show()
+	VisualTheme.focus_first(_main_menu)
 
 func _on_quit() -> void:
 	get_tree().quit()

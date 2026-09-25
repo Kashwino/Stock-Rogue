@@ -40,7 +40,7 @@ const CREW := [
 		"id": &"legend", "name": "THE LEGEND", "role": "One last job", "unlocked": false,
 		"blurb": "Retired once already. This time it's personal — and it's all in.",
 		"hearts": 1, "trait": "Volatility x3.0 flat\nNo healing. Gold and stock gains x2. Starts with a Classified+ weapon.",
-		"unlock": "Retire — win a full run",
+		"unlock": "Reach a final ending — beat the Chairman",
 		"profile": "res://crew_legend.tres",
 	},
 ]

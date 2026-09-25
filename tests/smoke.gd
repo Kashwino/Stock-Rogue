@@ -235,6 +235,7 @@ func _run() -> void:
 	await _test_build()
 	_test_specialists()
 	await _test_story()
+	await _test_endings()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
 	_reset_verdicts()
@@ -881,6 +882,53 @@ func _test_bosses() -> void:
 		heist.queue_free()
 		await get_tree().process_frame
 		await get_tree().process_frame
+
+## Eleven endings, BUSTED front pages, the CASE CLOSED gallery.
+func _test_endings() -> void:
+	check(Endings.ORDER.size() == 11 and Endings.EARLY.size() == 3, "eleven endings, three of them early")
+	for id: StringName in Endings.ORDER:
+		var lines := Endings.epilogue(id)
+		check(lines.size() >= 3 and lines.size() <= 5 and Endings.title(id) != "" and String(Endings.DATA[id].get("hint", "")) != "", "%s has a title, a hint and 3-5 epilogue cards" % id)
+		check(ResourceLoader.exists("res://assets/audio/music/%s.wav" % Endings.theme(id)), "%s has its family's theme" % id)
+		var art := EndingArt.new()
+		art.ending = id
+		art.size = Vector2(320, 220)
+		get_tree().root.add_child(art)
+		art.queue_free()
+	await get_tree().process_frame
+	# BUSTED: the front page names what got you, and where.
+	var base := {"stage": "City", "venue": "bank_job", "who": "The Operator", "heists": 3, "where": "VAULT, MARLOWE EXCHANGE"}
+	var heads := {}
+	for cause in ["boss:landlord", "boss:auditor", "boss:ambassador", "boss:chairman", "police", "explosion", "rival", "kind:LASER SNIPER", "kind:ENFORCER", ""]:
+		var s := base.duplicate()
+		s["cause"] = cause
+		var page: Array = DeathScreen.Headlines.busted(s)
+		check(page.size() == 2 and String(page[1]).contains("Vault, Marlowe Exchange"), "the BUSTED story says where (%s)" % cause)
+		heads[String(page[0])] = true
+	check(heads.size() >= 9, "each cause gets its own headline")
+	var player := Player.new()
+	check(Player.blame_of(null) == "" and "last_hit_by" in player, "the player remembers who hit last")
+	player.free()
+	# First time at an ending pays extra Clout; the gallery remembers.
+	Meta.endings_seen.clear()
+	var clout := Meta.clout
+	check(Meta.record_ending(&"purge") == Meta.FIRST_ENDING_CLOUT and Meta.clout == clout + Meta.FIRST_ENDING_CLOUT, "a first ending pays bonus Clout")
+	check(Meta.record_ending(&"purge") == 0 and int(Meta.endings_seen["purge"]) == 2, "the second time pays nothing")
+	check(Meta.record_ending(&"cooked_books") == Meta.FIRST_EARLY_CLOUT, "early endings pay a smaller bonus")
+	var gallery := CaseClosed.new()
+	get_tree().root.add_child(gallery)
+	await get_tree().process_frame
+	check(gallery._cards.size() == 12, "CASE CLOSED: eleven endings and BUSTED")
+	var purge_card: Button = gallery._cards[Endings.ORDER.find(&"purge")]
+	var locked_card: Button = gallery._cards[Endings.ORDER.find(&"syndicate")]
+	var purge_text := purge_card.find_children("*", "Label", true, false).map(func(l): return l.text)
+	var locked_text := locked_card.find_children("*", "Label", true, false).map(func(l): return l.text)
+	check(purge_text.any(func(t): return String(t).contains("THE PURGE")) and locked_text.any(func(t): return String(t).contains("? ? ?")), "reached endings show; the rest are silhouettes")
+	check(locked_text.any(func(t): return t == Endings.DATA[&"syndicate"]["hint"]), "locked cards carry a hint once any ending is seen")
+	gallery._close()
+	await get_tree().process_frame
+	Meta.endings_seen.clear()
+	Meta.save_meta()
 
 ## TAKE HIS DEAL ends the run with the boss's early ending: a partial win
 ## that pays Clout but never counts as a won run.

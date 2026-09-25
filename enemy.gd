@@ -1090,6 +1090,7 @@ func melee(dmg: int, dir: Vector2, slow: float, slow_time: float, knock: float) 
 		return
 	var before := p.hits_taken
 	p.last_hit_dir = dir
+	p.last_hit_by = Player.blame_of(self)
 	p.take_damage(dmg + (1 if affix == &"veteran" else 0))
 	if p.hits_taken == before:
 		return                    # dodged, or mercy frames

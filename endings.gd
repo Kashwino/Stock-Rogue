@@ -164,6 +164,21 @@ static func theme(id: StringName) -> String:
 static func number(id: StringName) -> int:
 	return ORDER.find(id) + 1
 
+## The run's verdicts for the ending card, from its summary.
+static func verdict_lines(summary: Dictionary) -> String:
+	var verdicts: Dictionary = summary.get("verdicts", {})
+	var names := {"execute": "EXECUTED", "flip": "FLIPPED", "shake": "SHAKEN DOWN", "deal": "TOOK THE DEAL"}
+	var parts: Array = []
+	for id: StringName in Verdicts.STAGE_BOSSES:
+		var v := String(verdicts.get(String(id), ""))
+		if v != "":
+			parts.append("%s %s" % [Story.boss_name(id).replace("THE ", ""), names.get(v, v.to_upper())])
+	var lines: Array = ["VERDICTS", " · ".join(parts) if not parts.is_empty() else "none handed down"]
+	var chairman := String(summary.get("chairman_verdict", ""))
+	if chairman != "":
+		lines.append("THE CHAIRMAN: " + Verdicts.option_name(StringName(chairman)))
+	return "\n".join(lines)
+
 ## The Chairman's verdict and the run's state -> the final ending.
 static func resolve(chairman_verdict: String, index: float, short_profit: int) -> StringName:
 	match chairman_verdict:

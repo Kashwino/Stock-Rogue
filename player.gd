@@ -37,6 +37,25 @@ var _dead: bool = false
 var hits_taken: int = 0
 ## Set by whatever hits us (bullets, blasts) just before take_damage.
 var last_hit_dir := Vector2.ZERO
+## Who landed the last hit ("boss:landlord", "kind:SNIPER", "explosion",
+## "rival"...): the BUSTED front page names it.
+var last_hit_by := ""
+
+## Untyped on purpose: a round's shooter may be freed before it lands.
+static func blame_of(src) -> String:
+	if not is_instance_valid(src):
+		return ""
+	if src is Boss:
+		return "boss:" + String(src.boss_id)
+	if src is Blast:
+		return "explosion"
+	if src is Enemy:
+		if src.faction == &"rival":
+			return "rival"
+		if src.lieutenant:
+			return "lieutenant"
+		return "kind:" + src.kind_name()
+	return ""
 var _knock := Vector2.ZERO
 ## Recent-fire bloom for the crosshair (0..1).
 var bloom := 0.0

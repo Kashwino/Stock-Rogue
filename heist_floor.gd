@@ -1049,8 +1049,28 @@ func _on_player_died() -> void:
 	if _prompt:
 		_prompt.hide()
 	RunState.sync_from_player(player)
+	# The front page: what got you, and where.
+	var cause := player.last_hit_by
+	if wanted and wanted.stars >= 5 and not cause.begins_with("boss:") and cause != "explosion":
+		cause = "police"
+	RunFlow.death_where = death_place(player.global_position)
 	await get_tree().create_timer(1.2, false).timeout
-	RunFlow.end_run(false)
+	RunFlow.end_run(false, cause)
+
+## "RENT OFFICE, TENEMENT ROW": the room someone fell in, and the building.
+func death_place(at: Vector2) -> String:
+	var room_title := ""
+	if generator:
+		for room in generator.rooms:
+			if Rect2(room.global_position, room.room_size).has_point(at):
+				for c in room.get_children():
+					if c is RoomArt:
+						room_title = c.title
+				break
+	var building := Venues.sign_name(_venue, boss_id)
+	if room_title == "":
+		return "outside %s" % building if building != "" else ""
+	return "%s, %s" % [room_title, building]
 
 # --------------------------------------------------------------- loot -------
 ## Scatter valuables across a room's floor. Count and value both scale with the

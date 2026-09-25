@@ -187,7 +187,8 @@ func _setup(shot: String) -> Node:
 		"ending":
 			var seq := EndingSequence.new()
 			seq.freeze_beneath = false
-			seq.summary = {"heists": 12, "index": float(args.get("index", "420")), "gold": 1840, "kills": 96, "who": "The Operator", "clout": 42}
+			seq.summary = {"heists": 12, "index": float(args.get("index", "420")), "gold": 1840, "kills": 96, "who": "The Operator", "clout": 47, "first_time": 5,
+				"verdicts": {"landlord": "flip", "auditor": "execute", "ambassador": "shake"}, "chairman_verdict": "seat", "reputation": [1, 1, 1]}
 			seq.ending = StringName(args.get("id", "new_chairman" if float(seq.summary["index"]) >= Story.NEW_CHAIRMAN_INDEX else "seat_at_table"))
 			get_tree().root.add_child(seq)
 			var part := String(args.get("part", ""))
@@ -205,7 +206,7 @@ func _setup(shot: String) -> Node:
 			RunState.start_run(load("res://main_character.tres"), 11)
 			var d = load("res://death_screen.tscn").instantiate()
 			get_tree().root.add_child(d)
-			var summary := {"heists": 4, "stage": "City", "gold": 612, "index": 87.0, "kills": 23, "venue": "bank_job", "who": "The Operator", "cause": args.get("cause", "")}
+			var summary := {"heists": 4, "stage": "City", "gold": 612, "index": 87.0, "kills": 23, "venue": "bank_job", "who": "The Operator", "cause": args.get("cause", ""), "where": args.get("where", "")}
 			if shot == "death":
 				d.show_death(summary)
 			else:

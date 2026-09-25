@@ -95,6 +95,8 @@ func _try_hit(target: Node) -> void:
 	if (target.is_in_group("player") or target.is_in_group("ally")) and target.has_method("take_damage"):
 		if "last_hit_dir" in target:
 			target.last_hit_dir = _dir
+		if "last_hit_by" in target:
+			target.last_hit_by = Player.blame_of(_shooter)
 		target.take_damage(damage)
 		_finish()
 

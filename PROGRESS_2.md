@@ -63,10 +63,10 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Verdicts in the run save (defaults for old saves)
 
 ## Phase 8 — Endings & gallery
-- [ ] 11 endings resolved in order + BUSTED variants
-- [ ] Each ending: title, epilogue cards, final image, family theme, stats with verdicts, credits
-- [ ] CASE CLOSED gallery with silhouettes and hints; first-time bonus Clout
-- [ ] Meta: verdict counts, endings seen, early endings; Legend = any final ending
+- [x] 11 endings resolved in order + BUSTED variants
+- [x] Each ending: title, epilogue cards, final image, family theme, stats with verdicts, credits
+- [x] CASE CLOSED gallery with silhouettes and hints; first-time bonus Clout
+- [x] Meta: verdict counts, endings seen, early endings; Legend = any final ending
 
 ## Phase 9 — Settings, performance, balance, QA
 - [ ] Settings: Gore, Blood style, Dynamic music, combo HUD scale

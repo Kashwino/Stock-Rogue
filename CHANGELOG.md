@@ -666,6 +666,32 @@
   Black Ledger's story are saved with the run (old saves load clean).
 - Career: verdict counts and early endings.
 
+## Brief 2 · Phase 8 — Endings & gallery
+
+- **Eleven endings** (`endings.gd`), resolved in the brief's order: three
+  early ones from a boss's deal (THE LANDLORD'S CHAIR, COOKED BOOKS,
+  DIPLOMATIC EXIT) and eight after the Chairman (BLACK MONDAY, SCORCHED
+  EARTH, THE SYNDICATE, THE PURGE, THE PUPPETEER, THE NEW CHAIRMAN, A SEAT
+  AT THE TABLE, RETIRED).
+- **Every ending** types out 4 epilogue cards over the rain, then its title,
+  kicker and stamp over a **procedural final image** of its own
+  (`ending_art.gd`: a chair in the Landlord's doorway, the Auditor's two
+  columns, a beach at dusk, a gold line rising out of a burning skyline, a
+  round table, an empty one, marionette strings, the lit top floor, a chair
+  ringed by the Board's eyes, a balcony at sunrise), plays its family's
+  theme (rule / escape / collapse / retire), and lists the run's numbers,
+  its verdicts and the Chairman's, then the credits.
+- **BUSTED variants**: the front page's headline now names what got you —
+  each boss, the kind of guard (sniper, dog, riot shield, turret...), a
+  five-star manhunt, an explosion, a rival crew or a lieutenant — and the
+  story says where (the room and the building).
+- **CASE CLOSED** (home screen): a card per ending plus BUSTED. Reached
+  endings show their image, title and count; the rest are dark silhouettes
+  with a one-line hint once you've reached any ending. The first time you
+  reach an ending pays +5 Clout (+3 for an early one).
+- **Career**: endings seen (and busts), early endings, verdict counts. The
+  Legend now unlocks on any final ending; an early ending never counts.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -848,3 +874,12 @@
 - **(Brief 2) Brief 3 arrived mid-Brief 2**: Brief 2's remaining phases are
   finished first because Brief 3 restyles the verdict card and the kneel
   that Brief 2 introduces; Brief 3 then starts on `brief-3` from there.
+- **(Brief 2) The Legend's feat is "reach a final ending"**: `runs_won`
+  only counts endings 4-11, so the old feat reads the same data.
+- **(Brief 2) Epilogues are four cards each** (the brief allows 3-5) so
+  every ending takes about the same time to reach its title.
+- **(Brief 2) Busts are in the gallery too** as a twelfth card, counted from
+  the career's deaths, so the grid reads as a full case wall.
+- **(Brief 2) "What got you"** is the last thing that hurt you: the round's
+  shooter, a blast, a boss's hazard. At five stars any non-boss, non-blast
+  death is reported as the manhunt.

@@ -91,21 +91,72 @@ func _exit_tree() -> void:
 
 
 class Headlines:
+	## BUSTED variants: the headline names what got you (a boss, the kind of
+	## guard, a five-star manhunt, an explosion, a rival crew), the story
+	## says where.
 	static func busted(s: Dictionary) -> Array:
 		var stage := String(s.get("stage", "Town")).to_upper()
 		var venue := StringName(s.get("venue", ""))
 		var noun := Venues.noun(venue) if venue != &"" else "WAREHOUSE"
 		var who := String(s.get("who", "an unnamed crew"))
-		if s.get("cause", "") == "quota":
+		var cause := String(s.get("cause", ""))
+		var where := String(s.get("where", "")).capitalize()
+		if where == "":
+			where = Venues.sign_name(venue) if venue != &"" else "a downtown building"
+		if cause == "quota":
 			return ["BOARD CUTS OFF DELINQUENT CREW",
 				"Collector's ledger comes up short in %s. Sources say %s has been delisted — and nobody gets relisted." % [stage.capitalize(), who]]
+		var pick := func(pool: Array) -> String:
+			return pool[absi(hash(str(s.get("heists", 0)) + noun + cause)) % pool.size()]
+		match cause:
+			"boss:landlord":
+				return ["LANDLORD SERVES FINAL EVICTION", "%s fell in the %s. The Landlord was seen collecting rent an hour later, shotgun still warm." % [who, where]]
+			"boss:auditor":
+				return ["AUDITOR CLOSES THE BOOKS ON LOCAL CREW", "%s was written off in the %s. The Auditor's ledger shows the account settled in full." % [who, where]]
+			"boss:ambassador":
+				return ["DIPLOMATIC INCIDENT AT THE EMBASSY", "%s fell in the %s. The Ambassador has claimed immunity and declined to comment." % [who, where]]
+			"boss:chairman":
+				return ["THE CHAIRMAN DELISTS A CHALLENGER", "%s fell on the %s, a floor above the city. The ticker never paused." % [who, where]]
+			"police":
+				return [pick.call(["FIVE-STAR MANHUNT ENDS AT THE %s" % noun, "CITYWIDE DRAGNET CORNERS CREW"]),
+					"Cruisers, a helicopter and half the precinct closed in on %s at %s. Witnesses counted sirens until they lost count." % [who, where]]
+			"explosion":
+				return [pick.call(["BLAST ROCKS THE %s" % noun, "FIREBALL ENDS %s HEIST" % stage]),
+					"Investigators sifting the %s found scorched ledgers, twisted metal and what was left of %s." % [where, who]]
+			"rival":
+				return ["RIVAL CREW SETTLES A SCORE", "%s was cut down by another crew inside %s. The Board recognises the survivors." % [who, where]]
+			"lieutenant":
+				return ["BOARD LIEUTENANT CLAIMS A SCALP", "One of the Board's named men put %s down in the %s and was back at his post by morning." % [who, where]]
+		if cause.begins_with("kind:"):
+			var kind := cause.substr(5)
+			var line := KIND_HEADLINES.get(kind, "%s STOPS ROBBERY AT THE %s") as String
+			var head := line
+			if line.count("%s") == 1:
+				head = line % noun
+			elif line.count("%s") == 2:
+				head = line % [kind, noun]
+			return [head,
+				"Police say %s fell in the %s. The %s who did it went back to work." % [who, where, kind.to_lower()]]
 		var pool := [
 			"CREW BUSTED IN %s %s SHOOTOUT" % [stage, noun],
 			"%s JOB ENDS IN BLOOD" % noun,
 			"GUNFIRE AT THE %s: SUSPECT DOWN" % noun,
 		]
-		var h: String = pool[absi(hash(str(s.get("heists", 0)) + noun)) % pool.size()]
-		return [h, "Police say %s fell inside %s. Witnesses describe a well-dressed figure, a getaway car that never left, and a stock ticker that would not stop falling." % [who, Venues.sign_name(venue) if venue != &"" else "a downtown building"]]
+		return [pick.call(pool), "Police say %s fell inside %s. Witnesses describe a well-dressed figure, a getaway car that never left, and a stock ticker that would not stop falling." % [who, where]]
+
+	## Headlines by the kind of guard that did it (%s = the venue's noun).
+	const KIND_HEADLINES := {
+		"GUARD": "NIGHT GUARD FOILS HEIST AT THE %s",
+		"LASER SNIPER": "ONE SHOT FROM THE DARK AT THE %s",
+		"MARKSMAN": "MARKSMAN ENDS %s STANDOFF",
+		"DOG": "GUARD DOG RUNS DOWN THIEF AT THE %s",
+		"BRUTE": "BRUTE FORCE AT THE %s: THIEF CRUSHED",
+		"RIOT SHIELD": "RIOT SQUAD HOLDS THE LINE AT THE %s",
+		"TURRET": "AUTOMATED DEFENSES CUT DOWN THIEF AT THE %s",
+		"DRONE": "SECURITY DRONE CORNERS THIEF AT THE %s",
+		"SHOTGUNNER": "SHOTGUN BLAST ENDS %s ROBBERY",
+		"BOUNCER": "BOUNCER THROWS OUT A THIEF — PERMANENTLY",
+	}
 
 	static func victory(s: Dictionary) -> Array:
 		if s.get("ending", "") == "new_chairman":

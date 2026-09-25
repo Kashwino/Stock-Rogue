@@ -18,6 +18,8 @@ var _credits: VBoxContainer
 var _credits_clip: Control
 var _button: Button
 var _narration: Narration
+## The ending's final image (shown with the title).
+var art: EndingArt
 
 static func play(host: Node, run_summary: Dictionary) -> EndingSequence:
 	var seq := EndingSequence.new()
@@ -105,16 +107,27 @@ func _show_title() -> void:
 	var data: Dictionary = Endings.DATA.get(ending, {})
 	var family := Endings.family(ending)
 	var ink: Color = {"rule": Palette.GOLD, "collapse": Palette.DANGER, "escape": Palette.NEON_CYAN}.get(family, Palette.PAPER)
+	# The final image fades up over the city; the words sit on a shade.
+	var shade := ColorRect.new()
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.02, 0.02, 0.03, 0.55)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_title_block.add_child(shade)
+	art = EndingArt.new()
+	art.ending = ending
+	art.position = Vector2(690, 236)
+	art.size = Vector2(540, 372)
+	_title_block.add_child(art)
 	var kicker := VisualTheme.label(String(data.get("kicker", "ENDING")), "KickerLabel", 22)
-	kicker.position = Vector2(90, 90)
+	kicker.position = Vector2(90, 70)
 	_title_block.add_child(kicker)
 	var title_text := Endings.title(ending)
 	var title := VisualTheme.label(title_text, "TitleLabel", 104 if title_text.length() <= 16 else 80, ink)
-	title.position = Vector2(84, 120)
+	title.position = Vector2(84, 96)
 	_title_block.add_child(title)
 	var who := VisualTheme.label(String(summary.get("who", "The Operator")).to_upper(), "", 28, Palette.GOLD_PALE)
 	who.add_theme_font_override("font", VisualTheme.font("heading_bold"))
-	who.position = Vector2(92, 250)
+	who.position = Vector2(92, 222)
 	_title_block.add_child(who)
 	var facts := [
 		"HEISTS PULLED ....... %d" % int(summary.get("heists", 0)),
@@ -123,20 +136,25 @@ func _show_title() -> void:
 		"GUARDS DOWN ......... %d" % int(summary.get("kills", 0)),
 	]
 	if summary.has("clout"):
-		facts.append("CLOUT EARNED ........ +%d" % int(summary["clout"]))
+		var first := int(summary.get("first_time", 0))
+		facts.append("CLOUT EARNED ........ +%d%s" % [int(summary["clout"]), ("  (FIRST TIME +%d)" % first) if first > 0 else ""])
 	var rep: Array = summary.get("reputation", [0, 0, 0])
 	facts.append("FEAR %d · LOYALTY %d · GREED %d" % [int(rep[0]), int(rep[1]), int(rep[2])])
-	var stats := VisualTheme.label("\n".join(facts), "", 22, Palette.PAPER)
+	var stats := VisualTheme.label("\n".join(facts), "", 21, Palette.PAPER)
 	stats.add_theme_font_override("font", VisualTheme.font("mono"))
-	stats.position = Vector2(92, 320)
+	stats.position = Vector2(92, 282)
 	_title_block.add_child(stats)
+	var verdicts := VisualTheme.label(Endings.verdict_lines(summary), "", 15, Palette.PAPER_DIM)
+	verdicts.add_theme_font_override("font", VisualTheme.font("mono"))
+	verdicts.position = Vector2(92, 488)
+	_title_block.add_child(verdicts)
 	var stamp := StampArt.new()
 	stamp.text = String(data.get("stamp", "CASE CLOSED"))
 	stamp.ink = {"rule": Palette.GOLD, "collapse": Palette.STAMP_RED}.get(family, Palette.STAMP_GREEN)
-	stamp.font_size = 44
+	stamp.font_size = 40
 	stamp.tilt = -0.14
 	_title_block.add_child(stamp)
-	stamp.position = Vector2(760, 330)
+	stamp.position = Vector2(700, 560)
 	stamp.slam(0.5)
 	_title_block.modulate.a = 0.0
 	var tw := create_tween()

@@ -98,6 +98,8 @@ func _explode() -> void:
 			if group == "player":
 				if "last_hit_dir" in target:
 					target.last_hit_dir = off.normalized() if off.length() > 1.0 else Vector2.RIGHT
+				if "last_hit_by" in target:
+					target.last_hit_by = "explosion"
 				target.take_damage(player_damage)
 				continue
 			if target.has_method("note_hit"):
