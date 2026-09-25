@@ -38,13 +38,19 @@ func on_room_start() -> void:
 # --- Gains (room clear only) ---
 ## Award a clear reward (already rolled within the room's rarity range).
 func award_clear(amount: int) -> void:
-	_add(amount)
+	_add(_legend(amount))
 
 func on_lucky_room() -> void:
 	_add(lucky_room_bonus)
 
 func add_bonus(amount: int) -> void:
-	_add(amount)
+	_add(_legend(amount))
+
+## The Legend doubles every gold gain.
+func _legend(amount: int) -> int:
+	if amount > 0 and RunState.character_profile and RunState.character_profile.gain_mult != 1.0:
+		return roundi(amount * RunState.character_profile.gain_mult)
+	return amount
 
 # --- Losses ---
 ## Gentle escalating penalty: base, base+step, base+2*step, ... within a room.

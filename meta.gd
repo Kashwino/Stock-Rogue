@@ -4,6 +4,44 @@ extends Node
 ## Access anywhere as Meta.prestige, Meta.tutorial_seen, etc.
 
 const SAVE_PATH := "user://meta.save"
+const WEB_KEY := "stock-rogue-career-v1"
+## The Connections board: spend Clout on weapons for the reward pool, one
+## starting perk, and a coat colour. Modest by design; nothing here wins a
+## quota on its own.
+const CATALOG := {
+	&"circuit_smg": {"name": "Circuit Thief", "cost": 12, "kind": "weapon", "detail": "Quiet SMG with piercing rounds. Enters cases and chests."},
+	&"margin_call": {"name": "Margin Call", "cost": 18, "kind": "weapon", "detail": "Heavy rail pistol. Pierces guards. Enters the loot pool."},
+	&"hostile_takeover": {"name": "Hostile Takeover", "cost": 24, "kind": "weapon", "detail": "Rapid shotgun with ricochets. Enters the loot pool."},
+	&"fast_hands": {"name": "Fast Hands", "cost": 8, "kind": "perk", "detail": "Start runs with 25% faster reloads."},
+	&"quiet_shoes": {"name": "Quiet Shoes", "cost": 8, "kind": "perk", "detail": "Start runs with silent dodge rolls."},
+	&"cool_head": {"name": "Cool Head", "cost": 10, "kind": "perk", "detail": "Incoming heat reduced by 25%."},
+	&"seed_money": {"name": "Seed Money", "cost": 10, "kind": "perk", "detail": "Start runs with $50 more."},
+	&"fence_friend": {"name": "Friend at the Fence", "cost": 12, "kind": "perk", "detail": "One free reroll every hideout visit."},
+	&"patch_kit": {"name": "Patch Kit", "cost": 14, "kind": "perk", "detail": "The first time you drop to 1 HP in a run, heal 1."},
+	&"coat_crimson": {"name": "Crimson Coat", "cost": 6, "kind": "coat", "detail": "A coat the colour of a bad quarter.", "color": "7a1f24"},
+	&"coat_ivory": {"name": "Ivory Coat", "cost": 6, "kind": "coat", "detail": "Clean enough to lie in.", "color": "d8d0bd"},
+	&"coat_midnight": {"name": "Midnight Coat", "cost": 6, "kind": "coat", "detail": "Blue-black, for rooftops.", "color": "18203a"},
+	&"coat_emerald": {"name": "Emerald Coat", "cost": 6, "kind": "coat", "detail": "Old money green.", "color": "1f4a32"},
+}
+## Feats that unlock the specialists (career-wide, across all case files).
+const UNLOCKS := {
+	&"ghost": ["fire_exit_escapes", 5, "Slip out a fire exit 5 times"],
+	&"wolf": ["bosses_killed", 3, "Put down 3 bosses"],
+	&"broker": ["best_index", 350, "Reach Index 350 in one run"],
+	&"legend": ["runs_won", 1, "Reach a final ending (beat the Chairman)"],
+}
+## The meta currency, earned at the end of every run.
+var clout := 0
+## Legacy name, kept so older saves and tools still read the balance.
+var intel: int:
+	get:
+		return clout
+	set(v):
+		clout = v
+var coat: StringName = &""
+var starting_perk: StringName = &""
+var extraction_receipts: Dictionary = {}
+var last_save_ok := true
 
 # --- Persistent progression fields ---
 var prestige: int = 0
@@ -12,12 +50,31 @@ var high_score: float = 0.0
 var runs_played: int = 0
 var runs_survived: int = 0
 var tutorial_seen: bool = false
+var specialists: Array[StringName] = []          # unlocked crew beyond the Operator
 var total_profit: float = 0.0                    # lifetime cash earned
+## Career stats across all three case files. Specialist unlocks read these.
+const STAT_DEFAULTS := {
+	"fire_exit_escapes": 0, "bosses_killed": 0, "best_index": 0.0, "runs_won": 0,
+	"heists_completed": 0, "total_gold": 0, "deaths": 0, "takedowns": 0, "best_combo": 0,
+	"verdict_execute": 0, "verdict_flip": 0, "verdict_shake": 0, "verdict_deal": 0, "early_endings": 0,
+}
+var stats: Dictionary = STAT_DEFAULTS.duplicate()
+## Stage bosses put down, by id (lieutenants count only in bosses_killed).
+var bosses_seen: Array = []
+## Case-file slots that have already sat through the full prologue.
+var prologue_slots: Array = []
+## Onboarding hints already shown once (ids from Hints).
+var hints_seen: Array = []
+## CASE CLOSED: every ending reached ({ending id: times}), and busts.
+var endings_seen: Dictionary = {}
+## The first time you reach an ending it pays extra Clout.
+const FIRST_ENDING_CLOUT := 5
+const FIRST_EARLY_CLOUT := 3
 
 func _ready() -> void:
 	load_meta()
 
-func save_meta() -> void:
+func save_meta() -> bool:
 	var data := {
 		"prestige": prestige,
 		"unlocked_assets": unlocked_assets,
@@ -26,26 +83,40 @@ func save_meta() -> void:
 		"runs_survived": runs_survived,
 		"tutorial_seen": tutorial_seen,
 		"total_profit": total_profit,
+		"clout": clout,
+		"coat": String(coat),
+		"starting_perk": String(starting_perk),
+		"extraction_receipts": extraction_receipts,
+		"specialists": specialists,
+		"stats": stats,
+		"bosses_seen": bosses_seen,
+		"prologue_slots": prologue_slots,
+		"hints_seen": hints_seen,
+		"endings_seen": endings_seen,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f == null:
-		push_error("Meta: could not open save file for writing")
-		return
-	f.store_string(JSON.stringify(data))
-	f.close()
+	last_save_ok = f != null
+	if f:
+		f.store_string(JSON.stringify(data))
+		f.close()
+	if OS.has_feature("web"):
+		var ok = JavaScriptBridge.eval("(()=>{try{localStorage.setItem('" + WEB_KEY + "'," + JSON.stringify(JSON.stringify(data)) + ");return true}catch(e){return false}})()", true)
+		last_save_ok = last_save_ok or ok == true
+	return last_save_ok
 
 func load_meta() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		return                                    # first launch: keep defaults
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if f == null:
-		return
-	var text := f.get_as_text()
-	f.close()
-	var parsed = JSON.parse_string(text)
+	var content := FileAccess.get_file_as_string(SAVE_PATH) if FileAccess.file_exists(SAVE_PATH) else "{}"
+	if OS.has_feature("web"):
+		var saved = JavaScriptBridge.eval("(()=>{try{return localStorage.getItem('" + WEB_KEY + "')}catch(e){return null}})()", true)
+		if saved is String and JSON.parse_string(saved) is Dictionary:
+			content = saved
+	var parsed = JSON.parse_string(content)
 	if typeof(parsed) != TYPE_DICTIONARY:
-		push_error("Meta: save file corrupt, ignoring")
 		return
+	clout = maxi(0, int(parsed.get("clout", parsed.get("intel", 0))))
+	coat = StringName(parsed.get("coat", ""))
+	starting_perk = StringName(parsed.get("starting_perk", ""))
+	extraction_receipts = parsed.get("extraction_receipts", {})
 	prestige = int(parsed.get("prestige", 0))
 	high_score = float(parsed.get("high_score", 0.0))
 	runs_played = int(parsed.get("runs_played", 0))
@@ -56,6 +127,193 @@ func load_meta() -> void:
 	unlocked_assets.clear()
 	for a in parsed.get("unlocked_assets", []):
 		unlocked_assets.append(StringName(a))
+	specialists.clear()
+	for sp in parsed.get("specialists", []):
+		specialists.append(StringName(sp))
+	stats = STAT_DEFAULTS.duplicate()
+	var saved_stats = parsed.get("stats", {})
+	if saved_stats is Dictionary:
+		for key in STAT_DEFAULTS:
+			stats[key] = saved_stats.get(key, STAT_DEFAULTS[key])
+	bosses_seen = []
+	for b in parsed.get("bosses_seen", []):
+		bosses_seen.append(String(b))
+	prologue_slots = []
+	for slot_index in parsed.get("prologue_slots", []):
+		prologue_slots.append(int(slot_index))
+	hints_seen = []
+	for h in parsed.get("hints_seen", []):
+		hints_seen.append(String(h))
+	endings_seen = {}
+	var saved_endings = parsed.get("endings_seen", {})
+	if saved_endings is Dictionary:
+		for id in saved_endings:
+			endings_seen[String(id)] = int(saved_endings[id])
+	if starting_perk not in unlocked_assets or not CATALOG.has(starting_perk) or CATALOG[starting_perk]["kind"] != "perk":
+		starting_perk = &""
+
+## Specialists unlock through feats (tracked in Phase 9 stats). Crews hired
+## through the beta's Crew Quarters stay hired.
+func is_specialist_unlocked(id: StringName) -> bool:
+	if id == &"operator":
+		return true
+	if id in specialists:
+		return true
+	if feat_met(id):
+		return true
+	return id in [&"wolf", &"broker"] and &"room_crew" in unlocked_assets
+
+func feat_met(id: StringName) -> bool:
+	if not UNLOCKS.has(id):
+		return false
+	var feat: Array = UNLOCKS[id]
+	return float(stats.get(feat[0], 0)) >= float(feat[1])
+
+func purchase(id: StringName) -> String:
+	if not CATALOG.has(id):
+		return "Unknown unlock."
+	if id in unlocked_assets:
+		return "Already unlocked."
+	var cost: int = CATALOG[id]["cost"]
+	if clout < cost:
+		return "Earn Clout by finishing runs: the index you reach, stages cleared, bosses."
+	clout -= cost
+	unlocked_assets.append(id)
+	if not save_meta():
+		clout += cost
+		unlocked_assets.erase(id)
+		return "Could not save. Purchase cancelled."
+	return "Unlocked permanently."
+
+## Wear an owned coat ("" for the specialist's own).
+func equip_coat(id: StringName) -> bool:
+	if id != &"" and (id not in unlocked_assets or not CATALOG.has(id) or CATALOG[id]["kind"] != "coat"):
+		return false
+	coat = id
+	return save_meta()
+
+func coat_color() -> Color:
+	if coat != &"" and CATALOG.has(coat) and CATALOG[coat].has("color"):
+		return Color(CATALOG[coat]["color"])
+	return Color(0, 0, 0, 0)
+
+func equip_starting_perk(id: StringName) -> bool:
+	if id != &"" and (id not in unlocked_assets or not CATALOG.has(id) or CATALOG[id]["kind"] != "perk"):
+		return false
+	var previous := starting_perk
+	starting_perk = id
+	if not save_meta():
+		starting_perk = previous
+		return false
+	return true
+
+## Clout for a finished run: stages cleared, stage bosses, the best index,
+## and a bonus for retiring. A receipt stops a run paying twice.
+## Clout for a finished run: stages x3, stage bosses x2, index / 60, +8 for a
+## win, and up to +3 for the run's best combo (one per 20 points).
+## Clout for a run: stages x3 + bosses x2 + index / 60 + 8 for a win + up to
+## 3 for the best combo (never less than 1).
+static func clout_for(stages_cleared: int, bosses: int, index: float, won: bool, best_combo: int = 0) -> int:
+	var earned := stages_cleared * 3 + bosses * 2 + int(maxf(index, 0.0) / 60.0) + (8 if won else 0) + mini(3, maxi(best_combo, 0) / 20)
+	return maxi(earned, 1)
+
+## `extra`: a bonus on top (TAKE HIS DEAL's early ending).
+func award_run(run_id: String, stages_cleared: int, bosses: int, index: float, won: bool, best_combo: int = 0, extra: int = 0) -> int:
+	if run_id == "" or extraction_receipts.has(run_id):
+		return 0
+	var earned := clout_for(stages_cleared, bosses, index, won, best_combo) + maxi(extra, 0)
+	extraction_receipts[run_id] = earned
+	clout += earned
+	if not save_meta():
+		clout -= earned
+		extraction_receipts.erase(run_id)
+		return 0
+	return earned
+
+## Specialists whose feat is now met but who were not yet hired. Hires them
+## and returns their ids (for the NEW SPECIALIST card).
+func check_unlocks() -> Array:
+	var fresh: Array = []
+	for id: StringName in UNLOCKS:
+		if id in specialists or (id in [&"wolf", &"broker"] and &"room_crew" in unlocked_assets):
+			continue
+		if feat_met(id):
+			specialists.append(id)
+			fresh.append(id)
+	if not fresh.is_empty():
+		save_meta()
+	return fresh
+
+## Progress toward a specialist, e.g. "3 / 5".
+func unlock_progress(id: StringName) -> String:
+	if not UNLOCKS.has(id):
+		return ""
+	var feat: Array = UNLOCKS[id]
+	return "%d / %d" % [mini(int(stats.get(feat[0], 0)), int(feat[1])), int(feat[1])]
+
+## Add to a career stat and save.
+func record(stat: String, amount = 1) -> void:
+	stats[stat] = stats.get(stat, 0) + amount
+	save_meta()
+
+## Keep the best value of a career stat.
+## True the first time a case-file slot starts a run: that run gets the
+## full prologue, later ones one line.
+func take_prologue(slot_index: int) -> bool:
+	if slot_index in prologue_slots:
+		return false
+	prologue_slots.append(slot_index)
+	save_meta()
+	return true
+
+## True (once) when an onboarding hint has not been shown yet; marks it seen.
+func take_hint(id: String) -> bool:
+	if id in hints_seen:
+		return false
+	hints_seen.append(id)
+	save_meta()
+	return true
+
+func record_best(stat: String, value: float) -> void:
+	if value > float(stats.get(stat, 0.0)):
+		stats[stat] = value
+		save_meta()
+
+## An ending reached. The first time pays bonus Clout (returned).
+func record_ending(id: StringName) -> int:
+	var key := String(id)
+	var first := not endings_seen.has(key)
+	endings_seen[key] = int(endings_seen.get(key, 0)) + 1
+	var bonus := 0
+	if first and Endings.has(id):
+		bonus = FIRST_EARLY_CLOUT if Endings.is_early(id) else FIRST_ENDING_CLOUT
+		clout += bonus
+	save_meta()
+	return bonus
+
+func has_seen_ending(id: StringName) -> bool:
+	return endings_seen.has(String(id))
+
+## Any ending at all (the gallery's hints appear once you have one).
+func any_ending_seen() -> bool:
+	for id in endings_seen:
+		if Endings.has(StringName(id)):
+			return true
+	return false
+
+## A verdict handed down (execute / flip / shake / deal).
+func record_verdict(verdict: StringName) -> void:
+	var key := "verdict_" + String(verdict)
+	if stats.has(key):
+		stats[key] = int(stats[key]) + 1
+		save_meta()
+
+## A boss or lieutenant put down: counts toward the Wolf.
+func record_boss(boss_id: StringName, is_lieutenant: bool) -> void:
+	stats["bosses_killed"] = int(stats.get("bosses_killed", 0)) + 1
+	if not is_lieutenant and String(boss_id) not in bosses_seen:
+		bosses_seen.append(String(boss_id))
+	save_meta()
 
 # --- Convenience helpers ---
 func unlock(asset_id: StringName) -> void:
@@ -77,6 +335,10 @@ func mark_tutorial_seen() -> void:
 
 ## Wipe all progression (for a "reset progress" settings button).
 func reset() -> void:
+	clout = 0
+	coat = &""
+	starting_perk = &""
+	extraction_receipts.clear()
 	prestige = 0
 	unlocked_assets.clear()
 	high_score = 0.0
@@ -84,4 +346,10 @@ func reset() -> void:
 	runs_survived = 0
 	tutorial_seen = false
 	total_profit = 0.0
+	specialists.clear()
+	stats = STAT_DEFAULTS.duplicate()
+	bosses_seen.clear()
+	prologue_slots.clear()
+	hints_seen.clear()
+	endings_seen.clear()
 	save_meta()

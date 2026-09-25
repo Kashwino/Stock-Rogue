@@ -29,6 +29,9 @@ var _last_health: int = -1
 
 var _body: Polygon2D
 var _ring: Line2D
+var _art: Node2D
+## Direction the car's nose points (set before adding to the tree).
+var facing := Vector2.RIGHT
 var _label: Label
 
 func _ready() -> void:
@@ -60,16 +63,22 @@ func _build_visual() -> void:
 		Vector2(-22, -18), Vector2(20, -18), Vector2(20, 18), Vector2(-22, 18)])
 	roof.color = Color(0.28, 0.31, 0.40)
 	add_child(roof)
+	_body.hide()
+	roof.hide()
+	_art = CarArt.new()
+	_art.rotation = facing.angle()
+	add_child(_art)
 
 	# Anchor a Control label into world space via this Node2D.
 	var anchor := Node2D.new()
 	anchor.position = Vector2(0, -zone_radius - 34)
 	add_child(anchor)
 	_label = Label.new()
-	_label.add_theme_font_size_override("font_size", 14)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_label.custom_minimum_size = Vector2(220, 0)
-	_label.position = Vector2(-110, 0)
+	_label.custom_minimum_size = Vector2(260, 0)
+	_label.position = Vector2(-130, 0)
+	_label.material = StreetArt._unshaded()
+	HudKit.style_label(_label, 14, Palette.GOLD)
 	anchor.add_child(_label)
 	_reset_label()
 
@@ -102,6 +111,11 @@ func _process(delta: float) -> void:
 		_cancel("down")
 		return
 
+	var scene := get_tree().current_scene
+	if scene is HeistFloor and scene.requires_boss_kill():
+		_label.text = "THE BOSS STILL STANDS — NO RUNNING"
+		return
+
 	var inside := global_position.distance_to(_player.global_position) <= zone_radius
 
 	# Not armed yet: you haven't set foot in the building. Standing here does
@@ -127,6 +141,11 @@ func _process(delta: float) -> void:
 			_running = true
 			_progress = 0.0
 			extraction_started.emit()
+		# The police helicopter's light on you: the driver won't pull out.
+		if scene is HeistFloor and scene.spotlit():
+			_label.text = "SPOTLIGHT — wait for the dark"
+			_label.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+			return
 		_progress += delta
 		_update_label()
 		if _progress >= escape_duration:
@@ -159,3 +178,52 @@ func _finish() -> void:
 	_running = false
 	_label.text = "GONE."
 	extracted.emit()
+
+## Two headlight cones plus tail-light glow, owned by the heist's lighting.
+func add_headlights(lighting: HeistLighting) -> void:
+	if lighting == null or not lighting.enabled:
+		return
+	var across := Vector2(-facing.y, facing.x)
+	for side in [-1.0, 1.0]:
+		var beam := PointLight2D.new()
+		beam.texture = HeistLighting.cone()
+		beam.texture_scale = 2.4
+		beam.color = Color("fff0c8")
+		beam.energy = 0.9
+		beam.position = facing * 62.0 + across * side * 20.0
+		beam.rotation = facing.angle()
+		add_child(beam)
+	var tail := PointLight2D.new()
+	tail.texture = HeistLighting.radial()
+	tail.texture_scale = 0.9
+	tail.color = Color("ff2a2a")
+	tail.energy = 0.7
+	tail.position = -facing * 64.0
+	add_child(tail)
+
+
+class CarArt extends Node2D:
+	## The getaway car: a long black sedan with gold pinstripe, nose along +X.
+	func _ready() -> void:
+		z_index = 1
+		queue_redraw()
+	func _draw() -> void:
+		var body := Rect2(-66, -30, 132, 60)
+		draw_rect(Rect2(body.position + Vector2(6, 8), body.size), Color(0, 0, 0, 0.45))
+		for p in [Vector2(-50, -34), Vector2(30, -34), Vector2(-50, 26), Vector2(30, 26)]:
+			draw_rect(Rect2(p, Vector2(24, 8)), Color("050506"))
+		draw_rect(body, Color("15161b"))
+		draw_rect(Rect2(-60, -26, 120, 52), Color("1f2128"))
+		draw_line(Vector2(-60, -22), Vector2(60, -22), Palette.GOLD_DIM, 1.5)
+		draw_line(Vector2(-60, 22), Vector2(60, 22), Palette.GOLD_DIM, 1.5)
+		# Glass and roof.
+		draw_rect(Rect2(8, -22, 22, 44), Color("0f2230"))
+		draw_rect(Rect2(-34, -22, 14, 44), Color("0f2230"))
+		draw_rect(Rect2(-20, -24, 28, 48), Color("26282f"))
+		draw_line(Vector2(10, -18), Vector2(26, 6), Color(1, 1, 1, 0.12), 3.0)
+		# Lights.
+		draw_rect(Rect2(60, -24, 7, 12), Color("fff4cc"))
+		draw_rect(Rect2(60, 12, 7, 12), Color("fff4cc"))
+		draw_rect(Rect2(-68, -24, 5, 10), Color("d02a2a"))
+		draw_rect(Rect2(-68, 14, 5, 10), Color("d02a2a"))
+		draw_rect(body, Color("050506"), false, 2.0)

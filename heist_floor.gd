@@ -8,7 +8,7 @@ class_name HeistFloor
 ##    posted on the valuables and never leave them.
 ##  - No door locks, no forced room clearing. Rooms award gold when their crew
 ##    falls, but nothing gates your movement.
-##  - HEAT rises over time; reinforcements breach from the entrance and exits
+##  - HEAT comes from witnessed security reports; reinforcements breach from entrances
 ##    and HUNT you. Killing the boss MARKS you: bigger waves, and emergency
 ##    exits weld shut one by one. The main door always stays open.
 ##  - To extract, get back OUT of the building and stand at the car for a few
@@ -55,15 +55,115 @@ var car: GetawayCar = null
 var _kills: int = 0
 var _enemies_total: int = 0
 var _heist_start: float = 0.0
+var active_elapsed: float = 0.0
+var director: EnemyDirector
+var _kill_streak := 0
 var _rarity: int = 0
 var _venue: StringName = &""
+var modifier: StringName = &""
+## Every map modifier on this job, and its objective (see Objectives).
+var modifiers: Array = []
+var objective: StringName = &"loot"
+## HIT jobs crash the venue instead of pumping it.
+var hit_job := false
+var fx: CombatFX
+var crosshair: Crosshair
+## Every death, classified: hit-stop, punch, multi chain (kill_feedback.gd).
+var kills: KillFeedback
+## Blood, decals, gibs and footprints (gore.gd; Settings "gore").
+var gore: Gore
+## THE RALLY: the combo (combo.gd).
+var combo: Combo
+## WANTED stars, sirens, cruisers and the helicopter (wanted.gd).
+var wanted: Wanted
+var security_disabled := 0
+var last_heat_source := "No reports. Stay out of sight."
+var quiet_seconds := 0.0
+var _security_status: Label
+var tactical_map: HeistMap
+var _status_clock := 0.0
+var boss_heist := false
+var boss_id: StringName = &""
+var exit_signs: Array = []
+var loot_banked := 0
+var _siren_on := false
+var _heartbeat_on := false
+var _boss_music := false
+var env: EnvTheme
+var lighting: HeistLighting
+var post_fx: PostFX
+var blood_vignette: BloodVignette
+var building_bounds := Rect2()
+var wall_art: Array = []
+var bullet_pool: BulletPool
+## Relic event switchboard (kill, hit_taken, reload, room_cleared, ...).
+var hooks: RelicHooks
+var _stage := 0
+## Heat-log bookkeeping read by objectives and the grade.
+var civilians_killed := 0
+var alarms_raised := 0
+## Witnessed security reports (cameras, radio calls, alarms): a Ghost Run
+## needs this at zero.
+var alerts := 0
+## Objective state.
+var vip: Enemy = null
+var charges: Array = []
+var charges_planted := 0
+var package: Node2D = null
+var carrying_package := false
+var jackpots: Array = []
+var _lockdown_clock := -1.0
+var _smash_started := false
+## Rival crew members still standing.
+var rivals: Array = []
+## Boss fight state.
+var boss: Boss = null
+var lieutenant: Enemy = null
+## Verdicts (verdicts.gd): the open card, flipped bosses fighting beside you
+## in the finale, and the executed bosses' revenge waves.
+var _verdict_card: VerdictCard = null
+var allies: Array = []
+var revenge: Array = []
+var _revenge_left: Array = []
+var _revenge_clock := 0.0
+var _pouch_used := false
+var audit_active := false
+var _shutters: Array = []
+var _focus_point := Vector2.ZERO
+var _focus_until_msec := 0
+var _lieutenant_shown := false
+var _alarm_quiet_until := -1.0
+var _left_by_fire_exit := false
 
 func _ready() -> void:
+	director = EnemyDirector.new()
+	add_child(director)
+	bullet_pool = BulletPool.new()
+	add_child(bullet_pool)
+	hooks = RelicHooks.new()
+	hooks.floor_host = self
+	add_child(hooks)
+	kills = KillFeedback.new()
+	kills.host = self
+	add_child(kills)
+	add_child(PauseMenu.new())
+	if Settings.values.get("tips", true) and OnboardingHints.pending():
+		var hints := OnboardingHints.new()
+		hints.host = self
+		add_child(hints)
 	camera = get_node_or_null("Camera2D")
 	if camera == null:
 		camera = Camera2D.new()
 		add_child(camera)
 	camera.make_current()
+	camera.zoom = Vector2(1.15, 1.15)
+	fx = CombatFX.new()
+	fx.camera = camera
+	add_child(fx)
+	post_fx = PostFX.new()
+	add_child(post_fx)
+	blood_vignette = BloodVignette.new()
+	add_child(blood_vignette)
 
 	_ensure_chest_ui()
 	_ensure_results()
@@ -74,33 +174,60 @@ func _build_floor() -> void:
 	# The building corresponds to the heist chosen on the map.
 	var stage: int = RunState.run_map.current_stage if RunState.run_map else 0
 	var heist_index: int = RunState.run_map.current_step if RunState.run_map else 0
+	_stage = stage
 	if RunFlow.pending_heist != null:
 		_rarity = RunFlow.pending_heist.room_rarity
 		_venue = RunFlow.pending_heist.venue_id
+		modifier = RunFlow.pending_heist.modifier
+		modifiers = RunFlow.pending_heist.modifiers.duplicate()
+		if modifiers.is_empty() and modifier != &"":
+			modifiers = [modifier]
+		objective = RunFlow.pending_heist.objective
+		hit_job = RunFlow.pending_heist.is_hit()
 	else:
 		_rarity = 0
 		_venue = &"pickpocket"
 
+	boss_heist = RunFlow.pending_heist != null and RunFlow.pending_heist.is_boss()
+	if boss_heist:
+		objective = &"boss"
+	boss_id = RunFlow.pending_heist.boss_id if boss_heist else &""
 	var room_count: int = ROOMS_BY_STAGE.get(stage, 10) + int(_rarity / 2.0)
 	var quota_level: int = RunState.run_map.quota_block if RunState.run_map else 0
 	var exit_count: int = clampi(quota_level + 1, 1, 4)
 
-	_rng.seed = hash(str(RunFlow.run_seed) + "_floor_" + str(heist_index))
+	_rng.seed = hash(str(RunFlow.run_seed) + "_floor_" + str(stage) + "_" + str(heist_index))
 
 	generator = FloorGenerator.new()
 	add_child(generator)
-	generator.generate(
-		hash(str(RunFlow.run_seed) + "_floor_" + str(heist_index)),
-		room_count, exit_count)
+	if boss_heist and BossLayouts.has_layout(boss_id):
+		generator.generate_authored(boss_id)
+	else:
+		generator.generate(
+			hash(str(RunFlow.run_seed) + "_floor_" + str(stage) + "_" + str(heist_index)),
+			room_count, exit_count)
 	if generator.rooms.is_empty():
 		push_error("HeistFloor: no rooms generated")
 		return
+	_dress_building()
 
 	# Difficulty from heist rarity: denser crews in rarer heists.
 	for room in generator.rooms:
-		if room.get_meta("chest_kind", "") == "":
+		if room == generator.start_room:
+			room.spawn_count = 0
+		elif room.has_meta("is_boss"):
+			# Stage bosses fight alone (they call their own help); ordinary jobs
+			# keep a titled lieutenant and two of his crew in the boss room.
+			room.spawn_count = 1 if boss_heist else 3
+			room.enemy_scene = load(boss_scene_path(boss_id)) if boss_heist else load("res://enemy.tscn")
+		elif room.get_meta("chest_kind", "") == "":
 			var base: int = room.get("spawn_count")
-			room.set("spawn_count", base + int(_rarity * 0.75))
+			var crew := float(base + int(_rarity * 0.75))
+			if has_mod(&"payday"):
+				crew *= 1.3
+			if has_mod(&"skeleton_crew"):
+				crew *= 0.6
+			room.set("spawn_count", maxi(1, roundi(crew)))
 			if not room.has_meta("is_boss"):
 				room.set("rarity", _rarity)
 
@@ -122,15 +249,82 @@ func _build_floor() -> void:
 	if generator.upgrade_chest_room:
 		_spawn_chest(generator.upgrade_chest_room, "upgrade")
 
+	if has_mod(&"lockdown"):
+		var spared := RunState.has_job_gear(&"bolt_cutters")
+		for gap: Dictionary in generator.exits:
+			if spared:
+				spared = false          # the bolt cutters keep one fire exit open
+				continue
+			generator.close_exit(gap)
 	_decorate_exits()
 	_ensure_prompt()
 	_spawn_car()
+	_dress_outside()
+	crosshair = Crosshair.new()
+	crosshair.player = player
+	add_child(crosshair)
+	wanted = Wanted.new()
+	add_child(wanted)
+	wanted.setup(self)
+	wanted.star_gained.connect(_on_star_gained)
+	gore = Gore.new()
+	add_child(gore)
+	gore.setup(self)
+	kills.killed.connect(gore.on_kill)
+	combo = Combo.new()
+	combo.host = self
+	add_child(combo)
+	kills.killed.connect(combo.on_kill)
+	if hud and hud.has_method("bind_combo"):
+		hud.bind_combo(combo)
 	_assign_guard_roles()
+	_spawn_civilians()
+	director.refresh()
+	# A flipped boss made the Board wary: this stage's heists start at 1 star.
+	if RunState.board_suspicious() and not RunFlow.practice:
+		heat = maxf(heat, Wanted.THRESHOLDS[0])
+		wanted.on_heat(heat)
+		last_heat_source = "The Board is suspicious"
+		if hud and hud.has_method("log_heat"):
+			hud.log_heat("THE BOARD IS SUSPICIOUS  +%d" % roundi(Wanted.THRESHOLDS[0]))
+	var terminal := MarketTerminal.new()
+	terminal.position = generator.start_room.position + Vector2(430, 270)
+	add_child(terminal)
+	_setup_security()
+	_setup_objective()
+	if has_mod(&"rival_crew") and not boss_heist:
+		_spawn_rivals()
+	_setup_tactics()
 
+	_show_intro_card()
+	hooks.heist_start.emit()
+	if RunState.has_relic(&"insider_wire"):
+		_show_vision_cones()
+	Audio.play_stage_music(_stage)
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
 	_heat_timer = reinforcement_interval
-	RunFlow.on_room_entered(0)
+
+func _show_intro_card() -> void:
+	var card := HeistIntroCard.new()
+	card.venue_name = Venues.display_name(_venue)
+	card.sign_name = Venues.sign_name(_venue, boss_id)
+	card.security = _rarity
+	card.objective = Objectives.title(objective)
+	card.objective_detail = Objectives.brief(objective).trim_suffix(".")
+	if boss_heist:
+		card.boss_title = Story.boss_name(boss_id)
+		card.objective = "TAKE HIM DOWN"
+		card.objective_detail = "the car won't leave while he stands"
+	if not boss_heist:
+		var tick := Venues.ticker(_venue)
+		card.modifiers.append(["HIT: CRASH " + tick, "", Palette.DANGER] if hit_job else ["CONTRACT: PUMP " + tick, "", Palette.STAMP_GREEN])
+	for m in modifiers:
+		if MapNode.MODIFIERS.has(m):
+			card.modifiers.append([MapNode.MODIFIERS[m][0], MapNode.MODIFIERS[m][1]])
+	if RunFlow.practice:
+		card.modifiers.append(["REHEARSAL — NOBODY DIES IN A DRY RUN", ""])
+	add_child(card)
 
 func _spawn_player() -> void:
 	var scene = load("res://player.tscn")
@@ -139,11 +333,13 @@ func _spawn_player() -> void:
 		return
 	player = scene.instantiate()
 	add_child(player)
-	# Start OUTSIDE, next to the getaway car.
+	# Start OUTSIDE on the door's axis; the getaway car is parked alongside.
 	player.global_position = _outside_position()
 	if RunState.active:
 		RunState.apply_to_player(player)
 	player.died.connect(_on_player_died)
+	player.health_changed.connect(_on_player_health)
+	_on_player_health.call_deferred(player.health, player.max_health)
 	var pcam = player.get_node_or_null("Camera2D")
 	if pcam:
 		pcam.enabled = false
@@ -153,9 +349,15 @@ func _setup_market_and_hud() -> void:
 	# Persistent run-long market lives in RunState; the heist drives ONE venue.
 	live = LiveStock.new()
 	live.venue_asset_id = _venue
+	live.hit_job = hit_job
 	add_child(live)
 	live.setup(RunState.market, player, RunState.character_profile)
 	player.live_stock = live
+	live.player_moved.connect(_on_player_moved_market)
+	if RunState.has_job_gear(&"body_armor"):
+		player.armor_charges = 1
+	if RunState.loadout:
+		RunState.loadout.reload_finished.connect(_on_reload_finished)
 
 	var hud_scene = load("res://hud.tscn")
 	if hud_scene:
@@ -163,6 +365,8 @@ func _setup_market_and_hud() -> void:
 		add_child(hud)
 		if hud.has_method("bind_hud"):
 			hud.bind_hud(player, live, RunState.loadout)
+		if combo and hud.has_method("bind_combo"):
+			hud.bind_combo(combo)
 
 func _ensure_chest_ui() -> void:
 	if get_tree().get_nodes_in_group("chest_ui").size() > 0:
@@ -188,12 +392,11 @@ func _ensure_results() -> void:
 	results.continued.connect(_on_results_continued)
 
 func _decorate_exits() -> void:
-	# Labels over the main door + each emergency exit.
-	if not generator.entrance.is_empty():
-		_exit_label(generator.entrance["inside_pos"], "MAIN DOOR — the car is out here",
-			Color(0.95, 0.8, 0.3))
+	# The main door has the neon sign and a gold threshold; fire exits get a
+	# lit green EXIT box (or a red SEALED one under lockdown).
 	for g: Dictionary in generator.exits:
-		_exit_label(g["inside_pos"], "FIRE EXIT — quiet escape", Color(0.35, 0.85, 0.5))
+		var sealed: bool = not g.get("open", false)
+		_exit_label(g["inside_pos"], "SEALED" if sealed else "EXIT", Palette.DANGER if sealed else Palette.NEON_GREEN)
 
 ## A point OUTSIDE the main door, on the street side of the entrance wall.
 func _outside_position() -> Vector2:
@@ -210,10 +413,22 @@ func _outside_position() -> Vector2:
 	var outward := (wall_world - inside).normalized()
 	return wall_world + outward * 190.0
 
+func _door_outward() -> Vector2:
+	if generator.entrance.is_empty():
+		return Vector2.DOWN
+	var e: Dictionary = generator.entrance
+	return (e["room"].to_global(e["wall_pos"]) - e["inside_pos"]).normalized()
+
 ## Park the getaway car outside the main door and route extraction through it.
 func _spawn_car() -> void:
 	car = GetawayCar.new()
-	car.global_position = _outside_position()
+	car.global_position = _outside_position() + Vector2(-_door_outward().y, _door_outward().x) * 150.0
+	if not generator.entrance.is_empty():
+		var e: Dictionary = generator.entrance
+		var outward: Vector2 = (e["room"].to_global(e["wall_pos"]) - e["inside_pos"]).normalized()
+		car.facing = Vector2(-outward.y, outward.x)
+	if RunState.has_relic(&"getaway_driver"):
+		car.escape_duration = 2.0
 	add_child(car)
 	car.bind_player(player)
 	car.extracted.connect(_extract)
@@ -234,10 +449,25 @@ func _assign_guard_roles() -> void:
 				guards.append(c)
 
 		var room_rect := Rect2(room.global_position, room.get("room_size"))
+		var has_radio := false
 		for c in guards:
+			if c is Boss:
+				c.set_guard_room(room_rect)
+				c.set_post(c.global_position)
+				continue
 			# Archetype first: rarity raises the odds of the nastier kinds.
 			c.apply_archetype(_pick_archetype(room, guards_loot))
 			c.set_guard_room(room_rect)
+			_apply_sight(c)
+			# One radio per room, carried by someone who can actually talk.
+			if not has_radio and c.kind not in NO_RADIO:
+				c.radio_carrier = true
+				has_radio = true
+			_maybe_elite(c, room)
+			if room.has_meta("is_boss") and not boss_heist and lieutenant == null:
+				lieutenant = c
+				c.make_lieutenant(Story.lieutenant_name(_rng))
+				c.died.connect(_on_lieutenant_down)
 
 			if guards_loot:
 				# Treasure guards: rooted, watchful, never leave the prize.
@@ -251,6 +481,28 @@ func _assign_guard_roles() -> void:
 				door_i += 1
 			else:
 				c.role = Enemy.Role.PATROL
+
+## Archetypes that never carry the radio.
+const NO_RADIO := [Enemy.Kind.TECH, Enemy.Kind.DOG, Enemy.Kind.DRONE, Enemy.Kind.TURRET]
+## Archetypes that never roll an elite affix.
+const NO_ELITE := [Enemy.Kind.DOG, Enemy.Kind.DRONE, Enemy.Kind.TURRET, Enemy.Kind.TECH]
+var _elite_budget := -1
+
+## Elites from the City onward (and on rare Town jobs): a small per-building
+## budget, likelier in treasure and boss rooms and on rarer jobs.
+func _maybe_elite(c: Enemy, room) -> void:
+	if c.kind in NO_ELITE:
+		return
+	if _elite_budget < 0:
+		_elite_budget = (0 if _rarity < 4 else 1) if _stage == 0 else 1 + _stage + int(_rarity >= 3)
+	if _elite_budget <= 0:
+		return
+	var chance := 0.05 + 0.045 * _stage + 0.02 * _rarity
+	if room.has_meta("chest_kind") or room.has_meta("is_boss"):
+		chance *= 2.0
+	if _rng.randf() < chance:
+		c.make_elite(Enemy.AFFIXES[_rng.randi() % Enemy.AFFIXES.size()])
+		_elite_budget -= 1
 
 ## World-space positions just inside each of a room's open doorways.
 func _doorway_posts(room) -> Array:
@@ -269,37 +521,67 @@ func _doorway_posts(room) -> Array:
 	out.shuffle()
 	return out
 
-## Weighted archetype pick. Treasure rooms and rarer heists skew dangerous.
+## Per-stage archetype pools: {kind: weight} for ordinary rooms, treasure
+## rooms and boss rooms. Town is guards, dogs and bouncers; the City brings
+## techs, riot shields and laser sights; the World adds grenadiers and
+## drones; the Exchange fields everything.
+static func stage_pools(stage: int) -> Dictionary:
+	match stage:
+		0:
+			return {
+				"room": {Enemy.Kind.GRUNT: 10.0, Enemy.Kind.SHOTGUNNER: 2.0, Enemy.Kind.BOUNCER: 1.8, Enemy.Kind.HANDLER: 1.4, Enemy.Kind.TECH: 1.2,
+					Enemy.Kind.SPRINTER: 1.0, Enemy.Kind.ENFORCER: 0.8, Enemy.Kind.RIOT: 0.7, Enemy.Kind.MARKSMAN: 0.6, Enemy.Kind.GRENADIER: 0.3},
+				"treasure": {Enemy.Kind.SHOTGUNNER: 3.0, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.BOUNCER: 2.0, Enemy.Kind.TURRET: 1.5, Enemy.Kind.MARKSMAN: 1.5},
+				"boss": {Enemy.Kind.BRUTE: 2.0, Enemy.Kind.ENFORCER: 2.0, Enemy.Kind.SHOTGUNNER: 2.0, Enemy.Kind.BOUNCER: 1.5, Enemy.Kind.MEDIC: 1.2, Enemy.Kind.HANDLER: 1.0},
+			}
+		1:
+			return {
+				"room": {Enemy.Kind.GRUNT: 7.0, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.TECH: 1.6, Enemy.Kind.SNIPER: 1.3, Enemy.Kind.RIOT: 1.5, Enemy.Kind.MARKSMAN: 1.0,
+					Enemy.Kind.GRENADIER: 0.9, Enemy.Kind.SHOTGUNNER: 1.0, Enemy.Kind.MEDIC: 0.8, Enemy.Kind.DRONE: 0.8, Enemy.Kind.SPRINTER: 0.8, Enemy.Kind.HANDLER: 0.6},
+				"treasure": {Enemy.Kind.RIOT: 2.5, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.TURRET: 2.0, Enemy.Kind.SNIPER: 1.5, Enemy.Kind.SHOTGUNNER: 1.5},
+				"boss": {Enemy.Kind.RIOT: 2.0, Enemy.Kind.ENFORCER: 2.0, Enemy.Kind.TURRET: 1.5, Enemy.Kind.MEDIC: 1.2, Enemy.Kind.SNIPER: 1.2, Enemy.Kind.DRONE: 1.0},
+			}
+		2:
+			return {
+				"room": {Enemy.Kind.GRUNT: 4.0, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 1.5, Enemy.Kind.SNIPER: 1.5, Enemy.Kind.BOUNCER: 1.5,
+					Enemy.Kind.HANDLER: 1.2, Enemy.Kind.TECH: 1.4, Enemy.Kind.DRONE: 1.2, Enemy.Kind.MEDIC: 1.0, Enemy.Kind.SPRINTER: 1.0, Enemy.Kind.SHOTGUNNER: 1.0, Enemy.Kind.TURRET: 0.5},
+				"treasure": {Enemy.Kind.RIOT: 2.5, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.BOUNCER: 2.0, Enemy.Kind.TURRET: 1.5, Enemy.Kind.SNIPER: 1.5},
+				"boss": {Enemy.Kind.BRUTE: 2.0, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 1.5, Enemy.Kind.MEDIC: 1.2, Enemy.Kind.BOUNCER: 1.5, Enemy.Kind.DRONE: 1.0},
+			}
+	return {
+		"room": {Enemy.Kind.GRUNT: 2.5, Enemy.Kind.ENFORCER: 2.5, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.SNIPER: 2.0, Enemy.Kind.BOUNCER: 1.5,
+			Enemy.Kind.TECH: 1.5, Enemy.Kind.DRONE: 1.5, Enemy.Kind.MEDIC: 1.0, Enemy.Kind.BRUTE: 1.0, Enemy.Kind.SPRINTER: 1.0, Enemy.Kind.TURRET: 0.8, Enemy.Kind.SHOTGUNNER: 1.0, Enemy.Kind.HANDLER: 1.0},
+		"treasure": {Enemy.Kind.RIOT: 2.5, Enemy.Kind.SNIPER: 2.0, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.BRUTE: 1.5, Enemy.Kind.TURRET: 1.5},
+		"boss": {Enemy.Kind.BRUTE: 2.0, Enemy.Kind.RIOT: 2.0, Enemy.Kind.GRENADIER: 2.0, Enemy.Kind.SNIPER: 1.5, Enemy.Kind.MEDIC: 1.5, Enemy.Kind.DRONE: 1.2},
+	}
+
+## Weighted archetype pick from this stage's pool. Rarer rooms trade grunts
+## for specialists.
 func _pick_archetype(room, guards_loot: bool) -> int:
 	var rarity: int = room.get("rarity")
-	var roll := _rng.randf()
+	var pools := stage_pools(_stage)
+	var pool: Dictionary = pools["room"]
 	if room.has_meta("is_boss"):
-		# The boss room can field a Medic to keep its guards topped up — killing
-		# it first is the smart play. Turrets watch the approach.
-		if roll < 0.22: return Enemy.Kind.BRUTE
-		if roll < 0.42: return Enemy.Kind.ENFORCER
-		if roll < 0.58: return Enemy.Kind.SHOTGUNNER
-		if roll < 0.74: return Enemy.Kind.TURRET
-		if roll < 0.88: return Enemy.Kind.MEDIC
-		return Enemy.Kind.SPRINTER
-	if guards_loot:
-		# TURRET fits treasure rooms perfectly: an emplacement watching the
-		# prize, forcing you to approach from an angle instead of walking in.
-		if roll < 0.25: return Enemy.Kind.SHOTGUNNER
-		if roll < 0.5: return Enemy.Kind.ENFORCER
-		if roll < 0.72: return Enemy.Kind.TURRET
-		return Enemy.Kind.MARKSMAN
-	# Ordinary rooms: mostly grunts early, more specialists as rarity climbs.
-	var specialist_chance := 0.15 + rarity * 0.09
-	if roll > specialist_chance:
-		return Enemy.Kind.GRUNT
-	var r2 := _rng.randf()
-	if r2 < 0.3: return Enemy.Kind.ENFORCER
-	if r2 < 0.54: return Enemy.Kind.SHOTGUNNER
-	if r2 < 0.72: return Enemy.Kind.MARKSMAN
-	if r2 < 0.87: return Enemy.Kind.SPRINTER
-	if r2 < 0.96: return Enemy.Kind.TURRET
-	return Enemy.Kind.BRUTE
+		pool = pools["boss"]
+	elif guards_loot:
+		pool = pools["treasure"]
+	return _weighted(pool, rarity)
+
+func _weighted(pool: Dictionary, rarity: int = 0) -> int:
+	var total := 0.0
+	var weights: Dictionary = {}
+	for k in pool:
+		var w: float = pool[k]
+		if k == Enemy.Kind.GRUNT:
+			w *= maxf(0.25, 1.0 - rarity * 0.15)
+		weights[k] = w
+		total += w
+	var roll := _rng.randf() * total
+	for k in weights:
+		roll -= weights[k]
+		if roll <= 0.0:
+			return k
+	return pool.keys()[0]
 
 func _exit_label(pos: Vector2, text: String, color: Color) -> void:
 	# There is no Label2D in Godot. A Label is a Control, but parenting it to a
@@ -312,12 +594,15 @@ func _exit_label(pos: Vector2, text: String, color: Color) -> void:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_color_override("font_color", color)
-	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+	l.add_theme_font_size_override("font_size", 22)
+	l.add_theme_stylebox_override("normal", VisualTheme.box(Color(0.02, 0.05, 0.03, 0.92), color, 2, 2, 6))
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Offset so the text centres on the anchor rather than starting at it.
-	l.position = Vector2(-90, 0)
-	l.custom_minimum_size = Vector2(180, 0)
+	l.position = Vector2(-50, 0)
+	l.custom_minimum_size = Vector2(100, 0)
+	l.material = StreetArt._unshaded()
 	anchor.add_child(l)
+	exit_signs.append(l)
 
 ## Big centred prompt shown while standing in an open doorway.
 func _ensure_prompt() -> void:
@@ -327,8 +612,12 @@ func _ensure_prompt() -> void:
 	add_child(layer)
 	_prompt = Label.new()
 	_prompt.text = "WAY OUT — the car is parked outside"
-	_prompt.add_theme_font_size_override("font_size", 28)
+	# Pulp type with an ink outline (Brief 3); no box, it sits over the room.
+	_prompt.add_theme_font_override("font", VisualTheme.font("pulp"))
+	_prompt.add_theme_font_size_override("font_size", 26)
 	_prompt.add_theme_color_override("font_color", Color(0.95, 0.85, 0.4))
+	_prompt.add_theme_color_override("font_outline_color", Palette.HUD_INK)
+	_prompt.add_theme_constant_override("outline_size", 6)
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt.anchor_left = 0.0
 	_prompt.anchor_right = 1.0
@@ -356,66 +645,114 @@ func _hook_room_enemies(room) -> void:
 			_enemies_total += 1
 			c.died.connect(_on_enemy_died)
 
+## Kills that make noise (everything but silent stealth takedowns): a Ghost
+## Run survives only the silent kind.
+var loud_kills := 0
+
 func _on_enemy_died(e) -> void:
+	hooks.kill.emit(e)
 	_kills += 1
+	if not (e.kill_info and e.kill_info.stealth):
+		loud_kills += 1
+	_kill_streak += 1
+	if RunState.has_perk(&"blood_dividend") and _kill_streak % 8 == 0 and player.health > 0 and not RunState.profile_value("no_healing", false):
+		player.health = mini(player.health + 1, player.max_health)
+		player.health_changed.emit(player.health, player.max_health)
 	RunFlow.total_kills += 1
-	heat += 1.5
+	kills.on_kill(e.kill_info)
 	if live:
-		live.report_kill()
+		live.report_kill(combo.market_multiplier() if e.kill_info and e.kill_info.by_player else 1.0)
 
 func _on_room_cleared(room) -> void:
+	if room.get("spawn_count") <= 0:
+		return
 	# Gold on wiping a room's crew (chance + amount by rarity). Movement is
 	# never gated — this is purely the payday.
 	var rarity: int = room.get("rarity")
 	var row: Array = GOLD_TABLE.get(rarity, GOLD_TABLE[0])
 	if _rng.randf() < row[0]:
-		RunEconomy.award_clear(_rng.randi_range(row[1], row[2]))
+		RunEconomy.award_clear(roundi(_rng.randi_range(row[1], row[2]) * loot_multiplier()))
 	RunEconomy.on_room_start()   # hit-penalty ramp resets per cleared room
+	# Empty treasure rooms also emit cleared on activation; only actual kills get the beat.
+	if room.get("spawn_count") > 0:
+		fx.last_kill()
+		hooks.room_cleared.emit(room)
 
-	if room.has_meta("is_boss") and not marked:
+	if room.has_meta("is_boss") and not marked and not boss_heist:
 		_become_marked()
+		fx.slow_mo(0.9, 0.25)
 
-func _become_marked() -> void:
+## `shock`: the venue move (a stage boss's comes with his verdict instead).
+func _become_marked(shock: float = 0.30) -> void:
 	marked = true
-	heat += 10.0
+	# Marked: at least three stars.
+	heat = maxf(heat, Wanted.THRESHOLDS[2])
+	if wanted:
+		wanted.force(3)
+	add_heat(16.0, "The Board wants answers" if boss_heist else "Lieutenant down")
 	_close_timer = exit_close_interval
-	# Big payoff for the boss: gold + a hard stock pump on the venue.
-	RunEconomy.add_bonus(_rng.randi_range(250, 400))
-	if live:
-		live.report_shock(1.30, &"boss")
-	print("MARKED — they know your face. Exits are closing. Main door stays open.")
+	# Big payoff: gold (a stage boss pays through his cash burst instead) and
+	# a hard stock shock on the venue.
+	if not boss_heist:
+		RunEconomy.add_bonus(roundi(_rng.randi_range(250, 400) * loot_multiplier()))
+	_boss_shock(shock)
+
+## The venue moves on a boss: `pct` up on a CONTRACT (down on a HIT/short).
+func _boss_shock(pct: float) -> void:
+	if live and pct > 0.0:
+		live.report_shock(1.0 - pct if live.inverted() else 1.0 + pct, &"boss")
 
 # ------------------------------------------------- heat & reinforcements ----
 func _process(delta: float) -> void:
 	if _extracting or player == null or not is_instance_valid(player):
 		return
 
-	# Camera follows the player.
+	# Camera follows the player, leaning a little toward where they aim.
+	var look_at: Vector2 = player.global_position
+	if Time.get_ticks_msec() < _focus_until_msec:
+		look_at = _focus_point
 	camera.global_position = camera.global_position.lerp(
-		player.global_position, clampf(delta * 8.0, 0.0, 1.0))
+		look_at, clampf(delta * (4.0 if look_at != player.global_position else 8.0), 0.0, 1.0))
+	var want := Vector2.ZERO
+	if TouchInput.touch_active and Settings.values["touch_mode"] != 2:
+		want = TouchInput.aim * (60.0 if TouchInput.firing else 20.0)
+	elif TouchInput.last_device == "pad":
+		want = player.aim_direction() * (70.0 if TouchInput.pad_aim() != Vector2.ZERO else 30.0)
+	else:
+		want = (get_global_mouse_position() - player.global_position).limit_length(460.0) * 0.16
+	fx.lead = fx.lead.lerp(want, clampf(delta * 4.0, 0.0, 1.0))
+	_tick_market_chip(delta)
+	_status_clock -= delta
+	if _status_clock <= 0.0:
+		_status_clock = 0.15
+		_update_security_status()
+		_watch_lieutenant()
+		_update_objective_hud()
 
 	# The car stays locked until you've actually been inside the building.
 	if car and not car.armed and _player_is_inside():
 		car.arm()
 		# The clock starts when you go in, not while you're casing the street.
 		_heist_start = Time.get_ticks_msec() / 1000.0
-		print("Inside. The car is running — come back when you've got the take.")
 
 	# Nothing escalates while you're still on the street casing the place.
 	if car and not car.armed:
 		return
 
-	# Heat climbs with time; faster when marked.
-	heat += delta * (0.35 if not marked else 0.9)
-
-	# Reinforcement waves at the entrance + exits.
-	_heat_timer -= delta
-	if _heat_timer <= 0.0:
+	active_elapsed += delta
+	# Laying low: 20 s with nobody hunting you and the heat drifts down —
+	# never below the floor of the WANTED stars you've earned.
+	quiet_seconds += delta
+	wanted.tick(delta)
+	_tick_revenge(delta)
+	if wanted.laying_low():
+		heat = maxf(wanted.floor_heat(), heat - Wanted.LAY_LOW_RATE * delta)
+	_heat_timer = maxf(0.0, _heat_timer - delta)
+	if heat >= dispatch_threshold() and _heat_timer <= 0.0:
 		_spawn_reinforcements()
-		var interval: float = reinforcement_interval - heat * 0.25
-		if marked:
-			interval *= 0.55
-		_heat_timer = maxf(interval, min_interval)
+		_heat_timer = (12.0 if has_mod(&"heavy_police") else 24.0) * (1.3 if RunState.has_job_gear(&"police_scanner") else 1.0) * (1.25 if RunState.has_relic(&"riot_insurance") else 1.0)
+
+	_tick_objective(delta)
 
 	# Marked: emergency exits weld shut one by one. Main door never closes.
 	if marked:
@@ -445,6 +782,13 @@ func _player_is_inside() -> bool:
 ## know exactly what just walked in and can fight it as its own moment,
 ## instead of getting buried under an ever-larger wave as heat climbs.
 func _spawn_reinforcements() -> void:
+	# Cap pursuing reinforcements; sleeping guards are managed separately.
+	var pursuers := 0
+	for guard in get_tree().get_nodes_in_group("enemies"):
+		if guard.hunting:
+			pursuers += 1
+	if pursuers >= 12:
+		return
 	var scene = load(ENEMY_SCENE_PATH)
 	if scene == null:
 		return
@@ -472,18 +816,29 @@ func _spawn_reinforcements() -> void:
 	van.approach_from = wall_world + outward * 900.0
 	van.squad_deployed.connect(_on_squad_deployed)
 	add_child(van)
-	print("Van inbound: 2 minibosses (heat ", int(heat), ")")
 
-## Two toughened specialists, escalating with heat. Always exactly 2 kinds —
-## the point is a readable duo, not a growing roster.
+## Two toughened specialists, escalating with heat and stage. Always exactly
+## two — the point is a readable duo, not a growing roster. Cleaners only
+## come for you in the World and beyond, once the heat is high.
 func _miniboss_archetypes() -> Array:
-	var tiers: Array = [Enemy.Kind.ENFORCER, Enemy.Kind.SHOTGUNNER]
+	var tiers: Array
+	var level := 0
 	if heat > 12.0:
-		tiers = [Enemy.Kind.ENFORCER, Enemy.Kind.MARKSMAN]
+		level = 1
 	if heat > 20.0:
-		tiers = [Enemy.Kind.SHOTGUNNER, Enemy.Kind.SPRINTER]
+		level = 2
 	if heat > 28.0 or marked:
-		tiers = [Enemy.Kind.BRUTE, Enemy.Kind.MEDIC]
+		level = 3
+	match _stage:
+		0:
+			tiers = [[Enemy.Kind.ENFORCER, Enemy.Kind.SHOTGUNNER], [Enemy.Kind.ENFORCER, Enemy.Kind.BOUNCER], [Enemy.Kind.SHOTGUNNER, Enemy.Kind.HANDLER], [Enemy.Kind.BRUTE, Enemy.Kind.MEDIC]][level]
+		1:
+			tiers = [[Enemy.Kind.ENFORCER, Enemy.Kind.RIOT], [Enemy.Kind.SNIPER, Enemy.Kind.ENFORCER], [Enemy.Kind.GRENADIER, Enemy.Kind.RIOT], [Enemy.Kind.BRUTE, Enemy.Kind.MEDIC]][level]
+		2:
+			tiers = [[Enemy.Kind.RIOT, Enemy.Kind.GRENADIER], [Enemy.Kind.SNIPER, Enemy.Kind.BOUNCER], [Enemy.Kind.CLEANER, Enemy.Kind.RIOT], [Enemy.Kind.CLEANER, Enemy.Kind.MEDIC]][level]
+		_:
+			tiers = [[Enemy.Kind.RIOT, Enemy.Kind.SNIPER], [Enemy.Kind.CLEANER, Enemy.Kind.GRENADIER], [Enemy.Kind.CLEANER, Enemy.Kind.BOUNCER], [Enemy.Kind.CLEANER, Enemy.Kind.BRUTE]][level]
+	tiers = tiers.duplicate()
 	tiers.shuffle()
 	return tiers
 
@@ -491,12 +846,18 @@ func _on_squad_deployed(enemies: Array) -> void:
 	for e in enemies:
 		_enemies_total += 1
 		e.died.connect(_on_enemy_died)
+		e.set_meta("hooked", true)
+		_apply_sight(e)
+	# Late, hot responses bring an elite along.
+	if not enemies.is_empty() and (_stage >= 1 or marked) and (heat > 20.0 or marked):
+		var lead: Enemy = enemies[0]
+		if lead.kind not in NO_ELITE:
+			lead.make_elite(Enemy.AFFIXES[_rng.randi() % Enemy.AFFIXES.size()])
 
 func _close_next_exit() -> void:
 	for g: Dictionary in generator.exits:
 		if g.get("open", false):
 			generator.close_exit(g)
-			print("An emergency exit just welded shut.")
 			return
 
 # ---------------------------------------------------------- extraction ------
@@ -512,7 +873,7 @@ func _check_extraction() -> void:
 		return
 
 	var at_exit := _fire_exit_in_reach()
-	var hot := heat >= fire_exit_heat_limit
+	var hot := heat >= fire_exit_limit()
 
 	if at_exit.is_empty() or hot:
 		if _fire_hold > 0.0:
@@ -538,7 +899,7 @@ func _check_extraction() -> void:
 	var remaining: float = maxf(fire_exit_hold - _fire_hold, 0.0)
 	_prompt.text = "SLIPPING OUT THE FIRE EXIT…  %.1f" % remaining
 	if _fire_hold >= fire_exit_hold:
-		print("Escaped clean through a fire exit.")
+		_left_by_fire_exit = true
 		_extract()
 
 ## Nearest OPEN fire exit within reach, or {}.
@@ -549,12 +910,36 @@ func _fire_exit_in_reach() -> Dictionary:
 			return g
 	return {}
 
+## Boss heists are mandatory kills: the car will not leave while he stands.
+func requires_boss_kill() -> bool:
+	return boss_heist and not marked
+
 func _extract() -> void:
+	if requires_boss_kill():
+		return
 	if _extracting:
 		return
 	_extracting = true
-	var elapsed: float = (Time.get_ticks_msec() / 1000.0) - _heist_start
+	TimeController.clear()
+	Audio.loop("alarm", false)
+	Audio.loop("heartbeat", false)
+	Audio.play("cash_register")
+	# Settle at the combat price, before the extraction grade changes it.
+	var short_result := ShortBook.settle(true)
+	# Career stats (never from a practice job): the specialists unlock on these.
+	if not RunFlow.practice:
+		Meta.stats["heists_completed"] = int(Meta.stats.get("heists_completed", 0)) + 1
+		Meta.stats["total_gold"] = int(Meta.stats.get("total_gold", 0)) + loot_banked
+		if _left_by_fire_exit:
+			Meta.stats["fire_exit_escapes"] = int(Meta.stats.get("fire_exit_escapes", 0)) + 1
+		Meta.save_meta()
+	# A live combo cashes out as you leave.
+	combo.settle()
+	RunState.best_combo = maxi(RunState.best_combo, combo.best_points)
+	var elapsed: float = active_elapsed
 	var stats := {
+		"combo_best": combo.best_points,
+		"combo_points": combo.cashed_points,
 		"hits_taken": player.hits_taken,
 		"shots_fired": player.shots_fired,
 		"shots_hit": player.shots_hit,
@@ -562,13 +947,36 @@ func _extract() -> void:
 		"enemies_total": maxi(_enemies_total, 1),
 		"time_seconds": elapsed,
 		"par_time": 15.0 * generator.rooms.size(),
+		"civilians": civilians_killed,
 	}
 	var result: Dictionary = HeistGrader.grade_heist(stats)
+	RunState.last_grade = result["grade_name"]
+	if boss_heist and marked and boss_id not in RunState.bosses_down:
+		RunState.bosses_down.append(boss_id)
+	result["short"] = short_result
+	result["fire_exit"] = _left_by_fire_exit
+	result["boss_id"] = String(boss_id)
+	result["loot"] = loot_banked
+	result["combo"] = {"best": combo.best_points, "best_tier": combo.best_tier, "gold": combo.cashed_gold,
+		"points": combo.cashed_points, "cashed": combo.combos_cashed, "panics": combo.panics}
+	result["meta_saved"] = Meta.last_save_ok
 
-	# Grade moves the venue stock. "Inside Trader" perk boosts the upside.
+	# Grade moves the venue stock. A CONTRACT pumps it (less for every repeat
+	# contract on the same venue); a HIT crashes it, harder the cleaner the job.
 	var delta: float = result["stock_delta"]
-	if delta > 1.0 and RunState.has_perk(&"inside_trader"):
-		delta = 1.0 + (delta - 1.0) * 1.25
+	if has_mod(&"lockdown"):
+		delta = 1.0 + (delta - 1.0) * 1.5       # bigger grade swings
+	if hit_job:
+		delta = 2.0 - delta
+	else:
+		var repeats: int = int(RunState.contract_counts.get(String(_venue), 0))
+		if delta > 1.0:
+			delta = 1.0 + (delta - 1.0) * pow(0.65, repeats)
+			if RunState.has_perk(&"inside_trader"):
+				delta = 1.0 + (delta - 1.0) * 1.25
+		RunState.contract_counts[String(_venue)] = repeats + 1
+	result["stock_delta"] = delta
+	result["contract"] = "HIT" if hit_job else "CONTRACT"
 	if live:
 		live.report_shock(delta, &"grade")
 	else:
@@ -576,6 +984,16 @@ func _extract() -> void:
 		if asset:
 			asset.current_price = maxf(asset.current_price * delta, 0.01)
 
+	result["objective"] = _resolve_objective()
+	hooks.extract.emit(result)
+	RunState.job_gear.clear()
+	# The wire's rumors land, then every Fence position settles at today's prices.
+	result["rumors"] = MarketNews.resolve_rumors()
+	var ledger_story := MarketNews.break_ledger()
+	if not ledger_story.is_empty():
+		result["rumors"].append({"kind": "ledger", "venue": ledger_story.get("venue", ""), "move": float(ledger_story.get("move", 0.0)),
+			"text": "BLACK LEDGER: " + MarketNews.line(ledger_story)})
+	result["positions"] = Positions.settle_all()
 	result["stats"] = stats
 	RunState.sync_from_player(player)
 	if results:
@@ -586,17 +1004,77 @@ func _extract() -> void:
 func _on_results_continued() -> void:
 	RunFlow.on_heist_finished()
 
+var _chip_accum := 0.0
+var _chip_clock := 0.0
+
+## Your actions move the venue: gather small moves for a beat, then pop a
+## "+2.3%" chip by the player and flash the ticker.
+func _on_player_moved_market(pct: float) -> void:
+	_chip_accum += pct
+	if _chip_clock <= 0.0:
+		_chip_clock = 0.35
+
+func _tick_market_chip(delta: float) -> void:
+	if _chip_clock <= 0.0:
+		return
+	_chip_clock -= delta
+	if _chip_clock > 0.0:
+		return
+	if absf(_chip_accum) >= 0.001 and is_instance_valid(player):
+		var col := Palette.UP if _chip_accum > 0.0 else Palette.DOWN
+		Audio.play("stock_up" if _chip_accum > 0.0 else "stock_down")
+		fx.chip(player.global_position, "%s %+.1f%%" % [Venues.ticker(_venue), _chip_accum * 100.0], col)
+		if hud and hud.get("ticker"):
+			hud.ticker.flash(col)
+	_chip_accum = 0.0
+
+func _on_player_health(current: int, maximum: int) -> void:
+	if post_fx:
+		post_fx.set_health(current, maximum)
+	if blood_vignette:
+		blood_vignette.set_health(current, maximum)
+
+## Damage feedback shared by every hit on the player.
+func _on_reload_finished() -> void:
+	hooks.reload.emit()
+
+func on_player_hurt() -> void:
+	hooks.hit_taken.emit(1)
+	if combo:
+		combo.on_player_hurt()
+	if post_fx:
+		post_fx.hit(1.0)
+
 func _on_player_died() -> void:
 	# Die before extracting: the loot is gone and so is the run.
 	if _extracting:
 		return
 	_extracting = true
-	print("BUSTED. The run is over.")
 	if _prompt:
 		_prompt.hide()
 	RunState.sync_from_player(player)
-	await get_tree().create_timer(1.2).timeout
-	RunFlow.end_run(false)
+	# The front page: what got you, and where.
+	var cause := player.last_hit_by
+	if wanted and wanted.stars >= 5 and not cause.begins_with("boss:") and cause != "explosion":
+		cause = "police"
+	RunFlow.death_where = death_place(player.global_position)
+	await get_tree().create_timer(1.2, false).timeout
+	RunFlow.end_run(false, cause)
+
+## "RENT OFFICE, TENEMENT ROW": the room someone fell in, and the building.
+func death_place(at: Vector2) -> String:
+	var room_title := ""
+	if generator:
+		for room in generator.rooms:
+			if Rect2(room.global_position, room.room_size).has_point(at):
+				for c in room.get_children():
+					if c is RoomArt:
+						room_title = c.title
+				break
+	var building := Venues.sign_name(_venue, boss_id)
+	if room_title == "":
+		return "outside %s" % building if building != "" else ""
+	return "%s, %s" % [room_title, building]
 
 # --------------------------------------------------------------- loot -------
 ## Scatter valuables across a room's floor. Count and value both scale with the
@@ -625,18 +1103,18 @@ func _scatter_loot(room) -> void:
 
 	var placed: Array = []
 	for i in count:
-		var pos := _loot_slot(size, placed)
+		var pos := _loot_slot(size, placed, room)
 		placed.append(pos)
 		var pickup := LootPickup.new()
 		pickup.value = _rng.randi_range(per_min, per_max)
 		room.add_child(pickup)
 		pickup.position = pos
-		pickup.collected.connect(_on_loot_collected)
+		pickup.collected.connect(_on_loot_collected.bind(pickup))
 
 ## A floor position inset from the walls, spaced from other loot.
-func _loot_slot(size: Vector2, placed: Array) -> Vector2:
+func _loot_slot(size: Vector2, placed: Array, room: BuildingRoom = null) -> Vector2:
 	var candidate := Vector2.ZERO
-	for attempt in 6:
+	for attempt in 16:
 		candidate = Vector2(
 			_rng.randf_range(90, size.x - 90),
 			_rng.randf_range(90, size.y - 90))
@@ -645,12 +1123,24 @@ func _loot_slot(size: Vector2, placed: Array) -> Vector2:
 			if candidate.distance_to(p) < 80.0:
 				ok = false
 				break
+		if ok and room:
+			for r: Rect2 in room.blocked_rects:
+				if r.grow(20).has_point(candidate):
+					ok = false
+					break
 		if ok:
 			return candidate
 	return candidate
 
-func _on_loot_collected(value: int) -> void:
-	RunEconomy.add_bonus(value)
+func _on_loot_collected(value: int, pickup: Node2D = null) -> void:
+	# Valuables are worth what the venue trades at, the moment you pick them up.
+	var paid := roundi(value * loot_multiplier() * live_loot_multiplier() * (1.25 if RunState.has_perk(&"scavenger") else 1.0))
+	loot_banked += paid
+	if pickup and is_instance_valid(pickup) and hud and hud.has_method("fly_gold"):
+		hud.fly_gold(pickup.get_global_transform_with_canvas().origin, paid)
+	RunEconomy.add_bonus(paid)
+	var tier := 0 if value <= 25 else (1 if value <= 60 else (2 if value <= 140 else 3))
+	Audio.play("loot_%d" % tier, pickup.global_position if pickup and is_instance_valid(pickup) else null)
 	if hud and hud.has_method("flash_gold"):
 		hud.flash_gold()
 
@@ -672,9 +1162,1238 @@ func _on_item_claimed(item) -> void:
 	if item is WeaponItem:
 		if RunState.loadout:
 			RunState.loadout.equip(item)
+	elif item is RelicItem:
+		RunState.add_relic(item.id)
+		fx.chip(player.global_position, item.display_name.to_upper(), item.rarity_color())
+		if item.id == &"insider_wire":
+			_show_vision_cones()
+		if item.id == &"getaway_driver" and car:
+			car.escape_duration = 2.0
 	elif item is UpgradeItem:
 		var add: float = item.amount if item.mode == UpgradeItem.ApplyMode.ADD else 0.0
 		var mult: float = item.amount if item.mode == UpgradeItem.ApplyMode.MULTIPLY else 1.0
-		RunState.add_stat_mod(item.stat, add, mult)
+		if item.stat == &"max_health":
+			RunState.add_max_health(int(add))
+		else:
+			RunState.add_stat_mod(item.stat, add, mult)
 		if player:
 			item.apply_to(player)
+
+func has_mod(id: StringName) -> bool:
+	return id in modifiers
+
+## Loot scale from the job's modifiers (Heavy Response and Payday x1.5,
+## Skeleton Crew x0.7) and the Duffel Bag.
+func loot_multiplier() -> float:
+	var m := 1.0
+	if has_mod(&"heavy_police"):
+		m *= 1.5
+	if has_mod(&"payday"):
+		m *= 1.5
+	if has_mod(&"skeleton_crew"):
+		m *= 0.7
+	if RunState.has_job_gear(&"duffel_bag"):
+		m *= 1.15
+	m *= pow(1.15, RunState.relic_count(&"laundered_cash"))
+	return m
+
+func fire_exit_limit() -> float:
+	return 20.0 if RunState.has_relic(&"back_door_man") else fire_exit_heat_limit
+
+## Live loot multiplier: floor valuables are worth more while the venue trades
+## above its listing price (Phase 6 wires the pickups to it).
+func live_loot_multiplier() -> float:
+	if RunState.market == null:
+		return 1.0
+	var a: CriminalAsset = RunState.market.get_asset(_venue)
+	if a == null or a.base_price <= 0.0:
+		return 1.0
+	return clampf(a.current_price / a.base_price, 0.5, 2.0)
+
+func dispatch_threshold() -> float:
+	return 8.0 if has_mod(&"heavy_police") else 16.0
+
+func add_heat(amount: float, source: String) -> void:
+	if amount <= 0.0 or _extracting:
+		return
+	var was_quiet := heat < dispatch_threshold()
+	var gained := amount * (0.75 if RunState.has_perk(&"cool_head") else 1.0)
+	heat = minf(100.0, heat + gained)
+	quiet_seconds = 0.0
+	if wanted:
+		wanted.on_heat(heat)
+	last_heat_source = source
+	if hud and hud.has_method("log_heat"):
+		hud.log_heat("%s  +%d" % [source.to_upper(), roundi(gained)])
+	if was_quiet and heat >= dispatch_threshold():
+		_heat_timer = minf(_heat_timer, 4.0)
+
+## A witnessed intrusion (camera, radio call): heat now, and the nearest alarm
+## panel starts transmitting until someone cuts it.
+func security_alert(room: Node, source: String, amount: float) -> void:
+	if _pouch_ignores(source):
+		return
+	alerts += 1
+	add_heat(amount, source)
+	var at: Vector2 = room.center_position() if room and room.has_method("center_position") else player.global_position
+	var panel := nearest_alarm_panel(at)
+	if panel:
+		panel.armed = true
+		panel.transmit_clock = maxf(panel.transmit_clock, 2.0)
+
+## The Diplomatic Pouch: the first alarm of each heist goes nowhere.
+func _pouch_ignores(source: String) -> bool:
+	if _pouch_used or not RunState.has_relic(&"diplomatic_pouch"):
+		return false
+	_pouch_used = true
+	if is_instance_valid(player):
+		fx.chip(player.global_position + Vector2(0, -50), "DIPLOMATIC POUCH — %s ignored" % source.to_lower(), Palette.GOLD)
+	return true
+
+func on_security_disabled(_device: SecurityDevice) -> void:
+	security_disabled += 1
+	heat = maxf(wanted.floor_heat() if wanted else 0.0, heat - 4.0)
+	last_heat_source = "Security disabled · heat -4"
+	if live:
+		live.report_sabotage()
+	Audio.play("shutter")
+	fx.add_trauma(0.15)
+
+## Cameras sweep most rooms. Alarm panels are rarer — 1 to 3 per building,
+## placed first where a security tech works, then spread far apart — so
+## cutting them is a real errand and a tech's sprint is a real threat.
+func _setup_security() -> void:
+	var rooms: Array = []
+	for room in generator.rooms:
+		if room != generator.start_room:
+			rooms.append(room)
+	for room in rooms:
+		_add_device(room, SecurityDevice.Kind.CAMERA, CAMERA_SPOT)
+		if has_mod(&"camera_network"):
+			_add_device(room, SecurityDevice.Kind.CAMERA, Vector2(room.room_size.x - CAMERA_SPOT.x, CAMERA_SPOT.y))
+	var count := clampi(1 + int(_stage >= 1) + int(_stage >= 3 or _rarity >= 3), 1, 3)
+	var chosen: Array = []
+	for room in rooms:
+		if chosen.size() >= count:
+			break
+		for c in room.get_children():
+			if c is Enemy and c.kind == Enemy.Kind.TECH:
+				chosen.append(room)
+				break
+	var anchors: Array = [generator.start_room.center_position()]
+	for room in chosen:
+		anchors.append(room.center_position())
+	while chosen.size() < count and chosen.size() < rooms.size():
+		var best = null
+		var best_score := -1.0
+		for room in rooms:
+			if room in chosen:
+				continue
+			var nearest := INF
+			for a: Vector2 in anchors:
+				nearest = minf(nearest, a.distance_to(room.center_position()))
+			nearest += _rng.randf() * 120.0
+			if nearest > best_score:
+				best_score = nearest
+				best = room
+		chosen.append(best)
+		anchors.append(best.center_position())
+	for room in chosen:
+		_add_device(room, SecurityDevice.Kind.ALARM, Vector2(room.room_size.x - 65, room.room_size.y - 100))
+
+const CAMERA_SPOT := Vector2(55, 70)
+
+func _add_device(room, kind: int, local: Vector2) -> SecurityDevice:
+	var device := SecurityDevice.new()
+	device.kind = kind
+	device.floor_host = self
+	device.room = room
+	device.position = room.position + local
+	add_child(device)
+	return device
+
+## What a falling body lands on here (kill sounds): per stage.
+func floor_surface() -> String:
+	return Audio.FLOORS[clampi(stage_index(), 0, Audio.FLOORS.size() - 1)]
+
+func stage_index() -> int:
+	return _stage
+
+## The closest alarm panel still online, or null.
+func nearest_alarm_panel(pos: Vector2) -> SecurityDevice:
+	var best: SecurityDevice = null
+	var best_d := INF
+	for device in get_tree().get_nodes_in_group("security"):
+		if device.kind != SecurityDevice.Kind.ALARM or device.disabled:
+			continue
+		var d: float = device.global_position.distance_squared_to(pos)
+		if d < best_d:
+			best_d = d
+			best = device
+	return best
+
+## Someone reached a panel: heat spike, every panel transmits, and a van is
+## sent right now.
+func raise_alarm(source: String, panel: SecurityDevice = null) -> void:
+	if _extracting or _pouch_ignores(source):
+		return
+	alarms_raised += 1
+	alerts += 1
+	# While a response is already rolling, another pull only adds heat.
+	var now := active_elapsed
+	if now < _alarm_quiet_until:
+		add_heat(5.0, source)
+		return
+	_alarm_quiet_until = now + 25.0
+	add_heat(14.0, source)
+	for device in get_tree().get_nodes_in_group("security"):
+		if device.kind == SecurityDevice.Kind.ALARM and not device.disabled:
+			device.armed = true
+			device.transmit_clock = maxf(device.transmit_clock, 3.0)
+	Audio.play("alert")
+	fx.add_trauma(0.25)
+	if is_instance_valid(panel):
+		fx.chip(panel.global_position, "ALARM RAISED", Palette.DANGER)
+	_spawn_reinforcements()
+	_heat_timer = maxf(_heat_timer, 14.0)
+
+## A companion that arrives with its owner: a handler's dog, a tech's drone.
+func spawn_companion(owner: Enemy, kind: int, offset: Vector2) -> Enemy:
+	var scene: PackedScene = load(ENEMY_SCENE_PATH)
+	var parent := owner.get_parent()
+	if scene == null or parent == null or not owner.is_inside_tree():
+		return null
+	var e: Enemy = scene.instantiate()
+	e.position = _free_spot(parent, owner.position, offset)
+	if parent is BuildingRoom:
+		parent.adopt(e)
+	else:
+		parent.add_child(e)
+	e.apply_archetype(kind)
+	if owner._has_guard_rect:
+		e.set_guard_room(owner._guard_rect)
+	e.set_post(e.global_position)
+	e.set_meta("hooked", true)
+	e.faction = owner.faction
+	_apply_sight(e)
+	_enemies_total += 1
+	e.died.connect(_on_enemy_died)
+	return e
+
+## `base + offset` in `parent` space, nudged until it is clear of walls/props.
+func _free_spot(parent: Node, base: Vector2, offset: Vector2) -> Vector2:
+	var space := get_world_2d().direct_space_state
+	var xf: Transform2D = parent.global_transform if parent is Node2D else Transform2D.IDENTITY
+	for i in 8:
+		var local := base + offset.rotated(TAU * i / 8.0)
+		var query := PhysicsPointQueryParameters2D.new()
+		query.position = xf * local
+		query.collision_mask = Layers.SOLID
+		if space.intersect_point(query, 1).is_empty():
+			return local
+	return base
+
+## A valuable dropped in the world (elite kills).
+func drop_loot(at: Vector2, value: int) -> void:
+	var pickup := LootPickup.new()
+	pickup.value = value
+	pickup.position = to_local(at)
+	pickup.collected.connect(_on_loot_collected.bind(pickup))
+	spawn_deferred(pickup)
+
+## Where a fleeing civilian heads: the nearest way out of the building.
+func nearest_way_out(pos: Vector2) -> Vector2:
+	var best := _outside_position()
+	var best_d := pos.distance_to(best)
+	for g: Dictionary in generator.exits:
+		if not g.get("open", false):
+			continue
+		var wall: Vector2 = g["room"].to_global(g["wall_pos"])
+		var out: Vector2 = wall + (wall - g["inside_pos"]).normalized() * 80.0
+		if pos.distance_to(out) < best_d:
+			best_d = pos.distance_to(out)
+			best = out
+	return best
+
+func _on_star_gained(stars: int) -> void:
+	if hud and hud.has_method("set_wanted"):
+		hud.set_wanted(stars)
+	fx.chip(player.global_position, "WANTED LEVEL %d" % stars, Palette.POLICE_RED)
+
+## The helicopter's light on you outside: the car won't go.
+func spotlit() -> bool:
+	return wanted != null and is_instance_valid(player) and wanted.spotlit(player.global_position)
+
+## A stealth takedown or a stagger execution landed (player.gd).
+func on_takedown(mode: StringName) -> void:
+	if not RunFlow.practice:
+		Meta.stats["takedowns"] = int(Meta.stats.get("takedowns", 0)) + 1
+
+func on_civilian_killed(civ: Node2D, player_caused: bool) -> void:
+	if player_caused:
+		civilians_killed += 1
+		add_heat(14.0, "Civilian down")
+		if live:
+			live.report_shock(0.88, &"civilian")
+	else:
+		add_heat(6.0, "Civilian casualty")
+	fx.chip(civ.global_position, "CIVILIAN DOWN", Palette.DANGER)
+
+## Bystanders in some ordinary rooms (never the boss room or treasure rooms).
+func _spawn_civilians() -> void:
+	var rooms_with := 0
+	for room in generator.rooms:
+		if room == generator.start_room or room.has_meta("is_boss") or room.has_meta("chest_kind"):
+			continue
+		if boss_heist or _rng.randf() > 0.34:
+			continue
+		rooms_with += 1
+		var placed: Array = []
+		for i in _rng.randi_range(1, 2):
+			var civ := Civilian.new()
+			civ.stage = _stage
+			civ.look_seed = _rng.randi()
+			civ.runner = _rng.randf() < 0.3
+			var pos := _loot_slot(room.room_size, placed, room)
+			placed.append(pos)
+			civ.position = pos
+			room.add_child(civ)
+
+# ---------------------------------------------------------- objectives -----
+## Guards see 40% less in a Blackout.
+func _apply_sight(e: Enemy) -> void:
+	if has_mod(&"blackout"):
+		e.sight_range *= 0.6
+
+## Ordinary rooms for objective pieces, farthest from the lobby first.
+func _objective_rooms(count: int) -> Array:
+	var pool: Array = []
+	for room in generator.rooms:
+		if room == generator.start_room or room.has_meta("is_boss") or room.has_meta("chest_kind"):
+			continue
+		pool.append(room)
+	var start: Vector2 = generator.start_room.center_position()
+	pool.sort_custom(func(a, b): return a.center_position().distance_to(start) > b.center_position().distance_to(start))
+	# Take from the far half, spread out.
+	var out: Array = []
+	for room in pool:
+		if out.size() >= count:
+			break
+		var clear := true
+		for other in out:
+			if other.center_position().distance_to(room.center_position()) < 700.0:
+				clear = false
+		if clear:
+			out.append(room)
+	for room in pool:
+		if out.size() >= count:
+			break
+		if room not in out:
+			out.append(room)
+	return out
+
+func _setup_objective() -> void:
+	match objective:
+		&"assassination":
+			_setup_vip()
+		&"smash_grab":
+			_setup_jackpots()
+		&"sabotage":
+			_setup_charges()
+		&"package":
+			_setup_package()
+	_update_objective_hud()
+
+func _setup_vip() -> void:
+	var rooms := _objective_rooms(1)
+	var scene: PackedScene = load(ENEMY_SCENE_PATH)
+	if rooms.is_empty() or scene == null:
+		objective = &"loot"
+		return
+	var room: BuildingRoom = rooms[0]
+	var e: Enemy = scene.instantiate()
+	e.position = room.room_size * 0.5 + Vector2(0, 40)
+	room.adopt(e)
+	e.apply_archetype(Enemy.Kind.GRUNT)
+	e.kit = SpriteKit.dress(e.sprite, {"body": SpriteKit.Body.SUIT, "head": SpriteKit.Head.SLICKED, "gun": SpriteKit.Gun.REVOLVER,
+		"color": Color("2a1a2a"), "trim": Palette.GOLD, "hair": Color("1a1a1a"), "skin": SpriteKit.SKIN[_rng.randi() % 5],
+		"acc": ["cigar", "tie", "pinstripe"], "gun_accent": Palette.GOLD})
+	e.make_lieutenant("TARGET: " + Story.lieutenant_name(_rng))
+	e.overhead.tag_color = Palette.DANGER
+	e.role = Enemy.Role.SENTRY
+	e.set_guard_room(Rect2(room.global_position, room.room_size))
+	e.set_post(e.global_position)
+	_apply_sight(e)
+	e.set_meta("hooked", true)
+	_enemies_total += 1
+	e.died.connect(_on_enemy_died)
+	e.died.connect(_on_vip_down)
+	vip = e
+
+func _on_vip_down(e) -> void:
+	fx.chip(e.global_position, "TARGET DOWN", Palette.GOLD)
+	Audio.play("stamp", e.global_position)
+
+func _setup_jackpots() -> void:
+	for room in _objective_rooms(2 + int(_stage >= 2)):
+		var marker := ObjectiveProps.JackpotMarker.new()
+		marker.position = room.room_size * 0.5
+		room.add_child(marker)
+		marker.set_meta("left", 3)
+		jackpots.append(marker)
+		for i in 3:
+			var pickup := LootPickup.new()
+			pickup.value = roundi(_rng.randi_range(60, 110) * (1.0 + 0.35 * _stage))
+			pickup.position = room.room_size * 0.5 + Vector2(-60 + i * 60, _rng.randf_range(-30, 30))
+			room.add_child(pickup)
+			pickup.collected.connect(_on_loot_collected.bind(pickup))
+			pickup.collected.connect(_on_jackpot_piece.bind(marker))
+
+func _on_jackpot_piece(_value: int, marker: Node2D) -> void:
+	var left: int = int(marker.get_meta("left", 1)) - 1
+	marker.set_meta("left", left)
+	if left <= 0:
+		marker.looted = true
+		fx.chip(marker.global_position, "JACKPOT CLEARED", Palette.GOLD)
+
+func jackpots_left() -> int:
+	var n := 0
+	for m in jackpots:
+		if is_instance_valid(m) and not m.looted:
+			n += 1
+	return n
+
+## Smash & Grab: the alarm is already ringing the moment you walk in, and a
+## lockdown seals every fire exit when the clock runs out.
+func _start_smash_and_grab() -> void:
+	_smash_started = true
+	heat = maxf(heat, dispatch_threshold())
+	add_heat(2.0, "Alarm already ringing")
+	_heat_timer = minf(_heat_timer, 8.0)
+	_lockdown_clock = 70.0 + 12.0 * jackpots.size()
+
+func _setup_charges() -> void:
+	for room in _objective_rooms(2 + int(_stage >= 2)):
+		var point := ObjectiveProps.ChargePoint.new()
+		point.floor_host = self
+		point.position = room.room_size * 0.5 + Vector2(_rng.randf_range(-90, 90), _rng.randf_range(-50, 50))
+		room.add_child(point)
+		point.planted.connect(_on_charge_planted)
+		charges.append(point)
+
+func _on_charge_planted(point: Node2D) -> void:
+	charges_planted += 1
+	fx.chip(point.global_position, "CHARGE SET %d/%d" % [charges_planted, charges.size()], Palette.GOLD)
+	if live:
+		live.report_sabotage()
+
+func _setup_package() -> void:
+	var rooms := _objective_rooms(1)
+	if rooms.is_empty():
+		objective = &"loot"
+		return
+	var case := ObjectiveProps.PackageCase.new()
+	case.floor_host = self
+	case.position = rooms[0].room_size * 0.5
+	rooms[0].add_child(case)
+	case.picked_up.connect(_on_package_taken)
+	package = case
+
+func _on_package_taken(_case: Node2D) -> void:
+	carrying_package = true
+	if is_instance_valid(player):
+		player.move_speed *= 0.85
+	fx.chip(player.global_position, "GOT THE PACKAGE", Palette.GOLD)
+
+## World positions the minimap marks for the current objective.
+func objective_points() -> Array:
+	var out: Array = []
+	match objective:
+		&"assassination":
+			if is_instance_valid(vip) and not vip._dead:
+				out.append(vip.global_position)
+		&"smash_grab":
+			for m in jackpots:
+				if is_instance_valid(m) and not m.looted:
+					out.append(m.global_position)
+		&"sabotage":
+			for c in charges:
+				if is_instance_valid(c) and not c.done:
+					out.append(c.global_position)
+		&"package":
+			if is_instance_valid(package) and not carrying_package:
+				out.append(package.global_position)
+	return out
+
+func _tick_objective(delta: float) -> void:
+	if objective == &"smash_grab":
+		if not _smash_started:
+			_start_smash_and_grab()
+		if _lockdown_clock > 0.0:
+			_lockdown_clock -= delta
+			if _lockdown_clock <= 0.0:
+				var spared := RunState.has_job_gear(&"bolt_cutters")
+				for g: Dictionary in generator.exits:
+					if g.get("open", false):
+						if spared:
+							spared = false
+							continue
+						generator.close_exit(g)
+				Audio.play("shutter")
+				fx.add_trauma(0.3)
+				if hud and hud.has_method("log_heat"):
+					hud.log_heat("LOCKDOWN — MAIN DOOR ONLY")
+
+func objective_success() -> bool:
+	match objective:
+		&"assassination":
+			return vip != null and (not is_instance_valid(vip) or vip._dead)
+		&"smash_grab":
+			return not jackpots.is_empty() and jackpots_left() == 0
+		&"ghost":
+			return loud_kills == 0 and alerts == 0
+		&"sabotage":
+			return not charges.is_empty() and charges_planted >= charges.size()
+		&"package":
+			return carrying_package
+	return true
+
+func _update_objective_hud() -> void:
+	if hud == null or not hud.has_method("set_objective"):
+		return
+	var title := Objectives.title(objective) if objective != &"boss" else "TAKE HIM DOWN"
+	var body := ""
+	match objective:
+		&"boss":
+			if not marked:
+				body = "The car won't leave while he stands."
+			elif is_instance_valid(boss) and boss.kneeling and boss.verdict == &"":
+				body = "On his knees. Walk up: hand down a verdict." if boss.boss_id != &"ambassador" else "On her knees. Walk up: hand down a verdict."
+			else:
+				body = "It's done. Get to the car."
+		&"assassination":
+			if objective_success():
+				body = "Target down.\nGet back to the car."
+			else:
+				body = "Find and kill the target.\n%s" % (vip.elite_tag.trim_prefix("TARGET: ") if is_instance_valid(vip) else "")
+		&"smash_grab":
+			var clock := "LOCKDOWN — main door only" if _lockdown_clock <= 0.0 and _smash_started else "Lockdown in %d:%02d" % [int(_lockdown_clock) / 60, int(_lockdown_clock) % 60]
+			body = "Jackpot rooms %d/%d\n%s" % [jackpots.size() - jackpots_left(), jackpots.size(), clock]
+		&"ghost":
+			body = "No gunfire kills, no alarms.\nSilent takedowns only." if objective_success() else "Ghost run blown.\nLoot and leave."
+		&"sabotage":
+			body = "Charges set %d/%d\n%s" % [charges_planted, charges.size(), "Get clear: to the car." if objective_success() else "Hold USE at the marks."]
+		&"package":
+			body = "Carry the package to the car.\n15% slower while you carry it." if carrying_package else "Find the package (marked).\nThen get it to the car."
+		_:
+			body = "Grab the valuables.\nGet back to the car."
+	hud.set_objective(title, body)
+
+## At extraction: pay the objective's bonus, or note that it was lost.
+func _resolve_objective() -> Dictionary:
+	if objective == &"loot" or objective == &"boss":
+		return {}
+	var ok := objective_success()
+	var out := {"title": Objectives.title(objective), "success": ok, "gold": 0, "shock": 1.0}
+	if not ok:
+		out["text"] = "failed — bonus lost"
+		return out
+	var s := 1 + _stage
+	match objective:
+		&"assassination":
+			out["gold"] = 120 * s
+			out["shock"] = 0.9 if hit_job else 1.08
+		&"smash_grab":
+			out["gold"] = 80 * s
+		&"ghost":
+			out["gold"] = 100 * s
+			out["shock"] = 0.8 if hit_job else 1.2
+		&"sabotage":
+			out["gold"] = 90 * s
+			out["shock"] = 0.72 if hit_job else 0.85
+		&"package":
+			out["gold"] = 150 * s
+	RunEconomy.add_bonus(int(out["gold"]))
+	if live and not is_equal_approx(float(out["shock"]), 1.0):
+		live.report_shock(float(out["shock"]), &"objective")
+	var move := (float(out["shock"]) - 1.0) * 100.0
+	out["text"] = "done  +$%d%s" % [out["gold"], ("   %s %+.0f%%" % [Venues.ticker(_venue), move]) if absf(move) > 0.1 else ""]
+	return out
+
+# --------------------------------------------------------------- rivals -----
+## Rival Crew: 3-4 masked professionals hitting the same building. They
+## fight the guards and you; nobody pays you for them.
+func _spawn_rivals() -> void:
+	var rooms := _objective_rooms(1)
+	var scene: PackedScene = load(ENEMY_SCENE_PATH)
+	if rooms.is_empty() or scene == null:
+		return
+	var room: Node2D = rooms[0]
+	var kinds := [Enemy.Kind.SPRINTER, Enemy.Kind.ENFORCER, Enemy.Kind.SHOTGUNNER, Enemy.Kind.GRUNT]
+	for i in 3 + int(_rng.randf() < 0.5):
+		var e: Enemy = scene.instantiate()
+		e.faction = &"rival"
+		e.position = to_local(room.to_global(room.room_size * 0.5 + Vector2.from_angle(TAU * i / 4.0) * 70.0))
+		add_child(e)
+		e.apply_archetype(kinds[i % kinds.size()])
+		e.elite_tag = "RIVAL CREW"
+		e.overhead.tag_color = Palette.NEON_GREEN
+		e.hunting = true
+		_apply_sight(e)
+		e.died.connect(_on_rival_down)
+		rivals.append(e)
+
+func _on_rival_down(e) -> void:
+	rivals.erase(e)
+
+func rivals_alive() -> int:
+	return rivals.size()
+
+# ------------------------------------------------------------- bosses -----
+static func boss_scene_path(id: StringName) -> String:
+	var path := "res://%s_boss.tscn" % String(id)
+	return path if ResourceLoader.exists(path) else "res://auditor_boss.tscn"
+
+## The player walked into the arena: seal it, pan to the boss, title card.
+func start_boss_fight(b: Boss) -> void:
+	boss = b
+	_seal_arena(b.get_parent())
+	start_boss_music()
+	if hud and hud.boss_bar:
+		hud.boss_bar.show_for(b, b.display_name, b.subtitle, b.thresholds)
+	if is_instance_valid(player):
+		player._mercy_timer = 2.8
+	_focus_point = b.global_position
+	_focus_until_msec = Time.get_ticks_msec() + 2300
+	var card := BossIntroCard.new()
+	card.boss_name = b.display_name
+	card.subtitle = b.subtitle
+	add_child(card)
+	card.finished.connect(_on_boss_intro_done)
+
+func _on_boss_intro_done() -> void:
+	if is_instance_valid(boss) and not boss._dead:
+		boss.finish_intro()
+		if boss.boss_id == &"chairman":
+			_start_finale()
+
+## Steel shutters drop over every doorway of the arena.
+func _seal_arena(room: Node2D) -> void:
+	for gap: Dictionary in _open_gaps_local(room):
+		var shutter := Shutter.new()
+		shutter.horizontal = gap["horizontal"]
+		shutter.width = FloorGenerator.DOOR_GAP + 18.0
+		shutter.thickness = FloorGenerator.WALL_THICK + 8.0
+		shutter.position = gap["local"]
+		room.add_child(shutter)
+		shutter.close()
+		_shutters.append(shutter)
+
+func _open_arena() -> void:
+	for shutter in _shutters:
+		if is_instance_valid(shutter):
+			shutter.open()
+	_shutters.clear()
+
+## A line of dialogue under the boss bar (and over the boss).
+func boss_says(b: Enemy, line: String) -> void:
+	if line == "":
+		return
+	if hud and hud.boss_bar:
+		hud.boss_bar.say(line)
+	if is_instance_valid(b):
+		fx.chip(b.global_position + Vector2(0, -40), line, Palette.PAPER)
+
+## The Auditor's ledger: while it is open, hits crash the stock twice as hard.
+func set_audit(on: bool) -> void:
+	audit_active = on
+	if live:
+		live.damage_multiplier = 2.0 if on else 1.0
+
+## The Auditor's cover: `count` desks spread through the arena. World positions.
+func place_desks(b: Boss, count: int, first: int = 0) -> Array:
+	var room: Node2D = b.get_parent()
+	var spots := [Vector2(0.28, 0.3), Vector2(0.72, 0.3), Vector2(0.5, 0.72), Vector2(0.2, 0.62), Vector2(0.8, 0.62)]
+	var out: Array = []
+	for i in range(first, mini(first + count, spots.size())):
+		var local: Vector2 = room.room_size * spots[i]
+		var world := room.to_global(local)
+		if is_instance_valid(player) and world.distance_to(player.global_position) < 90.0:
+			continue
+		_clear_props_at(room, local, 70.0)
+		var desk := Prop.new()
+		desk.kind = "desk"
+		desk.size = Vector2(112, 56)
+		desk.theme = env
+		desk.seed_value = i
+		desk.position = local
+		room.add_child(desk)
+		out.append(world)
+	return out
+
+## The Landlord's second act: tables flip up into new cover around the room.
+func flip_tables(b: Boss, count: int) -> void:
+	var room: Node2D = b.get_parent()
+	for i in count:
+		var local := Vector2.ZERO
+		for attempt in 12:
+			local = Vector2(randf_range(120.0, room.room_size.x - 120.0), randf_range(120.0, room.room_size.y - 120.0))
+			var world := room.to_global(local)
+			if world.distance_to(b.global_position) > 130.0 and (not is_instance_valid(player) or world.distance_to(player.global_position) > 130.0):
+				break
+		_clear_props_at(room, local, 60.0)
+		var table := Prop.new()
+		table.kind = "card_table"
+		table.size = Vector2(92, 92)
+		table.is_round = true
+		table.theme = env
+		table.seed_value = 40 + i
+		table.position = local
+		table.scale = Vector2(0.2, 0.2)
+		room.add_child(table)
+		var tw := table.create_tween()
+		tw.tween_property(table, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		fx.spark(table.global_position, Vector2.UP, Palette.SODIUM)
+	Audio.play("door_bang", b.global_position)
+
+func _clear_props_at(room: Node2D, local: Vector2, radius: float) -> void:
+	for c in room.get_children():
+		if c is Prop and c.position.distance_to(local) < radius:
+			c.queue_free()
+
+# ------------------------------------------------------------ verdicts -----
+## The boss is beaten and on his knees: the arena stays sealed, his guards
+## drop their guns, time swells, the verdict theme plays. Walk up and press
+## USE for the VERDICT card.
+func on_boss_kneel(b: Boss) -> void:
+	TimeController.request(0.3, 1.4, TimeController.PRIORITY_MOMENT, &"kneel")
+	fx.add_trauma(0.7)
+	Audio.play("boss_death")
+	Audio.duck(-8.0, 2.5)
+	_boss_music = true
+	Audio.music("verdict", 1.0)
+	set_audit(false)
+	if not marked:
+		_become_marked(0.0)
+	for e in director.enemies:
+		if is_instance_valid(e) and e != b:
+			e.stand_down()
+	if hud and hud.boss_bar:
+		hud.boss_bar.say(Verdicts.plea(b.boss_id))
+	if hud and hud.has_method("combo_popup"):
+		var knees := "ON HER KNEES" if b.boss_id == &"ambassador" else "ON HIS KNEES"
+		hud.combo_popup("%s — %s · HAND DOWN A VERDICT" % [Story.boss_name(b.boss_id), knees], Palette.GOLD, true)
+	if b.boss_id == &"ambassador":
+		b.overhead.tag = "ON HER KNEES"
+	if b is ChairmanBoss:
+		b.stand_down_floor()
+
+## Open the VERDICT card for a kneeling boss.
+func open_verdict(b: Boss) -> void:
+	if is_instance_valid(_verdict_card) or not is_instance_valid(b) or b.verdict != &"" or not b.kneeling:
+		return
+	var card := VerdictCard.new()
+	card.boss_id = b.boss_id
+	if RunFlow.practice:
+		card.disabled = [Verdicts.DEAL]
+	card.chosen.connect(apply_verdict.bind(b))
+	add_child(card)
+	_verdict_card = card
+
+## Carry out a verdict on a kneeling boss.
+func apply_verdict(v: StringName, b: Boss) -> void:
+	_verdict_card = null
+	if not is_instance_valid(b) or b.verdict != &"" or b._dead:
+		return
+	if v == Verdicts.DEAL and RunFlow.practice:
+		return
+	b.verdict = v
+	TimeController.release(&"kneel")
+	RunState.record_verdict(b.boss_id, v)
+	if not RunFlow.practice and b.boss_id != &"chairman":
+		Meta.record_verdict(v)
+	var chairman := b.boss_id == &"chairman"
+	match v:
+		Verdicts.EXECUTE, Verdicts.SEAT:
+			# The finisher: on_boss_down runs when his body hits the floor.
+			if is_instance_valid(player) and not player.is_dead():
+				player.start_melee(b, Takedown.FINISHER)
+			else:
+				b.finish_off({"source": &"execution", "by_player": true, "dir": Vector2.RIGHT, "force": 480.0})
+			if hud and hud.has_method("combo_popup"):
+				hud.combo_popup(Verdicts.finisher_name(b.boss_id), Palette.DANGER, true)
+			return
+		Verdicts.DEAL:
+			_resolve_boss(b)
+			RunFlow.take_deal(b.boss_id)
+			return
+	_resolve_boss(b)
+	match v:
+		Verdicts.FLIP:
+			_boss_shock(0.15)
+			_verdict_popup("FLIPPED — %s" % Verdicts.flip_name(b.boss_id), Palette.STAMP_GREEN)
+			b.leave(Verdicts.leave_line(b.boss_id))
+		Verdicts.SHAKE:
+			var gold := Verdicts.shake_gold()
+			RunEconomy.add_bonus(gold)
+			var relic_id := Verdicts.shake_relic(b.boss_id)
+			RunState.add_relic(relic_id)
+			if relic_id == &"deed_box":
+				RunState.add_max_health(1)
+				if is_instance_valid(player):
+					player.max_health += 1
+					player.health += 1
+					player.health_changed.emit(player.health, player.max_health)
+			var relic := Relics.make(relic_id)
+			_verdict_popup("SHAKEN DOWN — +$%d · %s" % [gold, relic.display_name.to_upper() if relic else ""], Palette.GOLD)
+			_cash_burst_visual(b.global_position)
+			Audio.play("cash_register")
+			b.leave(Verdicts.leave_line(b.boss_id))
+		Verdicts.BURN:
+			_burn_the_board(b)
+		Verdicts.WALK:
+			b.stay_down()
+			_verdict_popup("WALK AWAY", Palette.NEON_CYAN)
+	if chairman:
+		_chairman_exit()
+
+## Common to every verdict: the fight is over.
+func _resolve_boss(b: Boss) -> void:
+	if hud and hud.boss_bar:
+		hud.boss_bar.clear()
+	_open_arena()
+	if not RunFlow.practice and b.verdict != Verdicts.DEAL:
+		Meta.record_boss(b.boss_id, false)
+	if b.boss_id != &"chairman":
+		_boss_music = false
+		Audio.play_stage_music(_stage)
+
+func _verdict_popup(text: String, color: Color) -> void:
+	if hud and hud.has_method("combo_popup"):
+		hud.combo_popup(text, color, true)
+
+## After the Chairman's verdict the last job wraps itself up.
+func _chairman_exit() -> void:
+	RunEconomy.add_bonus(_rng.randi_range(400, 600))
+	get_tree().create_timer(3.2, false).timeout.connect(_extract)
+
+## BURN THE BOARD: the Exchange goes up and every listed venue crashes.
+## Your open shorts are what's left standing (BLACK MONDAY).
+func _burn_the_board(b: Boss) -> void:
+	_verdict_popup("BURN THE BOARD", Palette.DANGER)
+	fx.add_trauma(1.0)
+	for i in 6:
+		var at := b.arena.grow(-80.0)
+		var spot := Vector2(_rng.randf_range(at.position.x, at.end.x), _rng.randf_range(at.position.y, at.end.y))
+		Blast.flare(self, spot, 0.3 + 0.25 * i, 110.0)
+	if RunState.market:
+		for a: CriminalAsset in RunState.market.assets:
+			if a.id != _venue:
+				a.current_price = maxf(a.current_price * Endings.BURN_CRASH, 0.01)
+	if live:
+		live.report_shock(Endings.BURN_CRASH, &"burn")
+	RunState.burn_short_profit = Positions.short_profit() + ShortBook.open_profit()
+	if b is ChairmanBoss and b.wall:
+		b.wall.crashed = true
+	b.stay_down()
+
+## Coins and notes out of a shaken-down boss's pockets (for show: the money
+## is already paid).
+func _cash_burst_visual(at: Vector2) -> void:
+	for i in 10:
+		fx.spark(at + Vector2.from_angle(TAU * i / 10.0) * 20.0, Vector2.from_angle(TAU * i / 10.0), Palette.GOLD)
+
+## The EXECUTE (or TAKE THE SEAT) finisher landed: slow motion, the full
+## shock, the cash, the doors open and his reward drops where he fell.
+func on_boss_down(b: Boss) -> void:
+	fx.slow_mo(1.2, 0.2)
+	fx.add_trauma(0.9)
+	Audio.play("boss_death")
+	set_audit(false)
+	if not marked:
+		_become_marked(0.0)
+	_resolve_boss(b)
+	_boss_shock(0.30)
+	_pump_and_dump()
+	if b.boss_id == &"chairman":
+		# The last trade: the heist wraps itself up and the ending plays.
+		_chairman_exit()
+		return
+	_cash_burst(b.global_position, _rng.randi_range(8, 12), 18 + 8 * _stage)
+	_drop_boss_reward(b)
+
+# -------------------------------------------------------------- finale -----
+## The Chairman's fight begins: flipped bosses arrive to back you up and the
+## executed bosses' crews come for revenge (one wave each).
+func _start_finale() -> void:
+	for id: StringName in Verdicts.STAGE_BOSSES:
+		if Verdicts.flipped(id):
+			_spawn_ally(id)
+	_revenge_left.clear()
+	for id: StringName in Verdicts.STAGE_BOSSES:
+		if Verdicts.executed(id):
+			_revenge_left.append(id)
+	_revenge_clock = 3.0
+
+func _spawn_ally(id: StringName) -> void:
+	if not is_instance_valid(player):
+		return
+	var a := Ally.new()
+	a.boss_id = id
+	a.host = self
+	a._slot = PI * 0.5 + allies.size() * 2.1
+	a.max_health = 10 + 2 * _stage
+	a.health = a.max_health
+	add_child(a)
+	a.global_position = player.global_position + Vector2.from_angle(a._slot) * 60.0
+	allies.append(a)
+	fx.chip(a.global_position, "%s HAS YOUR BACK" % Story.boss_name(id), Palette.STAMP_GREEN)
+
+func allies_up() -> int:
+	var n := 0
+	for a in allies:
+		if is_instance_valid(a) and not a.is_dead():
+			n += 1
+	return n
+
+## +10% damage per execution while an executed boss's crew is on the floor.
+func revenge_damage_mult() -> float:
+	if revenge.is_empty():
+		return 1.0
+	return 1.0 + Verdicts.REVENGE_DAMAGE * Verdicts.count(Verdicts.EXECUTE)
+
+func _tick_revenge(delta: float) -> void:
+	if _revenge_left.is_empty() or not is_instance_valid(boss) or boss.is_down():
+		return
+	revenge = revenge.filter(func(e): return is_instance_valid(e) and not e._dead)
+	if not revenge.is_empty():
+		return
+	_revenge_clock -= delta
+	if _revenge_clock > 0.0:
+		return
+	_revenge_clock = 8.0
+	_revenge_wave(_revenge_left.pop_front())
+
+func _revenge_wave(id: StringName) -> void:
+	var kinds: Array = Verdicts.crew_kinds(id)
+	for i in kinds.size():
+		var spot := boss.arena_point(90.0)
+		if is_instance_valid(player) and spot.distance_to(player.global_position) < 260.0:
+			spot = boss.arena.get_center() + (boss.arena.get_center() - player.global_position).normalized() * 220.0
+		var e := spawn_companion(boss, int(kinds[i]), spot - boss.global_position)
+		if e:
+			e.hunting = true
+			e.elite_tag = "REVENGE"
+			e.overhead.tag_color = Palette.DANGER
+			revenge.append(e)
+	var crew := "%s'S CREW" % Story.boss_name(id)
+	_verdict_popup("REVENGE — %s · +%d%% DAMAGE" % [crew, roundi(Verdicts.REVENGE_DAMAGE * 100.0 * Verdicts.count(Verdicts.EXECUTE))], Palette.DANGER)
+	Audio.sting("boss_phase")
+
+## Coins and notes spraying out of a fallen boss.
+func _cash_burst(at: Vector2, count: int, each: int) -> void:
+	for i in count:
+		var pickup := LootPickup.new()
+		pickup.value = each + _rng.randi_range(0, each)
+		var landing := at + Vector2.from_angle(TAU * i / count + _rng.randf() * 0.4) * _rng.randf_range(50.0, 150.0)
+		pickup.position = to_local(at)
+		pickup.set_meta("landing", to_local(landing))
+		pickup.collected.connect(_on_loot_collected.bind(pickup))
+		spawn_deferred(pickup)
+
+## Nodes born inside a physics callback (a kill, a blast) join the floor on the
+## next idle frame. Anything still waiting when the floor goes away is freed
+## with it instead of leaking.
+var _pending_spawns: Array = []
+
+func spawn_deferred(node: Node) -> void:
+	_pending_spawns.append(node)
+	_add_pending.call_deferred(node)
+
+func _add_pending(node: Node) -> void:
+	_pending_spawns.erase(node)
+	if not is_instance_valid(node):
+		return
+	add_child(node)
+	if node.has_meta("landing"):
+		var tw := node.create_tween()
+		tw.tween_property(node, "position", node.get_meta("landing"), 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for node in _pending_spawns:
+			if is_instance_valid(node):
+				node.free()
+		_pending_spawns.clear()
+
+## The boss's unique weapon, in a case where he fell.
+func _drop_boss_reward(b: Boss) -> void:
+	var weapon := ItemPool.boss_weapon(b.boss_id)
+	var scene = load("res://world_chest.tscn")
+	if weapon == null or scene == null:
+		return
+	var chest = scene.instantiate()
+	chest.set("kind", 0)
+	chest.set("tier", LootRoller.ChestTier.AIRDROP)
+	# The boss's unique weapon or one of his relics: your pick.
+	var relic_rng := RandomNumberGenerator.new()
+	relic_rng.randomize()
+	var relic := Relics.roll(relic_rng, 3)
+	chest.fixed_items = [weapon, relic] if relic else [weapon]
+	chest.position = to_local(b.global_position)
+	spawn_deferred(chest)
+
+## Debug/screenshot helper: skip the intro and put the stage boss on his
+## knees (and hand down `verdict` if one is given).
+func debug_kill_boss(verdict: StringName = &"") -> void:
+	var b: Boss = boss
+	if b == null and generator and generator.boss_room:
+		for c in generator.boss_room.get_children():
+			if c is Boss:
+				b = c
+	if b == null or b._dead:
+		return
+	if not b.engaged:
+		b.engage()
+	b.finish_intro()
+	b.invulnerable = false
+	b.immune_reason = ""
+	b._transition = 0.0
+	b.take_damage(999999)
+	if verdict != &"" and b.kneeling:
+		apply_verdict(verdict, b)
+
+## Pump & Dump: a big kill moves the venue 15% more, whichever way it runs.
+func _pump_and_dump() -> void:
+	if RunState.has_relic(&"pump_and_dump") and live:
+		live.report_shock(0.85 if live.inverted() else 1.15, &"pump")
+
+## Insider Wire: every guard's line of sight, drawn faintly on the floor.
+func _show_vision_cones() -> void:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e is Enemy and e.sprite and not e.sprite.has_node("VisionCone"):
+			var cone := VisionCone.new()
+			cone.name = "VisionCone"
+			cone.reach = e.sight_range
+			e.sprite.add_child(cone)
+
+class VisionCone extends Node2D:
+	var reach := 420.0
+	func _ready() -> void:
+		z_index = -1
+		show_behind_parent = true
+		material = StreetArt._unshaded()
+		queue_redraw()
+	func _draw() -> void:
+		var pts := PackedVector2Array([Vector2.ZERO])
+		for i in 13:
+			pts.append(Vector2.from_angle(-0.6 + i * 0.1) * reach)
+		draw_colored_polygon(pts, Color(1.0, 0.25, 0.2, 0.03))
+		draw_polyline(pts + PackedVector2Array([Vector2.ZERO]), Color(1.0, 0.3, 0.25, 0.14), 1.0)
+
+## Ordinary jobs: the lieutenant gets a bar once he joins the fight.
+func _watch_lieutenant() -> void:
+	if _lieutenant_shown or not is_instance_valid(lieutenant) or lieutenant._dead:
+		return
+	if lieutenant._alert == Enemy.Alert.HUNTING and hud and hud.boss_bar:
+		_lieutenant_shown = true
+		hud.boss_bar.show_for(lieutenant, lieutenant.elite_tag, "LIEUTENANT")
+
+func _on_lieutenant_down(e) -> void:
+	if hud and hud.boss_bar and hud.boss_bar.boss == e:
+		hud.boss_bar.clear()
+	fx.chip(e.global_position, "LIEUTENANT DOWN", Palette.GOLD)
+	_pump_and_dump()
+	if not RunFlow.practice:
+		Meta.record_boss(&"lieutenant", true)
+
+func _setup_tactics() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 8
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(layer)
+	var ui := Control.new()
+	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(ui)
+	tactical_map = HeistMap.new()
+	tactical_map.floor_host = self
+	tactical_map.full_reveal = has_mod(&"insider")
+	ui.add_child(tactical_map)
+	tactical_map.hide()
+	var toggle := TypewriterKey.new()
+	toggle.icon_name = "map"
+	toggle.caption = "MAP"
+	toggle.position = Vector2(1280 - 16 - 66 - 74, 30)
+	toggle.size = Vector2(66, 72)
+	toggle.pressed.connect(_toggle_map)
+	ui.add_child(toggle)
+	if hud and hud.has_method("bind_floor"):
+		hud.bind_floor(self)
+	_update_security_status()
+
+## Music intensity follows the alarm state: sneaking plays the stealth layer,
+## anyone hunting you (or heat past the dispatch line) brings in the combat
+## layer. The siren loops while a response is rolling; a heartbeat at 1 HP.
+func _update_audio() -> void:
+	if _extracting or not is_instance_valid(player):
+		return
+	var hunting := 0
+	var looking := 0
+	for e in director.enemies:
+		if is_instance_valid(e) and not e.sleeping:
+			if e._alert == Enemy.Alert.HUNTING:
+				hunting += 1
+			elif e._alert == Enemy.Alert.INVESTIGATING:
+				looking += 1
+	# Adaptive stems: explore / tension (someone looking) / combat (someone
+	# hunting) / WANTED layers / the combo's riff and lead.
+	if not _boss_music:
+		Audio.set_music_state(looking > 0, hunting > 0, wanted.stars if wanted else 0, combo.tier if combo and combo.live else 0)
+	var responding := heat >= dispatch_threshold()
+	if responding != _siren_on:
+		_siren_on = responding
+		Audio.loop("alarm", responding)
+		if lighting and not generator.entrance.is_empty():
+			lighting.set_police(responding, _outside_position())
+	var low := player.health == 1 and player.max_health > 1 and not player.is_dead()
+	if low != _heartbeat_on:
+		_heartbeat_on = low
+		Audio.loop("heartbeat", low)
+
+## The boss notices you: stinger, then the boss theme takes over.
+func start_boss_music() -> void:
+	if _boss_music:
+		return
+	_boss_music = true
+	Audio.play("boss_intro")
+	Audio.duck(-6.0, 2.5)
+	Audio.play_boss_music(boss_id if boss_id != &"" else &"auditor")
+
+func _exit_tree() -> void:
+	Audio.loop("alarm", false)
+	Audio.loop("heartbeat", false)
+
+func _toggle_map() -> void:
+	if get_tree().paused and not tactical_map.visible:
+		return
+	Controls.release_all()
+	tactical_map.visible = not tactical_map.visible
+	get_tree().paused = tactical_map.visible
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("tactical_map") and not event.is_echo():
+		_toggle_map()
+		get_viewport().set_input_as_handled()
+
+func _update_security_status() -> void:
+	_update_audio()
+	if hud and hud.has_method("set_heat"):
+		hud.set_heat(heat, dispatch_threshold(), fire_exit_limit(), _heat_timer)
+		hud.set_loot_multiplier(live_loot_multiplier() * loot_multiplier())
+
+## Stage art for the whole building: themed floors, walls with height,
+## furniture that doubles as cover. Runs right after generation, before crews.
+func _dress_building() -> void:
+	var stage_idx: int = RunFlow.pending_heist.stage if RunFlow.pending_heist else (RunState.run_map.current_stage if RunState.run_map else 0)
+	if boss_heist and BossLayouts.has_layout(boss_id):
+		stage_idx = BossLayouts.stage_of(boss_id)
+	env = EnvTheme.for_stage(stage_idx)
+	building_bounds = Rect2()
+	for room: BuildingRoom in generator.rooms:
+		var rect := Rect2(room.global_position, room.room_size)
+		building_bounds = rect if building_bounds.size == Vector2.ZERO else building_bounds.merge(rect)
+		var gaps := _open_gaps_local(room)
+		var obstacles: Array = []
+		var counter := room.get_node_or_null("Counter") as StaticBody2D
+		if counter:
+			# Authored counters become proper furniture on the props layer.
+			var prop := Prop.new()
+			prop.kind = "counter"
+			prop.size = Vector2(170, 34)
+			prop.theme = env
+			prop.position = counter.position
+			counter.queue_free()
+			room.add_child(prop)
+			obstacles.append(prop.footprint())
+			room.blocked_rects.append(prop.footprint().grow(12))
+		var art := RoomArt.new()
+		art.room = room
+		art.theme = env
+		art.room_type = env.room_type_for(room, room == generator.start_room)
+		art.open_gaps = gaps
+		room.set_meta("room_type", art.room_type)
+		room.add_child(art)
+		var walls := RoomArt.WallArt.new()
+		walls.room = room
+		walls.theme = env
+		room.add_child(walls)
+		wall_art.append(walls)
+		var keepouts: Array = []
+		for marker in room.get_node("SpawnPoints").get_children() if room.has_node("SpawnPoints") else []:
+			keepouts.append([marker.position, 46.0])
+		keepouts.append([Vector2(55, 70), 50.0])                                        # camera
+		keepouts.append([Vector2(room.room_size.x - 55, 70), 50.0])                     # second camera
+		keepouts.append([Vector2(room.room_size.x - 65, room.room_size.y - 100), 56.0])  # alarm panel
+		if room == generator.start_room:
+			keepouts.append([Vector2(430, 270), 70.0])                                   # market terminal
+		if room.has_meta("is_boss"):
+			keepouts.append([room.room_size * 0.5, 170.0])
+		elif room.has_meta("chest_kind"):
+			keepouts.append([room.room_size * 0.5, 90.0])
+		var placer := PropPlacer.new()
+		placer.room = room
+		placer.theme = env
+		placer.room_type = art.room_type
+		placer.furnish(gaps, keepouts, obstacles)
+		# Gas cans, fuel drums, fuse boxes: 0-3 a room (never in a boss arena).
+		if not room.has_meta("is_boss") and not boss_heist:
+			var roll := placer.rng.randf()
+			var n := 0 if roll < 0.35 else (1 if roll < 0.7 else (2 if roll < 0.9 else 3))
+			placer.place_explosives(n, _stage)
+
+## Doorways of a room that actually lead somewhere: into a neighbour, or out
+## through the main door / a fire exit. Local coordinates.
+func _open_gaps_local(room: Node2D) -> Array:
+	var out: Array = []
+	for gap: Dictionary in generator._gaps_of(room):
+		var side: int = gap["side"]
+		var neighbour: Vector2i = gap["cell"] + FloorGenerator.SIDE_DELTA[side]
+		var open: bool = generator._occupied.has(neighbour) and generator._occupied[neighbour] != room
+		if not open:
+			for door: Dictionary in [generator.entrance] + generator.exits:
+				if not door.is_empty() and door["room"] == room and door["side"] == side and door["wall_pos"] == gap["wall_pos"]:
+					open = true
+		if open:
+			out.append({"local": gap["wall_pos"], "side": side, "horizontal": side == FloorGenerator.NORTH or side == FloorGenerator.SOUTH})
+	return out
+
+## Outside and lighting: once the player and car exist.
+func _dress_outside() -> void:
+	lighting = HeistLighting.new()
+	add_child(lighting)
+	lighting.setup(env, generator.rooms, player, has_mod(&"blackout") and not RunState.has_job_gear(&"night_vision"))
+	fx.lighting = lighting
+	var occluders: Array = []
+	for walls: RoomArt.WallArt in wall_art:
+		for r: Rect2 in walls.rects:
+			occluders.append(Rect2(r.position + walls.room.global_position, r.size))
+	lighting.add_occluders(occluders)
+	var street := StreetArt.new()
+	street.bounds = building_bounds
+	street.theme = env
+	street.lighting = lighting
+	if not generator.entrance.is_empty():
+		var e: Dictionary = generator.entrance
+		var wall_world: Vector2 = e["room"].to_global(e["wall_pos"])
+		street.door_pos = wall_world
+		street.door_out = (wall_world - e["inside_pos"]).normalized()
+	street.sign_text = Venues.sign_name(_venue, boss_id)
+	add_child(street)
+	var rain := StreetArt.Rain.new()
+	rain.follow = camera
+	add_child(rain)
+	if car:
+		car.add_headlights(lighting)
+	for g: Dictionary in generator.exits:
+		lighting.add_street_lamp(g["inside_pos"], Palette.NEON_GREEN, 1.1, 0.7)

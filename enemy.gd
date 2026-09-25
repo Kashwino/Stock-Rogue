@@ -17,6 +17,13 @@ class_name Enemy
 
 signal died(enemy: Enemy)
 
+## The next take_damage's circumstances (see note_hit); consumed by it.
+var hit_info: Dictionary = {}
+## How this guard died, classified in _die() (null while alive).
+var kill_info: KillInfo = null
+var _killing_hit: Dictionary = {}
+var _last_excess := 0
+
 enum Role { PATROL, SENTRY }
 enum Alert { IDLE, INVESTIGATING, HUNTING }
 
@@ -24,7 +31,28 @@ enum Alert { IDLE, INVESTIGATING, HUNTING }
 ## weapon behaviour and movement so a building has a readable mix of threats
 ## rather than fifteen identical shooters. SPRINTER, TURRET and MEDIC also get
 ## distinct MOVEMENT behaviour, not just different numbers — see _do_hunt.
-enum Kind { GRUNT, ENFORCER, SHOTGUNNER, MARKSMAN, BRUTE, SPRINTER, TURRET, MEDIC }
+## RIOT onwards run an EnemyBrain (enemy_brains.gd) with their own telegraphs.
+enum Kind { GRUNT, ENFORCER, SHOTGUNNER, MARKSMAN, BRUTE, SPRINTER, TURRET, MEDIC,
+	RIOT, GRENADIER, HANDLER, DOG, TECH, SNIPER, BOUNCER, DRONE, CLEANER }
+
+const KIND_NAMES := {
+	Kind.GRUNT: "GUARD", Kind.ENFORCER: "ENFORCER", Kind.SHOTGUNNER: "SHOTGUNNER",
+	Kind.MARKSMAN: "MARKSMAN", Kind.BRUTE: "BRUTE", Kind.SPRINTER: "SPRINTER",
+	Kind.TURRET: "TURRET", Kind.MEDIC: "MEDIC", Kind.RIOT: "RIOT SHIELD",
+	Kind.GRENADIER: "GRENADIER", Kind.HANDLER: "K9 HANDLER", Kind.DOG: "DOG",
+	Kind.TECH: "SECURITY TECH", Kind.SNIPER: "LASER SNIPER", Kind.BOUNCER: "BOUNCER",
+	Kind.DRONE: "DRONE", Kind.CLEANER: "CLEANER",
+}
+
+## Elite affixes (City onward, or late reinforcements). Elites glow, carry a
+## name tag and drop a valuable.
+const AFFIXES := [&"armored", &"volatile", &"hasted", &"shielded", &"veteran"]
+const AFFIX_COLORS := {
+	&"armored": Color("a9bccf"), &"volatile": Color("ff7a2a"), &"hasted": Color("ffe14a"),
+	&"shielded": Color("37e3ff"), &"veteran": Color("e0544c"),
+}
+const SHIELD_MAX := 3
+const SHIELD_REGEN := 3.5
 
 const ARCHETYPES := {
 	Kind.GRUNT: {
@@ -66,6 +94,51 @@ const ARCHETYPES := {
 		"health": 3, "speed": 100.0, "fire_rate": 1.8, "range": 260.0,
 		"keep": 260.0, "damage": 1, "pellets": 1, "spread": 0.1,
 		"bullet_speed": 300.0, "colour": Color(0.5, 0.95, 0.65),
+	},
+	Kind.RIOT: {       # frontal shield, slow advance, shield bash up close
+		"health": 8, "speed": 58.0, "fire_rate": 1.5, "range": 320.0,
+		"keep": 60.0, "damage": 1, "pellets": 1, "spread": 0.08,
+		"bullet_speed": 330.0, "colour": Color(0.55, 0.65, 0.8),
+	},
+	Kind.GRENADIER: {  # fire_rate = seconds between grenades
+		"health": 4, "speed": 80.0, "fire_rate": 3.4, "range": 520.0,
+		"keep": 320.0, "damage": 2, "pellets": 1, "spread": 0.0,
+		"bullet_speed": 0.0, "colour": Color(0.6, 0.7, 0.35),
+	},
+	Kind.HANDLER: {    # an ordinary shooter who brings a dog
+		"health": 4, "speed": 95.0, "fire_rate": 1.3, "range": 380.0,
+		"keep": 210.0, "damage": 1, "pellets": 1, "spread": 0.06,
+		"bullet_speed": 330.0, "colour": Color(0.75, 0.55, 0.3),
+	},
+	Kind.DOG: {        # fast and fragile; fire_rate = seconds between lunges
+		"health": 2, "speed": 235.0, "fire_rate": 1.1, "range": 170.0,
+		"keep": 0.0, "damage": 1, "pellets": 1, "spread": 0.0,
+		"bullet_speed": 0.0, "colour": Color(0.55, 0.42, 0.3),
+	},
+	Kind.TECH: {       # unarmed: runs for the alarm panel
+		"health": 3, "speed": 130.0, "fire_rate": 99.0, "range": 0.0,
+		"keep": 380.0, "damage": 0, "pellets": 1, "spread": 0.0,
+		"bullet_speed": 0.0, "colour": Color(0.35, 0.75, 0.72),
+	},
+	Kind.SNIPER: {     # fire_rate = cooldown after each heavy shot
+		"health": 3, "speed": 62.0, "fire_rate": 1.6, "range": 900.0,
+		"keep": 520.0, "damage": 2, "pellets": 1, "spread": 0.0,
+		"bullet_speed": 1050.0, "colour": Color(0.9, 0.25, 0.25),
+	},
+	Kind.BOUNCER: {    # fists; fire_rate = punch cooldown, range = charge reach
+		"health": 12, "speed": 100.0, "fire_rate": 1.1, "range": 260.0,
+		"keep": 0.0, "damage": 1, "pellets": 1, "spread": 0.0,
+		"bullet_speed": 0.0, "colour": Color(0.2, 0.2, 0.24),
+	},
+	Kind.DRONE: {      # fire_rate = seconds between 3-round bursts
+		"health": 2, "speed": 150.0, "fire_rate": 1.9, "range": 440.0,
+		"keep": 230.0, "damage": 1, "pellets": 1, "spread": 0.1,
+		"bullet_speed": 380.0, "colour": Color(0.4, 0.45, 0.5),
+	},
+	Kind.CLEANER: {    # cloaked black-ops; fire_rate = seconds between bursts
+		"health": 6, "speed": 140.0, "fire_rate": 1.5, "range": 460.0,
+		"keep": 210.0, "damage": 1, "pellets": 1, "spread": 0.06,
+		"bullet_speed": 470.0, "colour": Color(0.1, 0.12, 0.14),
 	},
 }
 
@@ -117,24 +190,112 @@ func apply_archetype(k: Kind) -> void:
 			hearing_multiplier = 1.4      # skittish, notices everything
 		Kind.SPRINTER:
 			hearing_multiplier = 1.1
+		Kind.SNIPER:
+			sight_range = 950.0
+		Kind.DOG:
+			hearing_multiplier = 1.5
+		Kind.TECH:
+			hearing_multiplier = 1.2
+		Kind.DRONE:
+			sight_range = 520.0
+			hearing_multiplier = 0.8
+		Kind.CLEANER:
+			sight_range = 560.0
+		Kind.BOUNCER:
+			hearing_multiplier = 0.8
 		_:
 			pass
+	armored = k in [Kind.RIOT, Kind.ENFORCER, Kind.BRUTE, Kind.CLEANER, Kind.TURRET]
+	brain = _make_brain(k)
+	if brain:
+		brain.e = self
+		brain.setup()
+	_apply_body_layers()
 	_apply_archetype_visual()
+
+func _make_brain(k: Kind) -> EnemyBrain:
+	match k:
+		Kind.RIOT: return EnemyBrains.Riot.new()
+		Kind.GRENADIER: return EnemyBrains.Grenadier.new()
+		Kind.HANDLER: return EnemyBrains.Handler.new()
+		Kind.DOG: return EnemyBrains.Dog.new()
+		Kind.TECH: return EnemyBrains.Tech.new()
+		Kind.SNIPER: return EnemyBrains.Sniper.new()
+		Kind.BOUNCER: return EnemyBrains.Bouncer.new()
+		Kind.DRONE: return EnemyBrains.Drone.new()
+		Kind.CLEANER: return EnemyBrains.Cleaner.new()
+	return null
+
+## Drones fly: they live on the FLYERS layer and only walls stop them.
+func _apply_body_layers() -> void:
+	if kind == Kind.DRONE:
+		collision_layer = Layers.FLYERS
+		collision_mask = Layers.WALLS
+	else:
+		collision_layer = Layers.ENEMIES
+		collision_mask = Layers.SOLID | Layers.ENEMIES
+
+func kind_name() -> String:
+	return KIND_NAMES.get(kind, "GUARD")
+
+## What stops this guard's eyes and feet (drones see over furniture).
+func solid_mask() -> int:
+	return brain.solid_mask() if brain else Layers.SOLID
 
 ## Sprite is @onready, so archetypes applied before the node is in the tree
 ## must defer their visual change until _ready().
 func _apply_archetype_visual() -> void:
 	if sprite == null:
 		return
-	var a: Dictionary = ARCHETYPES[kind]
-	if sprite is CanvasItem:
-		sprite.modulate = a["colour"]
-	var scale_mult := 1.0
+	sprite.modulate = Color.WHITE
+	var spec := visual_spec()
+	if faction == &"rival":
+		# The other crew: street clothes, masks, a green armband.
+		spec.merge({"body": SpriteKit.Body.HOODIE if spec.get("body") != SpriteKit.Body.DRONE else spec["body"],
+			"head": SpriteKit.Head.BALACLAVA, "color": Color("23302a"), "trim": Palette.NEON_GREEN,
+			"hat": Color("121814")}, true)
+	kit = SpriteKit.dress(sprite, spec)
+
+## Silhouette first, colour second: every archetype gets its own body, head
+## and weapon shape so a room reads at a glance.
+func visual_spec() -> Dictionary:
+	var S := SpriteKit
 	match kind:
-		Kind.BRUTE: scale_mult = 1.35
-		Kind.TURRET: scale_mult = 1.15    # reads as a fixed emplacement
-		Kind.MEDIC: scale_mult = 0.9      # smaller, clearly non-frontline
-	sprite.scale = Vector2.ONE * scale_mult
+		Kind.GRUNT:
+			return {"body": S.Body.VEST, "head": S.Head.CAP, "gun": S.Gun.PISTOL, "color": Color("34425e"), "trim": Color("8fa3c7"), "hat": Color("1e2638"), "skin": S.SKIN[1], "acc": ["radio"] if radio_carrier else []}
+		Kind.ENFORCER:
+			return {"body": S.Body.ARMOR, "head": S.Head.HELMET, "gun": S.Gun.RIFLE, "color": Color("4b4f38"), "trim": Color("c08a3a"), "hat": Color("363a28"), "skin": S.SKIN[2], "acc": ["plates"]}
+		Kind.SHOTGUNNER:
+			return {"body": S.Body.BULKY, "head": S.Head.BALD, "gun": S.Gun.SHOTGUN, "color": Color("5a3a26"), "trim": Color("d0a040"), "skin": S.SKIN[0]}
+		Kind.MARKSMAN:
+			return {"body": S.Body.LEAN, "head": S.Head.BERET, "gun": S.Gun.LONG_RIFLE, "color": Color("30465a"), "trim": Color("8cc0ff"), "hat": Color("5a1e22"), "skin": S.SKIN[4]}
+		Kind.BRUTE:
+			return {"body": S.Body.TANK, "head": S.Head.BALD, "gun": S.Gun.LMG, "color": Color("3e2a44"), "trim": Color("b06ad0"), "skin": S.SKIN[3], "scale": 1.3}
+		Kind.SPRINTER:
+			return {"body": S.Body.HOODIE, "head": S.Head.HOOD, "gun": S.Gun.SMG, "color": Color("7a2744"), "trim": Color("ff6aa0"), "hat": Color("5a1a30"), "skin": S.SKIN[1]}
+		Kind.TURRET:
+			return {"body": S.Body.TRIPOD, "gun": S.Gun.LMG, "color": Color("4d5660"), "trim": Palette.DANGER, "scale": 1.1}
+		Kind.MEDIC:
+			return {"body": S.Body.SUIT, "head": S.Head.HAIR, "gun": S.Gun.PISTOL, "color": Color("d9d6cc"), "trim": Color("ffffff"), "hair": Color("3a2818"), "skin": S.SKIN[0], "acc": ["cross"], "scale": 0.92}
+		Kind.RIOT:
+			return {"body": S.Body.ARMOR, "head": S.Head.HELMET, "gun": S.Gun.PISTOL, "shield": true, "color": Color("26324a"), "trim": Color("8aa4c0"), "hat": Color("1b2230"), "skin": S.SKIN[2], "scale": 1.08}
+		Kind.GRENADIER:
+			return {"body": S.Body.BULKY, "head": S.Head.HELMET, "gun": S.Gun.LAUNCHER, "color": Color("4a5230"), "trim": Color("c69a3b"), "hat": Color("3a4024"), "skin": S.SKIN[1], "acc": ["bandolier"]}
+		Kind.HANDLER:
+			return {"body": S.Body.VEST, "head": S.Head.CAP, "gun": S.Gun.PISTOL, "color": Color("4a3a2a"), "trim": Color("d0a040"), "hat": Color("2a2016"), "skin": S.SKIN[3], "acc": ["leash", "hivis"]}
+		Kind.DOG:
+			return {"body": S.Body.DOG, "color": Color("4d3b2a"), "trim": Palette.DANGER, "scale": 1.05}
+		Kind.TECH:
+			return {"body": S.Body.VEST, "head": S.Head.VISOR, "gun": S.Gun.TABLET, "color": Color("2d5a5e"), "trim": Palette.TEAL, "hat": Color("1c2a2c"), "skin": S.SKIN[4], "acc": ["radio"]}
+		Kind.SNIPER:
+			return {"body": S.Body.LEAN, "head": S.Head.VISOR, "gun": S.Gun.LONG_RIFLE, "color": Color("22252b"), "trim": Palette.DANGER, "hat": Color("15171b"), "visor": Palette.DANGER, "skin": S.SKIN[2], "gun_accent": Palette.DANGER}
+		Kind.BOUNCER:
+			return {"body": S.Body.BULKY, "head": S.Head.SLICKED, "gun": S.Gun.NONE, "color": Color("18181c"), "trim": Color("e8e8e8"), "hair": Color("0e0e0e"), "skin": S.SKIN[3], "acc": ["glasses", "tie"], "scale": 1.28}
+		Kind.DRONE:
+			return {"body": S.Body.DRONE, "color": Color("3a3f48"), "eye": Palette.DANGER, "scale": 1.1}
+		Kind.CLEANER:
+			return {"body": S.Body.ARMOR, "head": S.Head.VISOR, "gun": S.Gun.SMG, "color": Color("121418"), "trim": Color("2e3a40"), "hat": Color("0b0c0e"), "visor": Palette.NEON_CYAN, "skin": S.SKIN[1]}
+	return {"body": S.Body.SUIT, "head": S.Head.CAP, "gun": S.Gun.PISTOL, "color": Color("3d4658")}
 
 ## Reinforcements are spawned with hunting = true: they always know where you
 ## are and never idle.
@@ -147,11 +308,54 @@ var hunting: bool = false:
 
 @onready var sprite: Node2D = $Sprite
 @onready var muzzle: Node2D = $Muzzle
+var kit: SpriteKit = null
 
 var health: int
 var _player: Node2D = null
 var _fire_timer: float = 0.0
 var _dead: bool = false
+var _flash_tween: Tween
+var sleeping := false
+var wake_until_msec: int = 0
+var _director: EnemyDirector = null
+var radio_carrier := false
+var radio_progress := 0.0
+var radio_cooldown := 0.0
+const RADIO_TIME := 2.0
+## Archetype behaviour plug-in (null for the original eight).
+var brain: EnemyBrain = null
+var overhead: EnemyOverhead
+var _telegraph: Telegraph = null
+## Elite state.
+var elite := false
+var affix: StringName = &""
+var armored := false
+var shield_hp := 0
+var _shield_clock := 0.0
+var _haste_clock := 0.0
+## Name tag above the head (elites, lieutenants, reinforcements).
+var elite_tag := "":
+	set(v):
+		elite_tag = v
+		if overhead:
+			overhead.tag = v
+
+func set_sleeping(value: bool) -> void:
+	if _dead:
+		return
+	sleeping = value
+	set_physics_process(not value)
+	if value:
+		velocity = Vector2.ZERO
+
+func wake_for(seconds: float = 2.0) -> void:
+	wake_until_msec = Time.get_ticks_msec() + int(seconds * 1000.0)
+	set_sleeping(false)
+
+func _exit_tree() -> void:
+	if is_instance_valid(_director):
+		_director.unregister(self)
+
 
 var _alert: int = Alert.IDLE
 var _post: Vector2 = Vector2.ZERO         # where this guard belongs
@@ -169,19 +373,29 @@ var _medic_target: Node = null
 var _medic_scan_timer: float = 0.0
 var _medic_heal_timer: float = 0.0
 ## Set true once the guard is roused (entered room, heard/took a shot). Only
-## then will it chase and open fire.
-var _provoked: bool = false
+## then will it chase and open fire. Brains hear about it once.
+var _provoked: bool = false:
+	set(v):
+		if v and not _provoked:
+			_provoked = true
+			if brain and not _dead:
+				brain.on_provoked()
+		elif not v:
+			_provoked = false
 
 const LOSE_INTEREST_TIME := 4.0
 
 func _ready() -> void:
+	overhead = EnemyOverhead.new()
+	overhead.tag = elite_tag
+	add_child(overhead)
 	add_to_group("enemies")                  # ensures bullets can find us
 	# Set collision in code so a mis-set enemy.tscn can't let guards walk
 	# through walls. Layer 2 = enemies; mask 1 (walls) + 2 (other enemies) so
-	# guards physically can't overlap and pile onto one spot.
-	collision_layer = 2
-	collision_mask = 1 | 2
-	health = max_health
+	# guards physically can't overlap and pile onto one spot. Drones fly.
+	_apply_body_layers()
+	if health <= 0:
+		health = max_health
 	_apply_archetype_visual()
 	_fire_timer = randf() * fire_rate        # stagger so they don't all fire in sync
 	_post = global_position
@@ -191,6 +405,9 @@ func _ready() -> void:
 		_lose_timer = LOSE_INTEREST_TIME
 		_provoked = true
 	_acquire_player()
+	_director = get_tree().get_first_node_in_group("enemy_director") as EnemyDirector
+	if _director:
+		_director.register(self)
 	# Listen for gunshots, deaths, footsteps.
 	if has_node("/root/Noise"):
 		get_node("/root/Noise").heard.connect(_on_noise)
@@ -200,11 +417,61 @@ func _acquire_player() -> void:
 	if players.size() > 0:
 		_player = players[0]
 
+## Guards and rival crews fight each other as well as the player. `_player`
+## is whoever this fighter is after right now (normally the player).
+var faction: StringName = &"guard"
+var _retarget_clock := 0.0
+static var _rival_round: PackedScene = null
+
+func _retarget(delta: float) -> void:
+	_retarget_clock -= delta
+	if _retarget_clock > 0.0:
+		return
+	_retarget_clock = 0.4
+	var host := heist()
+	if host == null or (faction == &"guard" and host.rivals_alive() == 0 and host.allies_up() == 0):
+		if not (_player is Player):
+			_acquire_player()
+		return
+	var real: Node2D = host.player
+	var best: Node2D = real
+	var best_d := INF
+	if is_instance_valid(real) and not real.is_dead():
+		best_d = global_position.distance_to(real.global_position)
+	for other in (host.director.neighbours(global_position, sight_range) if host.director else []):
+		if other == self or not is_instance_valid(other) or other._dead or other.faction == faction:
+			continue
+		var d := global_position.distance_to(other.global_position)
+		if d < best_d * 0.9:
+			best_d = d
+			best = other
+	# Flipped bosses fighting beside the player draw fire too.
+	if faction == &"guard":
+		for ally: Node2D in host.allies:
+			if is_instance_valid(ally) and not ally.is_dead():
+				var d := global_position.distance_to(ally.global_position)
+				if d < best_d * 0.9:
+					best_d = d
+					best = ally
+	if best:
+		_player = best
+
+## Rounds that can hit fighters: used when the target is not the player.
+func _round_for_target() -> PackedScene:
+	if _player is Player or _player == null or _player is Ally:
+		return enemy_bullet_scene
+	if _rival_round == null:
+		_rival_round = load("res://bullet.tscn")
+	return _rival_round
+
 # --------------------------------------------------------------- hearing ----
 func _on_noise(pos: Vector2, radius: float, kind: StringName) -> void:
-	if _dead or _alert == Alert.HUNTING:
+	if _dead:
 		return
 	if global_position.distance_to(pos) > radius * hearing_multiplier:
+		return
+	wake_for()
+	if _alert == Alert.HUNTING:
 		return
 	# A sound in earshot rouses the guard — now sight will make it hunt.
 	if kind == &"gunshot" or kind == &"death":
@@ -227,13 +494,15 @@ func _can_see_player() -> bool:
 		return false
 	if _player.has_method("is_dead") and _player.is_dead():
 		return false
+	if _player is Enemy and _player._dead:
+		return false
 	var to_player := _player.global_position - global_position
 	if to_player.length() > sight_range:
 		return false
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position, _player.global_position)
-	query.collision_mask = 1                 # layer 1 = walls
+	query.collision_mask = solid_mask()      # walls and furniture block sight
 	query.collide_with_areas = false
 	query.exclude = [get_rid(), _player.get_rid()]
 	var hit := space.intersect_ray(query)
@@ -244,8 +513,23 @@ func _can_see_player() -> bool:
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
+	if freeze_left > 0.0 or stagger_left > 0.0:
+		_tick_frozen(delta)
+		return
+	if surrendered:
+		velocity = velocity.lerp(Vector2.ZERO, 0.25) + _separation() * move_speed * 0.5
+		move_and_slide()
+		return
 	if _player == null or not is_instance_valid(_player):
 		_acquire_player()
+		return
+
+	if brain:
+		brain.tick(delta)
+	_tick_elite(delta)
+	_tick_burn(delta)
+	_retarget(delta)
+	if not is_instance_valid(_player):
 		return
 
 	# Sight only triggers hunting once the guard is PROVOKED — the player has
@@ -254,6 +538,8 @@ func _physics_process(delta: float) -> void:
 	# the whole building opening fire the instant you're visible down a hallway.
 	var sees := _can_see_player()
 	if sees and _provoked:
+		if _alert != Alert.HUNTING:
+			Audio.play("alert", global_position)
 		_alert = Alert.HUNTING
 		_lose_timer = LOSE_INTEREST_TIME
 	elif _alert == Alert.HUNTING:
@@ -266,11 +552,22 @@ func _physics_process(delta: float) -> void:
 	# Being seen while in the player's room counts as provocation on its own.
 	if sees and not _provoked and _player_in_my_room():
 		_provoked = true
+	# Bodies are evidence: an unprovoked guard who spots one goes to look.
+	if not _provoked and _alert != Alert.HUNTING and faction == &"guard" and not (self is Boss):
+		_notice_bodies(delta)
+	if _radio_step(delta, sees):
+		velocity = Vector2.ZERO
+		return
 
 	match _alert:
 		Alert.HUNTING:      _do_hunt(delta, sees)
-		Alert.INVESTIGATING: _do_investigate(delta)
-		_:                   _do_idle(delta)
+		_:
+			if brain and brain.calm(delta):
+				pass
+			elif _alert == Alert.INVESTIGATING:
+				_do_investigate(delta)
+			else:
+				_do_idle(delta)
 
 	# Gentle separation: push apart from any very close neighbour so groups
 	# spread into a loose formation instead of collapsing onto one point.
@@ -280,7 +577,7 @@ func _physics_process(delta: float) -> void:
 ## Sum of small pushes away from nearby enemies (boids-style separation).
 func _separation() -> Vector2:
 	var push := Vector2.ZERO
-	for other in get_tree().get_nodes_in_group("enemies"):
+	for other in (_director.neighbours(global_position) if _director else []):
 		if other == self or not is_instance_valid(other):
 			continue
 		var away: Vector2 = global_position - other.global_position
@@ -322,7 +619,7 @@ func _is_clear(dir: Vector2, dist: float) -> bool:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(
 		global_position, global_position + dir * dist)
-	query.collision_mask = 1                 # walls only
+	query.collision_mask = solid_mask()
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 	return space.intersect_ray(query).is_empty()
@@ -367,6 +664,8 @@ func _player_in_my_room() -> bool:
 func _do_hunt(delta: float, sees: bool) -> void:
 	var to_player := _player.global_position - global_position
 	var dist := to_player.length()
+	if brain and brain.hunt(delta, sees, to_player, dist):
+		return
 	if sprite and dist > 1.0:
 		sprite.rotation = to_player.angle()
 
@@ -456,7 +755,7 @@ func _do_medic(delta: float, to_player: Vector2, dist: float) -> void:
 func _find_hurt_ally() -> Node:
 	var best: Node = null
 	var best_d := 360.0
-	for other in get_tree().get_nodes_in_group("enemies"):
+	for other in (_director.neighbours(global_position, 360.0) if _director else []):
 		if other == self or not is_instance_valid(other):
 			continue
 		if "health" not in other or "max_health" not in other:
@@ -472,6 +771,12 @@ func _find_hurt_ally() -> Node:
 func _shoot(dir: Vector2) -> void:
 	if enemy_bullet_scene == null:
 		return
+	var host := get_tree().current_scene
+	if host is HeistFloor:
+		host.fx.muzzle(global_position + dir * 28.0, dir)
+	if kit:
+		kit.kick(0.6 + 0.2 * pellets)
+	Audio.play("shot_enemy", global_position, 0.0, 1.15 if pellets == 1 else 0.8)
 	for i in maxi(pellets, 1):
 		var offset := 0.0
 		if pellets > 1:
@@ -480,17 +785,23 @@ func _shoot(dir: Vector2) -> void:
 			offset += randf_range(-spread, spread) * 0.25
 		elif spread > 0.0:
 			offset = randf_range(-spread, spread)
-		var b := enemy_bullet_scene.instantiate()
-		get_tree().current_scene.add_child(b)
-		b.global_position = muzzle.global_position
-		b.setup(dir.rotated(offset), self)
-		if "damage" in b:
-			b.damage = bullet_damage
-		if "speed" in b:
-			b.speed = bullet_speed
+		_fire_bullet(dir.rotated(offset), bullet_damage, bullet_speed, false)
 	# Gunfire draws every guard in earshot.
 	if has_node("/root/Noise"):
 		get_node("/root/Noise").gunshot(global_position)
+
+## One enemy round from the muzzle, pooled when a heist hosts a BulletPool.
+func _fire_bullet(dir: Vector2, dmg: int, spd: float, loud := true) -> Node:
+	if enemy_bullet_scene == null or not is_inside_tree():
+		return null
+	var b := BulletPool.take(self, _round_for_target())
+	b.damage = dmg
+	b.speed = spd
+	b.global_position = global_position + dir * 28.0
+	b.setup(dir, self)
+	if loud and has_node("/root/Noise"):
+		get_node("/root/Noise").gunshot(global_position)
+	return b
 
 # ---------------------------------------------------------------- damage ----
 ## Called by a MEDIC on a nearby wounded ally. Small floating "+N" so a heal
@@ -502,32 +813,60 @@ func heal(amount: int) -> void:
 	health = mini(health + amount, max_health)
 	if health == before:
 		return
-	if sprite:
+	if kit:
 		var flash := create_tween()
-		flash.tween_property(sprite, "modulate", Color(0.5, 1.0, 0.6), 0.1)
-		flash.tween_property(sprite, "modulate", ARCHETYPES[kind]["colour"], 0.25)
+		flash.tween_property(kit, "modulate", Color(0.5, 1.4, 0.6), 0.1)
+		flash.tween_property(kit, "modulate", Color.WHITE, 0.25)
+
+## Say how the next hit lands before calling take_damage(): source (bullet,
+## blast, burn, takedown, execution), direction, force, weapon, shot id...
+## Whether the victim was still unprovoked is recorded here.
+func note_hit(info: Dictionary) -> void:
+	hit_info = info.duplicate()
+	hit_info["unprovoked"] = not _provoked
 
 func take_damage(amount: int = 1) -> void:
 	# queue_free() only frees at end of frame, so without this guard several
 	# bullets landing on the same frame would each count as a separate kill.
+	var info := hit_info
+	hit_info = {}
 	if _dead:
 		return
-	health -= amount
+	wake_for(3.0)
 	# Being shot: you know where it came from and you're now hostile.
 	_provoked = true
 	_alert = Alert.HUNTING
 	_lose_timer = LOSE_INTEREST_TIME
+	if shield_hp > 0:
+		# The bubble eats the hit and starts its regeneration clock over.
+		shield_hp -= 1
+		_shield_clock = SHIELD_REGEN
+		overhead.bubble = float(shield_hp) / SHIELD_MAX
+		Audio.play("deflect", global_position, -2.0)
+		return
+	# A hit knocks the radio call back; only a kill stops it for good.
+	radio_progress = maxf(radio_progress - 0.5, 0.0)
+	if red_marked:
+		amount += 1
+	if amount >= health:
+		_last_excess = amount - health
+		_killing_hit = info
+	health -= amount
+	if brain:
+		brain.on_hurt()
 	_flash()
 	if health <= 0:
 		_die()
+	elif can_stagger() and health <= stagger_threshold():
+		stagger(STAGGER_TIME)
+
+## Riot shields stop bullets from the front.
+func deflects(dir: Vector2) -> bool:
+	return brain != null and not _dead and brain.deflects(dir)
 
 func _flash() -> void:
-	# Quick white flash to telegraph the hit.
-	if sprite is CanvasItem:
-		sprite.modulate = Color(3, 3, 3)     # over-bright
-		await get_tree().create_timer(0.06).timeout
-		if is_instance_valid(sprite):
-			sprite.modulate = Color.WHITE
+	if kit:
+		kit.flash()
 
 func _die() -> void:
 	if _dead:
@@ -537,8 +876,360 @@ func _die() -> void:
 	for c in get_children():
 		if c is CollisionShape2D or c is CollisionPolygon2D:
 			c.set_deferred("disabled", true)
-	# A body hitting the floor is heard by anyone nearby.
-	if has_node("/root/Noise"):
+	# A body hitting the floor is heard by anyone nearby — except a silent
+	# stealth takedown.
+	if has_node("/root/Noise") and not bool(_killing_hit.get("stealth", false)):
 		get_node("/root/Noise").death(global_position)
+	overhead.prompt = ""
+	overhead.staggered = false
+	kill_info = KillInfo.classify(self, _killing_hit, _last_excess)
+	if kit and get_parent():
+		kill_info.corpse = Corpse.spawn(get_parent(), global_position, sprite.global_rotation if sprite else 0.0, kit.spec, kill_info)
+	# Kill sounds (impact + body + fall) play from the heist's KillFeedback.
+	if heist() == null:
+		Audio.play("death_enemy" if kind != Kind.DRONE else "impact_wall", global_position)
+	if brain:
+		brain.on_death()
+	var host := heist()
+	if host:
+		if affix == &"volatile":
+			Blast.fuse(host, global_position, 0.6, 95.0, 2, 3, true)
+		if elite:
+			host.drop_loot(global_position, randi_range(35, 70) * (1 + host.stage_index()))
 	died.emit(self)
 	queue_free()
+
+## A radio carrier who starts hunting calls it in: a radio icon and a 2 s bar
+## over his head. Kill him before it fills and the heat never happens; hits
+## only knock the bar back.
+func _radio_step(delta: float, sees: bool) -> bool:
+	if not radio_carrier or hunting:
+		overhead.radio_icon = false
+		overhead.radio = 0.0
+		return false
+	radio_cooldown = maxf(0.0, radio_cooldown - delta)
+	overhead.radio_icon = radio_cooldown <= 0.0
+	if not sees or not _provoked or radio_cooldown > 0.0:
+		radio_progress = 0.0
+		overhead.radio = 0.0
+		return false
+	if radio_progress == 0.0:
+		Audio.play("radio", global_position)
+	radio_progress += delta
+	overhead.radio = minf(1.0, radio_progress / RADIO_TIME)
+	if radio_progress >= RADIO_TIME:
+		radio_progress = 0.0
+		radio_cooldown = 12.0
+		overhead.radio = 0.0
+		Audio.play("radio", global_position, 0.0, 0.8)
+		var host := heist()
+		if host:
+			host.security_alert(get_parent(), "Guard radio call", 10.0)
+	return true
+
+# -------------------------------------------------------------- stagger ----
+## A guard hit into the last quarter of his health (a Brute: the last tenth,
+## always at least his last hit point) staggers: he can't move or shoot, he
+## wobbles with a flashing outline, and a melee press executes him.
+const STAGGER_TIME := 1.2
+var stagger_left := 0.0
+## Held still (a takedown in progress): like a stagger without the wobble.
+var freeze_left := 0.0
+
+func can_stagger() -> bool:
+	return not (self is Boss) and not (kind in [Kind.TURRET, Kind.DRONE])
+
+func stagger_threshold() -> int:
+	return maxi(1, roundi(max_health * (0.10 if kind == Kind.BRUTE else 0.25)))
+
+func is_staggered() -> bool:
+	return stagger_left > 0.0 and not _dead
+
+func stagger(seconds: float) -> void:
+	stagger_left = maxf(stagger_left, seconds)
+	overhead.staggered = true
+	velocity = Vector2.ZERO
+
+## Freeze in place for a takedown.
+func hold(seconds: float) -> void:
+	freeze_left = maxf(freeze_left, seconds)
+	velocity = Vector2.ZERO
+
+func _tick_frozen(delta: float) -> void:
+	_tick_burn(delta)
+	velocity = velocity.lerp(Vector2.ZERO, 0.35)
+	move_and_slide()
+	if freeze_left > 0.0:
+		freeze_left -= delta
+		return
+	stagger_left -= delta
+	if sprite and not Settings.values.get("reduce_flashing", false):
+		sprite.rotation += sin(Time.get_ticks_msec() * 0.03) * 0.04
+	if kit:
+		var blink := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.025)
+		kit.modulate = Color.WHITE.lerp(Color(1.8, 1.4, 1.3), blink if not Settings.values.get("reduce_flashing", false) else 0.5)
+	if stagger_left <= 0.0:
+		stagger_left = 0.0
+		overhead.staggered = false
+		if kit:
+			kit.modulate = Color.WHITE
+
+# ------------------------------------------------------------ standing down --
+## The boss is on his knees: guards drop their guns and put their hands up.
+## (Bosses, turrets and drones don't; they just power down or wait.)
+var surrendered := false
+
+func stand_down() -> void:
+	if _dead or surrendered or self is Boss:
+		return
+	surrendered = true
+	hunting = false
+	_alert = Alert.IDLE
+	radio_progress = 0.0
+	velocity = Vector2.ZERO
+	telegraph_clear()
+	overhead.prompt = ""
+	overhead.tag = "STANDS DOWN"
+	overhead.tag_color = Palette.PAPER_DIM
+	if kit and not (kind in [Kind.TURRET, Kind.DRONE, Kind.DOG]):
+		var spec := kit.spec.duplicate()
+		var gun: int = spec.get("gun", SpriteKit.Gun.PISTOL)
+		spec["cower"] = true
+		spec["gun"] = SpriteKit.Gun.NONE
+		spec["shield"] = false
+		kit.apply(spec)
+		if get_parent():
+			Corpse.drop_weapon(get_parent(), global_position, gun, Vector2.from_angle(randf() * TAU) * randf_range(60.0, 140.0))
+
+# ------------------------------------------------------------- evidence ----
+## Seconds of looking before a body registers (the Ghost's slower cameras
+## make guards half again as slow to take one in).
+const BODY_NOTICE := 0.6
+var bodies_found := 0
+var _body_scan := 0.0
+var _body_look := 0.0
+var _body_target: Node2D = null
+var _radioed_bodies := false
+
+func _notice_bodies(delta: float) -> void:
+	_body_scan -= delta
+	if _body_scan > 0.0:
+		return
+	_body_scan = 0.25
+	var best: Node2D = null
+	var best_d := sight_range * 0.8
+	var space := get_world_2d().direct_space_state
+	for body: Node2D in get_tree().get_nodes_in_group("corpse"):
+		if get_instance_id() in body.get("seen_by"):
+			continue
+		var d := global_position.distance_to(body.global_position)
+		if d >= best_d:
+			continue
+		var query := PhysicsRayQueryParameters2D.create(global_position, body.global_position, solid_mask())
+		query.exclude = [get_rid()]
+		if not space.intersect_ray(query).is_empty():
+			continue
+		best = body
+		best_d = d
+	if best == null:
+		_body_look = 0.0
+		_body_target = null
+		return
+	_body_look = _body_look + 0.25 if best == _body_target else 0.25
+	_body_target = best
+	var need := BODY_NOTICE * (1.5 if float(RunState.profile_value("camera_spot_rate", 1.0)) < 1.0 else 1.0)
+	if _body_look < need:
+		return
+	# Found one.
+	best.seen_by.append(get_instance_id())
+	bodies_found += 1
+	_body_look = 0.0
+	_body_target = null
+	wake_for(6.0)
+	_alert = Alert.INVESTIGATING
+	_investigate_target = best.global_position
+	_lose_timer = LOSE_INTEREST_TIME * 1.5
+	Audio.play("alert", global_position, -8.0, 1.25)
+	var host := heist()
+	if host:
+		host.fx.chip(global_position, "BODY?", Palette.SODIUM)
+		if bodies_found >= 2 and not _radioed_bodies:
+			_radioed_bodies = true
+			Audio.play("radio", global_position)
+			host.security_alert(get_parent(), "Guard found bodies", 8.0)
+
+# ------------------------------------------------------------ brain help ----
+func heist() -> HeistFloor:
+	if not is_inside_tree():
+		return null
+	return get_tree().current_scene as HeistFloor
+
+## This guard's warning-shape canvas (lasers, lanes), created on first use.
+func telegraph() -> Telegraph:
+	if _telegraph == null:
+		_telegraph = Telegraph.new()
+		add_child(_telegraph)
+	return _telegraph
+
+func telegraph_clear() -> void:
+	if _telegraph:
+		_telegraph.clear()
+
+## Where a ray from `from` along `dir` first meets a wall (or `length` away).
+func ray_end(from: Vector2, dir: Vector2, length: float) -> Vector2:
+	var to := from + dir * length
+	var query := PhysicsRayQueryParameters2D.create(from, to, solid_mask())
+	query.exclude = [get_rid()]
+	var hit := get_world_2d().direct_space_state.intersect_ray(query)
+	return hit["position"] if not hit.is_empty() else to
+
+## Close-quarters hit on the player: damage, optional slow, shove.
+func melee(dmg: int, dir: Vector2, slow: float, slow_time: float, knock: float) -> void:
+	var p := _player as Player
+	if p == null or p.is_dead():
+		return
+	var before := p.hits_taken
+	p.last_hit_dir = dir
+	p.last_hit_by = Player.blame_of(self)
+	p.take_damage(dmg + (1 if affix == &"veteran" else 0))
+	if p.hits_taken == before:
+		return                    # dodged, or mercy frames
+	if slow > 0.0:
+		p.apply_slow(slow, slow_time)
+	if knock > 0.0:
+		p.shove(dir * knock)
+
+## Hold a band of distance from the player: back off inside `near`, close in
+## beyond `far`, otherwise settle.
+func keep_range(to_player: Vector2, dist: float, near: float, far: float) -> void:
+	if dist < near:
+		velocity = _steer_toward(global_position - to_player.normalized() * 200.0, move_speed)
+	elif dist > far:
+		velocity = _steer_toward(_player.global_position, move_speed)
+	else:
+		velocity = velocity.lerp(Vector2.ZERO, 0.2)
+
+func throw_grenade(target: Vector2) -> void:
+	var host := get_tree().current_scene
+	if host == null:
+		return
+	var g := Grenade.new()
+	g.from = global_position
+	g.to = target
+	g.player_damage = bullet_damage
+	host.add_child(g)
+	if kit:
+		kit.kick(1.0)
+
+# ----------------------------------------------------------------- elites ---
+## Promote to an elite: +50% health, the affix's twist, a glow, a name tag and
+## a valuable on death.
+func make_elite(a: StringName) -> void:
+	if a == &"" or elite:
+		return
+	elite = true
+	affix = a
+	max_health = int(ceil(max_health * 1.5))
+	match a:
+		&"armored":
+			armored = true
+			max_health *= 2
+		&"hasted":
+			move_speed *= 1.4
+			fire_rate *= 0.7
+		&"shielded":
+			shield_hp = SHIELD_MAX
+		&"veteran":
+			bullet_damage += 1
+	health = max_health
+	elite_tag = "%s %s" % [String(a).to_upper(), kind_name()]
+	if overhead:
+		overhead.tag_color = AFFIX_COLORS.get(a, Palette.GOLD)
+		overhead.bubble = 1.0 if shield_hp > 0 else 0.0
+	material = StreetArt._unshaded()
+	queue_redraw()
+
+## The Red Pen's mark: +1 damage from every source.
+var red_marked := false
+var _burn_left := 0.0
+var _burn_clock := 0.0
+
+## Incendiary rounds: 1 damage a second while it lasts.
+var _burn_by_player := false
+
+func ignite(seconds: float, by_player := true) -> void:
+	if _burn_left <= 0.0:
+		_burn_clock = 1.0
+	_burn_left = maxf(_burn_left, seconds)
+	_burn_by_player = by_player
+
+func _tick_burn(delta: float) -> void:
+	if _burn_left <= 0.0:
+		return
+	_burn_left -= delta
+	_burn_clock -= delta
+	if kit and not Settings.values["low_effects"]:
+		kit.modulate = Color(1.4, 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.02), 0.5)
+	if _burn_clock <= 0.0:
+		_burn_clock = 1.0
+		note_hit({"source": &"burn", "by_player": _burn_by_player})
+		take_damage(1)
+	if _burn_left <= 0.0 and kit and not _dead:
+		kit.modulate = Color.WHITE
+
+## A named elite who runs an ordinary job's boss room: double an elite's
+## health, bigger, with his name over his head.
+var lieutenant := false
+
+func make_lieutenant(title: String) -> void:
+	if not elite:
+		make_elite(AFFIXES[randi() % AFFIXES.size()])
+	lieutenant = true
+	max_health *= 2
+	health = max_health
+	elite_tag = title
+	if overhead:
+		overhead.tag_color = Palette.GOLD
+	if sprite:
+		sprite.scale *= 1.2
+
+func _tick_elite(delta: float) -> void:
+	if not elite:
+		return
+	if affix == &"shielded" and shield_hp < SHIELD_MAX:
+		_shield_clock -= delta
+		if _shield_clock <= 0.0:
+			shield_hp = SHIELD_MAX
+			overhead.bubble = 1.0
+			Audio.play("cloak", global_position, -8.0, 1.6)
+	elif affix == &"hasted" and velocity.length() > 60.0 and kit and not Settings.values["low_effects"]:
+		_haste_clock -= delta
+		if _haste_clock <= 0.0:
+			_haste_clock = 0.09
+			_afterimage()
+
+func _afterimage() -> void:
+	var host := get_parent()
+	if host == null:
+		return
+	var ghost := Node2D.new()
+	ghost.global_position = global_position
+	ghost.rotation = sprite.global_rotation
+	ghost.z_index = 3
+	host.add_child(ghost)
+	var copy := SpriteKit.new()
+	copy.apply(kit.spec)
+	copy.modulate = Palette.with_alpha(AFFIX_COLORS[&"hasted"], 0.4)
+	ghost.add_child(copy)
+	copy.set_process(false)
+	var tw := ghost.create_tween()
+	tw.tween_property(ghost, "modulate:a", 0.0, 0.25)
+	tw.tween_callback(ghost.queue_free)
+
+## Elite glow on the floor under the guard.
+func _draw() -> void:
+	if not elite:
+		return
+	var col: Color = AFFIX_COLORS.get(affix, Palette.GOLD)
+	draw_circle(Vector2(0, 4), 30.0, Palette.with_alpha(col, 0.12))
+	draw_arc(Vector2(0, 4), 26.0, 0.0, TAU, 32, Palette.with_alpha(col, 0.55), 2.0, true)

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="CharacterProfile" load_steps=2 format=3]
+[ext_resource type="Script" path="res://character_profile.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"broker"
+display_name = "The Broker"
+base_health = 2
+volatility_at_full = 2.0
+volatility_at_low = 4.0
+swing_mult = 1.5
+position_slots = 3
+position_leverage = 3.0
+fence_discount = 0.25
+combo_cash_mult = 1.25

@@ -12,8 +12,9 @@ signal collected(value: int)
 
 var _kind := 0                 # 0 cash, 1 jewels, 2 briefcase, 3 artwork
 var _taken := false
+var _pull := 0.0
 var _bob_time := 0.0
-var _visual: Node2D
+var _visual: LootArt
 
 # Value bands -> which valuable it looks like.
 const KINDS := [
@@ -24,9 +25,10 @@ const KINDS := [
 ]
 
 func _ready() -> void:
+	add_to_group("loot_pickups")
 	# Player is layer 4; only the player should trip a pickup.
 	collision_layer = 0
-	collision_mask = 4
+	collision_mask = Layers.PLAYER
 	monitoring = true
 
 	var shape := CollisionShape2D.new()
@@ -48,37 +50,68 @@ func _pick_kind() -> void:
 	_kind = KINDS.size() - 1
 
 func _build_visual() -> void:
-	_visual = Node2D.new()
+	_visual = LootArt.new()
+	_visual.kind = _kind
+	_visual.material = StreetArt._unshaded()
 	add_child(_visual)
-	var col: Color = KINDS[_kind]["color"]
-
-	# A little diamond token so loot reads at a glance.
-	var poly := Polygon2D.new()
-	poly.polygon = PackedVector2Array([
-		Vector2(0, -12), Vector2(11, 0), Vector2(0, 12), Vector2(-11, 0)])
-	poly.color = col
-	_visual.add_child(poly)
-
-	var glow := Polygon2D.new()
-	glow.polygon = PackedVector2Array([
-		Vector2(0, -20), Vector2(18, 0), Vector2(0, 20), Vector2(-18, 0)])
-	glow.color = Color(col.r, col.g, col.b, 0.18)
-	glow.z_index = -1
-	_visual.add_child(glow)
-
-	var lbl := Label.new()
-	lbl.text = KINDS[_kind]["label"]
-	lbl.add_theme_color_override("font_color", Color(0.1, 0.1, 0.12))
-	lbl.add_theme_font_size_override("font_size", 12)
-	lbl.position = Vector2(-4, -10)
-	_visual.add_child(lbl)
 
 func _process(delta: float) -> void:
-	# Gentle bob + spin so pickups catch the eye.
+	if Settings.values["low_effects"]:
+		return
+	# Gentle bob and a breathing glow so pickups catch the eye in the dark.
 	_bob_time += delta
 	if _visual:
 		_visual.position.y = sin(_bob_time * 3.0) * 3.0
-		_visual.scale.x = cos(_bob_time * 2.0) * 0.25 + 0.9
+		_visual.glow = 0.75 + 0.25 * sin(_bob_time * 4.0)
+		_visual.queue_redraw()
+
+
+## Drawn valuables: cash, jewels, a briefcase, a painting. Each glows gold.
+class LootArt extends Node2D:
+	var kind := 0
+	var glow := 1.0
+	func _draw() -> void:
+		for i in 4:
+			draw_circle(Vector2.ZERO, 30.0 - i * 6.0, Palette.with_alpha(Palette.LOOT_GLOW, 0.05 * glow + i * 0.02))
+		draw_circle(Vector2(3, 6), 14, Color(0, 0, 0, 0.3))
+		match kind:
+			0:
+				for i in 3:
+					var r := Rect2(Vector2(-14 + i * 2, -9 + i * 3), Vector2(26, 13))
+					draw_rect(r, Color("5a9a5a"))
+					draw_rect(r, Color("2a5a2a"), false, 1.0)
+					draw_rect(Rect2(r.position + Vector2(10, 0), Vector2(5, 13)), Color("e8e0b0"))
+			1:
+				var gem := PackedVector2Array([Vector2(0, -13), Vector2(12, -3), Vector2(0, 13), Vector2(-12, -3)])
+				draw_colored_polygon(gem, Color("7ad0ff"))
+				draw_polyline(gem + PackedVector2Array([gem[0]]), Color("dff4ff"), 1.5, true)
+				draw_line(Vector2(-12, -3), Vector2(12, -3), Color("dff4ff"), 1.0)
+				draw_circle(Vector2(-4, -6), 2.5 * glow, Color.WHITE)
+			2:
+				draw_rect(Rect2(-16, -10, 32, 22), Color("6a4424"))
+				draw_rect(Rect2(-16, -10, 32, 22), Color("2a1808"), false, 1.5)
+				draw_rect(Rect2(-6, -15, 12, 6), Color("2a1808"), false, 2.0)
+				draw_rect(Rect2(-3, -1, 6, 4), Palette.GOLD)
+			_:
+				draw_rect(Rect2(-16, -13, 32, 26), Palette.GOLD)
+				draw_rect(Rect2(-12, -9, 24, 18), Color("2a4a6a"))
+				draw_circle(Vector2(-3, 1), 5, Color("e0a040"))
+				draw_rect(Rect2(-16, -13, 32, 26), Palette.GOLD_DIM, false, 1.5)
+
+## A short magnet: once you're close, the valuable slides into your hand.
+func _physics_process(delta: float) -> void:
+	if _taken:
+		return
+	var player := get_tree().get_first_node_in_group("player") as Node2D
+	if player == null:
+		return
+	var to := player.global_position - global_position
+	var d := to.length()
+	if d < 95.0 and d > 1.0:
+		_pull = minf(_pull + delta * 900.0, 520.0)
+		global_position += to / d * minf(_pull * delta, d)
+	else:
+		_pull = 0.0
 
 func _on_body_entered(body: Node) -> void:
 	_try_collect(body)

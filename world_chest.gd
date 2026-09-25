@@ -17,13 +17,38 @@ enum Kind { WEAPON, UPGRADE }
 @onready var prompt = get_node_or_null("Prompt")   # optional "Press E" child
 @onready var sprite: Node2D = $Sprite        # chest visual
 
+## A fixed reward (a boss's unique weapon) instead of a random roll.
+var fixed_items: Array = []
+
 var _player_in_range: bool = false
 var _used: bool = false
 var _chest_ui = null                         # set by spawner, or found at open time
+var _ring: PulseRing
 
 func _ready() -> void:
+	if sprite is Polygon2D:
+		sprite.polygon = PackedVector2Array()
+	for child in sprite.get_children():
+		if child is CanvasItem:
+			child.hide()
+	var illustration := PropArt.new()
+	illustration.kind = "chest"
+	illustration.tone = VisualTheme.GOLD if kind == Kind.WEAPON else VisualTheme.TEAL
+	sprite.add_child(illustration)
+	_ring = PulseRing.new()
+	_ring.color = illustration.tone
+	_ring.radius = 52.0
+	add_child(_ring)
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	# The scene's plain label becomes a typewriter-key prompt (Brief 3).
+	if prompt is Label:
+		var wp := WorldPrompt.new()
+		wp.text = "REWARD CASE\n" + String(prompt.text)
+		wp.position = Vector2(0, -52)
+		prompt.queue_free()
+		add_child(wp)
+		prompt = wp
 	if prompt:
 		prompt.hide()
 
@@ -34,7 +59,6 @@ func set_chest_ui(ui) -> void:
 
 func _process(_delta: float) -> void:
 	if _player_in_range and not _used and Input.is_action_just_pressed("interact"):
-		print("E pressed in range — opening chest")
 		_open()
 
 func _on_body_entered(body: Node) -> void:
@@ -56,6 +80,9 @@ func _open() -> void:
 		return
 
 	_used = true
+	Audio.play("chest_open", global_position)
+	if _ring:
+		_ring.active = false
 	if prompt:
 		prompt.hide()
 
@@ -63,9 +90,12 @@ func _open() -> void:
 	rng.randomize()
 	# Weapon chests exclude the starter pistol -- every player already has it.
 	var pool: Array = ItemPool.rewardable_weapons() if kind == Kind.WEAPON else ItemPool.upgrades()
-	var items := LootRoller.roll_items(pool, tier, reveal_count, rng)
-	print("[Chest] kind=", kind, " tier=", tier, " pool=", pool.size(),
-		" rolled=", items.size())
+	var items := LootRoller.roll_items(pool, tier, reveal_count, rng) if fixed_items.is_empty() else fixed_items.duplicate()
+	# Upgrade chests always hold one relic among the upgrades.
+	if fixed_items.is_empty() and kind == Kind.UPGRADE and not items.is_empty():
+		var relic := Relics.roll(rng, 1)
+		if relic:
+			items[items.size() - 1] = relic
 	if items.is_empty():
 		push_warning("WorldChest: loot roll returned nothing — pool size "
 			+ str(pool.size()) + ". Falling back to the raw pool.")

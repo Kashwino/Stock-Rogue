@@ -1,0 +1,106 @@
+name: Web beta
+on:
+  push:
+    branches: [codex/mobile-web-beta, main]
+  pull_request:
+  workflow_dispatch:
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+jobs:
+  test-and-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: 4.6.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Godot and Web templates
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot" "$HOME/.local/share/godot/export_templates"
+          curl --fail --location --retry 3 "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o "$RUNNER_TEMP/godot/editor.zip"
+          unzip -q "$RUNNER_TEMP/godot/editor.zip" -d "$RUNNER_TEMP/godot"
+          mv "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+          curl --fail --location --retry 3 "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o "$RUNNER_TEMP/godot/templates.tpz"
+          unzip -q "$RUNNER_TEMP/godot/templates.tpz" -d "$RUNNER_TEMP/godot"
+          mv "$RUNNER_TEMP/godot/templates" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+      - name: Import and check every script
+        run: |
+          godot --headless --editor --path . --import 2>&1 | tee "$RUNNER_TEMP/godot/import.log"
+          if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' "$RUNNER_TEMP/godot/import.log"; then exit 1; fi
+      - name: Verify settings across fresh processes and run gameplay regression tests
+        run: |
+          timeout 30s godot --headless --path . res://tests/settings_test.tscn -- write 2>&1 | tee "$RUNNER_TEMP/godot/settings-write.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-write.log"; then exit 1; fi
+          timeout 30s godot --headless --path . res://tests/settings_test.tscn -- read 2>&1 | tee "$RUNNER_TEMP/godot/settings-read.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/settings-read.log"; then exit 1; fi
+          timeout 180s godot --verbose --headless --path . res://tests/smoke.tscn 2>&1 | tee "$RUNNER_TEMP/godot/smoke.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/smoke.log"; then exit 1; fi
+          grep -q 'TEST SUITE COMPLETE' "$RUNNER_TEMP/godot/smoke.log"
+      - name: Play the whole loop end to end
+        run: |
+          timeout 180s godot --headless --path . res://tests/full_loop.tscn 2>&1 | tee "$RUNNER_TEMP/godot/loop.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/godot/loop.log"; then exit 1; fi
+          grep -q 'FULL LOOP COMPLETE' "$RUNNER_TEMP/godot/loop.log"
+      - name: Check the economy invariants
+        run: python3 tools/balance_sim.py --runs 800
+      - name: Static sweep (paths, input actions, signal targets, style rules)
+        run: python3 tools/sweep.py
+      - name: Export single-threaded browser build
+        run: |
+          mkdir -p build/web
+          godot --headless --path . --export-release Web build/web/index.html 2>&1 | tee "$RUNNER_TEMP/godot/export.log"
+          if grep -E 'SCRIPT ERROR|Parse Error|Export failed|Failed to load script' "$RUNNER_TEMP/godot/export.log"; then exit 1; fi
+          test -s build/web/index.wasm
+          test -s build/web/index.pck
+      - name: Compress engine for mobile delivery
+        run: python web/prepare_web.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser test runner
+        run: |
+          npm install --no-save --package-lock=false playwright@1.51.1
+          npx playwright install --with-deps chromium
+      - name: Test real Web build with mobile multitouch
+        run: timeout 300s node tests/browser.mjs
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-test-evidence
+          path: artifacts
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stock-rogue-web
+          path: build/web
+          if-no-files-found: error
+      - name: Upload editable project
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-rogue-source
+          include-hidden-files: true
+          path: |
+            *.gd
+            *.tscn
+            *.tres
+            project.godot
+            export_presets.cfg
+            .gitignore
+            BETA_NOTES.md
+            CHANGELOG.md
+            PROGRESS.md
+            TESTING.md
+            tools
+            assets
+            rooms
+            layouts
+            audio
+            tests
+            web
+            .github/workflows
+          if-no-files-found: error

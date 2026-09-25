@@ -14,7 +14,7 @@ extends CanvasLayer
 
 signal item_chosen(item)
 
-const CARD_SIZE := Vector2(160, 230)
+const CARD_SIZE := Vector2(220, 280)
 
 var _root: Control
 var _dim: ColorRect
@@ -61,8 +61,9 @@ func _build() -> void:
 
 	_chest_label = Label.new()
 	_chest_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_chest_label.add_theme_font_size_override("font_size", 26)
-	_chest_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.45))
+	_chest_label.add_theme_font_size_override("font_size", 28)
+	_chest_label.add_theme_font_override("font", VisualTheme.font("heading"))
+	_chest_label.add_theme_color_override("font_color", Palette.GOLD)
 	_chest_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(_chest_label)
 
@@ -83,8 +84,8 @@ func _build() -> void:
 
 	_detail_panel = PanelContainer.new()
 	var dsb := StyleBoxFlat.new()
-	dsb.bg_color = Color(0.08, 0.08, 0.11, 0.95)
-	dsb.border_color = Color(0.3, 0.31, 0.38)
+	dsb.bg_color = Palette.with_alpha(Palette.PANEL, 0.97)
+	dsb.border_color = Palette.GOLD_DIM
 	dsb.set_border_width_all(2)
 	dsb.set_corner_radius_all(6)
 	dsb.content_margin_left = 18
@@ -102,17 +103,17 @@ func _build() -> void:
 	_detail_panel.add_child(dcol)
 
 	_detail_name = Label.new()
-	_detail_name.add_theme_font_size_override("font_size", 18)
+	_detail_name.add_theme_font_size_override("font_size", 22)
 	_detail_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dcol.add_child(_detail_name)
 
 	_detail_rarity = Label.new()
-	_detail_rarity.add_theme_font_size_override("font_size", 13)
+	_detail_rarity.add_theme_font_size_override("font_size", 17)
 	_detail_rarity.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dcol.add_child(_detail_rarity)
 
 	_detail_stats = Label.new()
-	_detail_stats.add_theme_font_size_override("font_size", 13)
+	_detail_stats.add_theme_font_size_override("font_size", 17)
 	_detail_stats.add_theme_color_override("font_color", Color(0.72, 0.74, 0.8))
 	_detail_stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail_stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -123,7 +124,6 @@ func _build() -> void:
 # ------------------------------------------------------------------- open ---
 ## items: Array of WeaponItem/UpgradeItem. tier_name: e.g. "Airdrop".
 func open_chest(items: Array, tier_name: String = "") -> void:
-	print("[ChestUI] open_chest called with ", items.size(), " items")
 	if items.is_empty():
 		push_warning("ChestUI: opened with no items — nothing to choose.")
 		return
@@ -149,7 +149,6 @@ func open_chest(items: Array, tier_name: String = "") -> void:
 
 	if not _cards.is_empty():
 		_cards[0].grab_focus()
-	print("[ChestUI] built ", _cards.size(), " cards; paused=", get_tree().paused)
 
 func _make_card(item) -> Button:
 	var card := Button.new()
@@ -161,21 +160,21 @@ func _make_card(item) -> Button:
 	card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	var col: Color = item.rarity_color()
-	card.text = "%s\n\n%s" % [item.display_name, item.rarity_name()]
+	card.text = "\n\n\n%s\n%s" % [item.display_name, item.rarity_name()]
 	card.add_theme_color_override("font_color", col)
 	card.add_theme_color_override("font_hover_color", Color.WHITE)
 	card.add_theme_color_override("font_focus_color", Color.WHITE)
-	card.add_theme_font_size_override("font_size", 15)
+	card.add_theme_font_size_override("font_size", 21)
 
 	for state in ["normal", "hover", "pressed", "focus"]:
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.09, 0.09, 0.12)
+		sb.bg_color = Palette.PANEL
 		if state == "hover" or state == "focus":
-			sb.bg_color = Color(0.15, 0.15, 0.2)
+			sb.bg_color = Palette.PANEL_HI
 		elif state == "pressed":
-			sb.bg_color = Color(0.05, 0.05, 0.07)
+			sb.bg_color = Palette.BG
 		sb.border_color = col
-		sb.set_border_width_all(4 if state != "normal" else 3)
+		sb.set_border_width_all(2 if state != "normal" else 1)
 		sb.set_corner_radius_all(6)
 		sb.content_margin_left = 12
 		sb.content_margin_right = 12
@@ -183,6 +182,11 @@ func _make_card(item) -> Button:
 		sb.content_margin_bottom = 14
 		card.add_theme_stylebox_override(state, sb)
 
+	var illustration := ItemIllustration.new()
+	illustration.item = item
+	illustration.position = Vector2(16, 16)
+	illustration.size = Vector2(188, 115)
+	card.add_child(illustration)
 	card.pressed.connect(_claim.bind(item))
 	card.mouse_entered.connect(_show_detail.bind(item))
 	card.focus_entered.connect(_show_detail.bind(item))
@@ -233,8 +237,13 @@ func _stats_text(item) -> String:
 		if not item.uses_ammo:
 			parts.append("Infinite ammo")
 		else:
-			parts.append("Mag %d" % item.mag_size)
-		return "  -  ".join(parts)
+			parts.append("Mag %d" % item.eff_mag())
+		var text := "  -  ".join(parts)
+		if item.trait_text() != "":
+			text += "\nTRAIT: " + item.trait_text()
+		return text
+	elif item is RelicItem:
+		return "RELIC: " + item.description
 	elif item is UpgradeItem:
 		return item.description
 	return ""
@@ -243,7 +252,6 @@ func _stats_text(item) -> String:
 func _claim(item) -> void:
 	if not _open:
 		return
-	print("[ChestUI] claiming: ", item.display_name if item else "<null>")
 	_open = false
 	get_tree().paused = false          # hand control back before anything else
 	item_chosen.emit(item)

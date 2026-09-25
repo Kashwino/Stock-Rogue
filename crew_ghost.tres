@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="CharacterProfile" load_steps=2 format=3]
+[ext_resource type="Script" path="res://character_profile.gd" id="1"]
+[resource]
+script = ExtResource("1")
+id = &"ghost"
+display_name = "The Ghost"
+base_health = 2
+volatility_at_full = 1.5
+volatility_at_low = 3.0
+silent = true
+gunshot_noise = 0.6
+camera_spot_rate = 0.5
+start_weapon = &"silenced9mm"
+takedown_combo_bonus = 1

@@ -1,0 +1,97 @@
+extends CanvasLayer
+class_name Crosshair
+## A drawn crosshair at the cursor (mouse) or ahead of the player (gamepad).
+## Its gap widens with the weapon's spread and each shot's bloom; a ring
+## around it fills while reloading. The OS cursor hides during play and comes
+## back whenever the game is paused or this layer leaves the tree.
+
+var player: Player
+var _mark: Mark
+
+func _ready() -> void:
+	layer = 20
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(root)
+	_mark = Mark.new()
+	root.add_child(_mark)
+
+func _process(_delta: float) -> void:
+	var touch: bool = TouchInput.touch_active and Settings.values["touch_mode"] != 2
+	var show := is_instance_valid(player) and not get_tree().paused and not touch and not Transition.busy
+	_mark.visible = show
+	var pad := TouchInput.last_device == "pad"
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if show else Input.MOUSE_MODE_VISIBLE
+	if not show:
+		return
+	if pad:
+		var screen_player := player.get_global_transform_with_canvas().origin
+		_mark.position = _mark.position.lerp(screen_player + player.aim_direction() * 170.0, 0.5)
+	else:
+		_mark.position = _mark.get_viewport().get_mouse_position()
+	var weapon: WeaponItem = player.loadout.get_active() if player.loadout else null
+	var spread := (weapon.spread if weapon else 0.02) * player.spread_multiplier
+	_mark.gap = lerpf(_mark.gap, 6.0 + spread * 120.0 + player.bloom * 14.0, 0.35)
+	_mark.reload = 0.0
+	if player.loadout and player.loadout.reloading and player.loadout._reload_weapon:
+		var total: float = maxf(player.loadout._reload_weapon.reload_time * player.reload_multiplier, 0.1)
+		_mark.reload = 1.0 - clampf(player.loadout._reload_remaining / total, 0.0, 1.0)
+	_mark.queue_redraw()
+
+## A landed round: a small white X for a beat.
+func hit() -> void:
+	if _mark and _mark.marker_until < Time.get_ticks_msec() + 60:
+		_mark.marker_until = Time.get_ticks_msec() + 120
+		_mark.marker_kill = false
+
+## A kill: the marker turns into a bigger red X.
+func kill() -> void:
+	if _mark:
+		_mark.marker_until = Time.get_ticks_msec() + 320
+		_mark.marker_kill = true
+
+func _exit_tree() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+class Mark extends Control:
+	var gap := 8.0
+	var reload := 0.0
+	var marker_until := 0                # real-time ms; hit-stop can't freeze it
+	var marker_kill := false
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var col := Palette.GOLD_PALE
+		for d in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+			var a: Vector2 = d * gap
+			var b: Vector2 = d * (gap + 9.0)
+			draw_line(a + Vector2(1, 1), b + Vector2(1, 1), Color(0, 0, 0, 0.7), 3.0)
+			draw_line(a, b, col, 2.0)
+		draw_circle(Vector2.ZERO, 1.8, col)
+		if reload > 0.0:
+			# Brief 3: a revolver cylinder spinning while you reload; its
+			# chambers fill as the reload runs.
+			var r := gap + 16.0
+			var spin := reload * TAU * (0.0 if HudKit.reduce_motion() else 1.5)
+			draw_arc(Vector2.ZERO, r, 0, TAU, 32, Color(0, 0, 0, 0.55), 4.0, true)
+			draw_arc(Vector2.ZERO, r, 0, TAU, 32, Palette.with_alpha(Palette.GOLD_PALE, 0.55), 1.6, true)
+			for i in 6:
+				var c := Vector2.from_angle(spin + TAU * i / 6.0 - PI * 0.5) * r
+				var loaded := float(i) < reload * 6.0
+				draw_circle(c, 4.2, Color(0, 0, 0, 0.6))
+				if loaded:
+					draw_circle(c, 3.2, Palette.BRASS.lightened(0.2))
+				draw_arc(c, 3.6, 0, TAU, 10, Palette.GOLD_PALE, 1.2, true)
+		var left := marker_until - Time.get_ticks_msec()
+		if left > 0:
+			var r := (gap + 5.0) * (1.25 if marker_kill else 1.0)
+			var arm := 9.0 if marker_kill else 6.0
+			var mcol := Palette.DANGER if marker_kill else Color.WHITE
+			mcol.a = clampf(float(left) / 120.0, 0.0, 1.0)
+			for d in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+				var n: Vector2 = d.normalized()
+				draw_line(n * r + Vector2(1, 1), n * (r + arm) + Vector2(1, 1), Color(0, 0, 0, 0.6 * mcol.a), 4.0 if marker_kill else 3.0)
+				draw_line(n * r, n * (r + arm), mcol, 3.0 if marker_kill else 2.0)

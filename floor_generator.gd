@@ -16,7 +16,7 @@ const MODULE := Vector2(600, 450)
 const ROOMS_DIR := "res://rooms"
 const WALL_THICK := 24.0
 const DOOR_GAP := 96.0
-const WALL_COLOR := Color(0.30, 0.31, 0.37)
+const WALL_COLOR := Color("506069")
 
 const NORTH := 0
 const SOUTH := 1
@@ -52,8 +52,6 @@ func generate(run_seed: int, room_count: int = 12, exit_count: int = 1) -> void:
 	_clear()
 	_load_templates()
 
-	print("[FloorGen] templates — small:", _templates_small.size(),
-		" medium:", _templates_medium.size(), " large:", _templates_large.size())
 
 	if _templates_small.is_empty():
 		push_error("FloorGenerator: no room templates in " + ROOMS_DIR
@@ -89,8 +87,6 @@ func generate(run_seed: int, room_count: int = 12, exit_count: int = 1) -> void:
 			tpl = _pick_from(_templates_medium)
 		_grow_with(tpl)
 
-	print("[FloorGen] placed ", rooms.size(), "/", room_count, " rooms (",
-		large_placed, " large) after ", attempts, " attempts")
 	if rooms.size() < 2:
 		push_error("FloorGenerator: only " + str(rooms.size())
 			+ " room placed. Room scenes are probably missing room_size — "
@@ -146,7 +142,7 @@ func _place_boss_room() -> void:
 		if placed != null:
 			boss_room = placed
 			placed.set("rarity", 6)
-			placed.set("spawn_count", 10)
+			placed.set("spawn_count", 1)
 			placed.set_meta("is_boss", true)
 			return
 
@@ -194,14 +190,16 @@ func _load_templates() -> void:
 	dir.list_dir_begin()
 	var f := dir.get_next()
 	while f != "":
-		if f.ends_with(".tscn"):
-			var scene = load(ROOMS_DIR + "/" + f)
+		# Exported PCKs expose .tscn.remap entries; load their logical paths.
+		var resource_name := f.trim_suffix(".remap")
+		if resource_name.ends_with(".tscn"):
+			var scene = load(ROOMS_DIR + "/" + resource_name)
 			if scene:
-				if f.begins_with("small"):
+				if resource_name.begins_with("small"):
 					_templates_small.append(scene)
-				elif f.begins_with("medium"):
+				elif resource_name.begins_with("medium"):
 					_templates_medium.append(scene)
-				elif f.begins_with("large"):
+				elif resource_name.begins_with("large"):
 					_templates_large.append(scene)
 		f = dir.get_next()
 	dir.list_dir_end()
@@ -367,7 +365,7 @@ func _seal_gap(gap: Dictionary) -> void:
 		else Vector2(WALL_THICK, DOOR_GAP + 4.0)
 
 	var body := StaticBody2D.new()
-	body.collision_layer = 1
+	body.collision_layer = Layers.WALLS
 	body.collision_mask = 0
 	body.position = gap["wall_pos"]
 	room.add_child(body)
@@ -425,3 +423,51 @@ func _rect_points(size: Vector2) -> PackedVector2Array:
 	var hy := size.y * 0.5
 	return PackedVector2Array([
 		Vector2(-hx, -hy), Vector2(hx, -hy), Vector2(hx, hy), Vector2(-hx, hy)])
+
+## A boss's signature building, built from BossLayouts data: fixed rooms,
+## approach and loot branches. The seed affects crews and loot only; it never
+## changes the geometry.
+func generate_authored(boss_id: StringName = &"auditor") -> void:
+	_clear()
+	var data := BossLayouts.layout(boss_id)
+	var templates := {
+		"small": load(ROOMS_DIR + "/small_01.tscn"),
+		"medium": load(ROOMS_DIR + "/medium_01.tscn"),
+		"large": load(ROOMS_DIR + "/large_01.tscn"),
+	}
+	for spec: Dictionary in data["rooms"]:
+		var template: PackedScene = templates.get(spec.get("size", "small"))
+		var room = _place_room(template, spec["cell"])
+		if room == null:
+			push_error("FloorGenerator: authored room %s overlaps another" % spec["id"])
+			continue
+		room.name = spec["id"]
+		room.set("id", StringName(String(spec["id"]).to_lower()))
+		if spec.has("type"):
+			room.set_meta("authored_type", spec["type"])
+		if spec.has("title"):
+			room.set_meta("authored_title", spec["title"])
+		if spec.has("counter"):
+			var counter := StaticBody2D.new()
+			counter.name = "Counter"
+			counter.position = spec["counter"]
+			room.add_child(counter)
+		match spec.get("role", ""):
+			"start":
+				start_room = room
+				room.is_start_room = true
+			"boss":
+				boss_room = room
+				room.set_meta("is_boss", true)
+				room.rarity = 6
+				room.spawn_count = 1
+			"weapon", "upgrade":
+				room.spawn_count = 0
+				room.rarity = 5
+				room.set_meta("chest_kind", spec["role"])
+				if spec["role"] == "weapon":
+					weapon_chest_room = room
+				else:
+					upgrade_chest_room = room
+	_process_gaps(int(data.get("exits", 2)))
+	floor_built.emit(rooms, start_room)

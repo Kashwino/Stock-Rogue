@@ -19,6 +19,63 @@ var market: CriminalMarket = null
 
 ## Run perks (bought in the shop): &"recon", &"inside_trader", ...
 var perks: Array = []
+var hedge_charges: int = 0
+var short_position: Dictionary = {}
+var run_id: String = ""
+var last_grade := ""
+var bosses_down: Array = []          # stage boss ids defeated this run
+## Fence positions: [{venue, side, stake, entry, leverage}] (see Positions).
+var positions: Array = []
+## Completed CONTRACT jobs per venue: repeat contracts pump less (×0.65 each).
+var contract_counts: Dictionary = {}
+## The news wire (latest first) and rumors waiting to land (see MarketNews).
+var news: Array = []
+var rumors: Array = []
+## Gear bought for the NEXT job only (Black Market, reacting to its modifiers):
+## night_vision, signal_jammer, police_scanner, bolt_cutters, body_armor,
+## duffel_bag. Cleared when that job ends.
+var job_gear: Array = []
+## Relic ids owned this run (a stacking relic appears once per copy).
+var relics: Array = []
+## Golden Parachute fires once per run; so does the Patch Kit.
+var parachute_used := false
+var patch_used := false
+## Stages whose intro card has been shown on the case wall this run.
+var stage_intros: Array = []
+## Best combo (points) this run: nudges the run's Clout.
+var best_combo := 0
+## Boss verdicts ({boss id: "execute" | "flip" | "shake" | "deal"}), the
+## Chairman's ("seat" | "burn" | "walk") and the reputation they earn.
+var verdicts: Dictionary = {}
+var chairman_verdict := ""
+var fear := 0
+var loyalty := 0
+var greed := 0
+## A flip makes the Board suspicious: heists of this stage start at 1 star.
+var suspicious_stage := -1
+## Safehouse Rent is paid once per hideout visit ("stage:step").
+var rent_paid_at := ""
+## The Black Ledger: the next story on the wire, read one heist early.
+var ledger: Dictionary = {}
+var ledger_broke := false
+## BURN THE BOARD: what your open shorts were worth as it burned.
+var burn_short_profit := 0
+
+func has_relic(id: StringName) -> bool:
+	return id in relics
+
+func relic_count(id: StringName) -> int:
+	return relics.count(id)
+
+func add_relic(id: StringName) -> void:
+	var r := Relics.make(id)
+	if r == null:
+		return
+	if r.stacks or id not in relics:
+		relics.append(id)
+
+func has_job_gear(id: StringName) -> bool:
+	return id in job_gear
 
 var max_health: int = 3
 var health: int = 3
@@ -34,8 +91,35 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	max_health = profile.base_health if profile else 3
 	health = max_health
 	stat_mods.clear()
+	hedge_charges = 0
+	short_position.clear()
+	last_grade = ""
+	bosses_down.clear()
+	positions.clear()
+	contract_counts.clear()
+	news.clear()
+	rumors.clear()
+	job_gear.clear()
+	relics.clear()
+	stage_intros.clear()
+	best_combo = 0
+	verdicts.clear()
+	chairman_verdict = ""
+	fear = 0
+	loyalty = 0
+	greed = 0
+	suspicious_stage = -1
+	rent_paid_at = ""
+	ledger.clear()
+	ledger_broke = false
+	burn_short_profit = 0
+	parachute_used = false
+	patch_used = false
+	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
 
 	# Fresh loadout with the starter Sidearm.
+	if is_instance_valid(loadout):
+		loadout.queue_free()
 	loadout = Loadout.new()
 	add_child(loadout)
 	loadout.equip(ItemPool.weapons()[0])
@@ -52,14 +136,70 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	add_child(market)
 	market.setup(run_seed)
 	perks.clear()
+	if Meta.starting_perk != &"":
+		add_perk(Meta.starting_perk)
+
+	_equip_starting_weapon(profile)
 
 	# Reset gold for the run.
 	if has_node("/root/RunEconomy"):
 		get_node("/root/RunEconomy").reset()
+		if has_perk(&"seed_money"):
+			get_node("/root/RunEconomy").gold += 50
+			get_node("/root/RunEconomy").gold_changed.emit(get_node("/root/RunEconomy").gold)
 
 	active = true
 	run_started.emit()
 	health_changed.emit(health, max_health)
+
+## The Ghost brings a Silenced 9mm; the Legend a random Classified-or-better.
+func _equip_starting_weapon(profile: CharacterProfile) -> void:
+	if profile == null or loadout == null:
+		return
+	if profile.start_weapon != &"":
+		for w: WeaponItem in ItemPool.weapons():
+			if w.id == profile.start_weapon:
+				loadout.equip(w)
+				return
+	if profile.start_weapon_min_rarity >= 0:
+		var pool := ItemPool.rewardable_weapons().filter(func(w): return int(w.rarity) >= profile.start_weapon_min_rarity)
+		if not pool.is_empty():
+			loadout.equip(pool[randi() % pool.size()])
+
+## Specialist traits, with the Operator's numbers as the fallback.
+## The most WANTED stars a heist can reach (a flipped Ambassador's
+## Diplomatic Cover caps it at 4).
+func wanted_cap() -> int:
+	return 4 if Verdicts.flipped(&"ambassador") else 5
+
+## A boss's verdict: recorded with its reputation (the Chairman's is
+## separate). Returns false if he already has one.
+func record_verdict(boss_id: StringName, verdict: StringName) -> bool:
+	if boss_id == &"chairman":
+		chairman_verdict = String(verdict)
+		return true
+	if verdicts.has(String(boss_id)):
+		return false
+	verdicts[String(boss_id)] = String(verdict)
+	match verdict:
+		Verdicts.EXECUTE:
+			fear += 1
+		Verdicts.FLIP:
+			loyalty += 1
+			if run_map:
+				suspicious_stage = run_map.current_stage + 1
+		Verdicts.SHAKE:
+			greed += 1
+	return true
+
+## This stage's heists start at 1 star (a flipped boss made the Board wary).
+func board_suspicious() -> bool:
+	return run_map != null and suspicious_stage >= 0 and run_map.current_stage == suspicious_stage
+
+func profile_value(key: String, fallback: Variant) -> Variant:
+	if character_profile and key in character_profile:
+		return character_profile.get(key)
+	return fallback
 
 func end_run(victory: bool) -> void:
 	active = false
@@ -107,6 +247,8 @@ func set_health(v: int) -> void:
 	health_changed.emit(health, max_health)
 
 func heal(amount: int) -> void:
+	if profile_value("no_healing", false):
+		return                            # the Legend: no healing, ever
 	set_health(health + amount)
 
 func add_max_health(amount: int) -> void:
@@ -160,7 +302,33 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"loadout": _serialize_loadout(),
 		"profile_path": character_profile.resource_path if character_profile else "",
 		"perks": perks.duplicate(),
+		"hedge_charges": hedge_charges,
+		"short_position": short_position.duplicate(true),
+		"run_id": run_id,
+		"last_grade": last_grade,
+		"bosses_down": bosses_down.duplicate(),
+		"quota_block": run_map.quota_block if run_map else 0,
+		"heists_done": run_map.heists_done if run_map else 0,
 		"market": _serialize_market(),
+		"positions": positions.duplicate(true),
+		"contract_counts": contract_counts.duplicate(),
+		"news": news.duplicate(true),
+		"rumors": rumors.duplicate(true),
+		"job_gear": job_gear.map(func(g): return String(g)),
+		"relics": relics.map(func(r): return String(r)),
+		"parachute_used": parachute_used,
+		"patch_used": patch_used,
+		"stage_intros": stage_intros.duplicate(),
+		"best_combo": best_combo,
+		"verdicts": verdicts.duplicate(),
+		"chairman_verdict": chairman_verdict,
+		"fear": fear,
+		"loyalty": loyalty,
+		"greed": greed,
+		"suspicious_stage": suspicious_stage,
+		"rent_paid_at": rent_paid_at,
+		"ledger": ledger.duplicate(true),
+		"ledger_broke": ledger_broke,
 	}
 
 func _serialize_market() -> Dictionary:
@@ -187,11 +355,46 @@ func _serialize_loadout() -> Dictionary:
 	var small_ids := []
 	for w in loadout.small:
 		small_ids.append(String(w.id) if w != null else "")
-	return {"big": big_ids, "small": small_ids, "active": loadout.active_slot}
+	return {"big": big_ids, "small": small_ids, "active": loadout.active_slot, "mods": loadout.mods_by_slot()}
 
 ## Rebuild run state from a saved Dictionary. Returns the map seed so the caller
 ## can regenerate the map and jump to the saved position.
 func deserialize(data: Dictionary) -> void:
+	run_id = str(data.get("run_id", "legacy-" + str(data.get("seed", 0))))
+	short_position = data.get("short_position", {}).duplicate(true)
+	last_grade = str(data.get("last_grade", ""))
+	bosses_down = Array(data.get("bosses_down", [])).duplicate()
+	positions = Array(data.get("positions", [])).duplicate(true)
+	contract_counts = Dictionary(data.get("contract_counts", {})).duplicate()
+	news = Array(data.get("news", [])).duplicate(true)
+	rumors = Array(data.get("rumors", [])).duplicate(true)
+	job_gear.clear()
+	for g in data.get("job_gear", []):
+		job_gear.append(StringName(g))
+	relics.clear()
+	for r in data.get("relics", []):
+		if Relics.exists(StringName(r)):
+			relics.append(StringName(r))
+	parachute_used = bool(data.get("parachute_used", false))
+	best_combo = int(data.get("best_combo", 0))
+	verdicts.clear()
+	var saved_verdicts = data.get("verdicts", {})
+	if saved_verdicts is Dictionary:
+		for id in saved_verdicts:
+			verdicts[String(id)] = String(saved_verdicts[id])
+	chairman_verdict = str(data.get("chairman_verdict", ""))
+	fear = int(data.get("fear", 0))
+	loyalty = int(data.get("loyalty", 0))
+	greed = int(data.get("greed", 0))
+	suspicious_stage = int(data.get("suspicious_stage", -1))
+	rent_paid_at = str(data.get("rent_paid_at", ""))
+	var saved_ledger = data.get("ledger", {})
+	ledger = saved_ledger.duplicate(true) if saved_ledger is Dictionary else {}
+	ledger_broke = bool(data.get("ledger_broke", false))
+	stage_intros.clear()
+	for st in data.get("stage_intros", []):
+		stage_intros.append(int(st))
+	patch_used = bool(data.get("patch_used", false))
 	max_health = int(data.get("max_health", 3))
 	health = int(data.get("health", max_health))
 
@@ -223,6 +426,8 @@ func deserialize(data: Dictionary) -> void:
 	for pk in data.get("perks", []):
 		perks.append(StringName(pk))
 
+	hedge_charges = clampi(int(data.get("hedge_charges", 0)), 0, 3)
+
 	# Market: rebuild the roster, then overwrite prices with the saved ones.
 	if market and is_instance_valid(market):
 		market.queue_free()
@@ -253,3 +458,4 @@ func _deserialize_loadout(data: Dictionary) -> void:
 			loadout.equip(by_id[id])
 	if data.has("active"):
 		loadout.active_slot = data["active"]
+	loadout.restore_mods(data.get("mods", {}))

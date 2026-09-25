@@ -17,19 +17,21 @@ class_name HideoutRoom
 ## can't reliably close an indented lambda block and continue the same
 ## expression with more arguments afterward.
 
-const GOLD := Color(0.91, 0.72, 0.26)
-const GOLD_DIM := Color(0.55, 0.45, 0.2)
-const PANEL := Color(0.10, 0.10, 0.13)
-const PANEL_EDGE := Color(0.24, 0.24, 0.3)
-const INK_SOFT := Color(0.62, 0.62, 0.7)
-const RED := Color(0.85, 0.35, 0.35)
+const GOLD := Palette.GOLD
+const GOLD_DIM := Palette.GOLD_DIM
+const PANEL := Palette.PANEL
+const PANEL_EDGE := Palette.EDGE
+const INK_SOFT := Palette.PAPER_DIM
+const RED := Palette.DANGER
 
-const ROOM_SIZE := Vector2(600, 420)
+const ROOM_SIZE := Vector2(1120, 640)
 const WALL_THICK := 24.0
 
 var _walker: HideoutWalker
 var _stations: Array = []
 var _active_panel: CanvasLayer = null
+var _panels: Dictionary = {}          # kind -> CanvasLayer, built once per visit
+var _vendor_state: Dictionary = {}    # kind -> per-panel widget references
 var _active_gold_label: Label = null
 var _near_station: Dictionary = {}
 var _near_door: bool = false
@@ -40,17 +42,39 @@ var _next_rarity: int = 1
 
 func _ready() -> void:
 	_rng.randomize()
+	Audio.music("hideout")
 	_check_input_actions()
 	_build_room()
 	_build_walker()
 	_build_stations()
 	_build_door()
 	_build_hud_hint()
-	print("[HideoutRoom] ready -- 3 stations + door built")
+	_build_lighting()
+	_collect_rent()
+
+## Safehouse Rent (a flipped Landlord): gold at every hideout visit, once.
+func _collect_rent() -> void:
+	if not Verdicts.flipped(&"landlord") or RunState.run_map == null or RunFlow.practice:
+		return
+	var key := "%d:%d" % [RunState.run_map.current_stage, RunState.run_map.current_step]
+	if RunState.rent_paid_at == key:
+		return
+	RunState.rent_paid_at = key
+	var rent := Verdicts.rent()
+	RunEconomy.add_bonus(rent)
+	RunFlow.save()
+	Audio.play_ui("cash_register")
+	var note := VisualTheme.label("SAFEHOUSE RENT  +$%d  ·  the Landlord collects for you now" % rent, "", 20, Palette.GOLD)
+	note.position = Vector2(26, 112)
+	if is_instance_valid(_hint):
+		_hint.get_parent().add_child(note)
+		var tw := note.create_tween()
+		tw.tween_interval(4.0)
+		tw.tween_property(note, "modulate:a", 0.0, 1.0)
+		tw.tween_callback(note.queue_free)
 
 ## If these actions aren't in the project's Input Map, movement/interaction
-## fail completely but silently -- no crash, no error, the room just looks
-## "broken". Surface that clearly instead of leaving it a mystery.
+## fail silently. Surface that clearly instead.
 func _check_input_actions() -> void:
 	var required := ["move_left", "move_right", "move_up", "move_down", "interact"]
 	var missing: Array = []
@@ -59,10 +83,11 @@ func _check_input_actions() -> void:
 			missing.append(a)
 	if not missing.is_empty():
 		push_error("[HideoutRoom] Missing Input Map actions: " + str(missing)
-			+ " -- Project > Project Settings > Input Map. Movement/interact "
-			+ "will not work until these exist.")
+			+ " -- Project > Project Settings > Input Map.")
 
 func _process(_delta: float) -> void:
+	if _active_panel:
+		return
 	if Input.is_action_just_pressed("interact"):
 		if not _near_station.is_empty():
 			_open_station(_near_station["kind"])
@@ -71,44 +96,35 @@ func _process(_delta: float) -> void:
 
 # ------------------------------------------------------------------ room ---
 func _build_room() -> void:
-	var floor_poly := Polygon2D.new()
-	floor_poly.polygon = PackedVector2Array([
-		Vector2(0, 0), Vector2(ROOM_SIZE.x, 0),
-		Vector2(ROOM_SIZE.x, ROOM_SIZE.y), Vector2(0, ROOM_SIZE.y)])
-	floor_poly.color = Color(0.09, 0.085, 0.1)
-	add_child(floor_poly)
-
-	for x in range(0, int(ROOM_SIZE.x), 40):
-		var line := Line2D.new()
-		line.points = PackedVector2Array([Vector2(x, 0), Vector2(x, ROOM_SIZE.y)])
-		line.width = 1.0
-		line.default_color = Color(1, 1, 1, 0.025)
-		add_child(line)
-	for y in range(0, int(ROOM_SIZE.y), 40):
-		var line := Line2D.new()
-		line.points = PackedVector2Array([Vector2(0, y), Vector2(ROOM_SIZE.x, y)])
-		line.width = 1.0
-		line.default_color = Color(1, 1, 1, 0.025)
-		add_child(line)
-
+	add_child(HideoutArt.new())
 	var walls := [
-		Rect2(-WALL_THICK, -WALL_THICK, ROOM_SIZE.x + WALL_THICK * 2, WALL_THICK),
+		Rect2(-WALL_THICK, -WALL_THICK, ROOM_SIZE.x + WALL_THICK * 2, WALL_THICK * 2),
 		Rect2(-WALL_THICK, ROOM_SIZE.y, ROOM_SIZE.x + WALL_THICK * 2, WALL_THICK),
 		Rect2(-WALL_THICK, -WALL_THICK, WALL_THICK, ROOM_SIZE.y + WALL_THICK * 2),
 		Rect2(ROOM_SIZE.x, -WALL_THICK, WALL_THICK, ROOM_SIZE.y + WALL_THICK * 2),
 	]
 	for r in walls:
 		_add_wall(r)
+	# Furniture you can bump into: vendor counters and the card table.
+	_add_wall(Rect2(40, 50, 220, 46), false)
+	_add_wall(Rect2(ROOM_SIZE.x * 0.5 - 120, 100, 240, 54), false)
+	_add_wall(Rect2(ROOM_SIZE.x - 280, 120, 190, 70), false)
+	var table := StaticBody2D.new()
+	table.collision_layer = Layers.WALLS
+	table.position = ROOM_SIZE * 0.5 + Vector2(0, 30)
+	var ts := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 76.0
+	ts.shape = circle
+	table.add_child(ts)
+	add_child(table)
+	var tv := HideoutArt.TV.new()
+	tv.position = Vector2(ROOM_SIZE.x * 0.5 + 200, 60)
+	add_child(tv)
 
-	var trim := ColorRect.new()
-	trim.position = Vector2(0, -6)
-	trim.size = Vector2(ROOM_SIZE.x, 4)
-	trim.color = GOLD_DIM
-	add_child(trim)
-
-func _add_wall(rect: Rect2) -> void:
+func _add_wall(rect: Rect2, visible_block: bool = true) -> void:
 	var body := StaticBody2D.new()
-	body.collision_layer = 1
+	body.collision_layer = Layers.WALLS
 	body.position = rect.position
 	add_child(body)
 	var shape := CollisionShape2D.new()
@@ -117,95 +133,115 @@ func _add_wall(rect: Rect2) -> void:
 	shape.shape = rs
 	shape.position = rect.size * 0.5
 	body.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = rect.size
-	visual.color = Color(0.04, 0.04, 0.05)
-	body.add_child(visual)
+	if visible_block:
+		var visual := ColorRect.new()
+		visual.size = rect.size
+		visual.color = Color(0.04, 0.035, 0.04)
+		visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		body.add_child(visual)
+
+func _build_lighting() -> void:
+	if Settings.values.get("low_effects", false):
+		return
+	var cm := CanvasModulate.new()
+	cm.color = Color(0.42, 0.38, 0.42)
+	add_child(cm)
+	for spot: Array in [[Vector2(150, 110), Color("ffc27a")], [Vector2(ROOM_SIZE.x * 0.5, 140), Palette.GOLD_PALE],
+			[Vector2(ROOM_SIZE.x - 190, 170), Color("c79aff")], [ROOM_SIZE * 0.5 + Vector2(0, 30), Color("ffd9a0")],
+			[Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y - 40), Palette.NEON_GREEN]]:
+		var lamp := PointLight2D.new()
+		lamp.texture = HeistLighting.radial()
+		lamp.texture_scale = 2.3
+		lamp.color = spot[1]
+		lamp.energy = 0.95
+		lamp.position = spot[0]
+		add_child(lamp)
+	var glow := PointLight2D.new()
+	glow.texture = HeistLighting.radial()
+	glow.texture_scale = 1.1
+	glow.energy = 0.55
+	glow.color = Color("ffe9c4")
+	_walker.add_child(glow)
 
 # ---------------------------------------------------------------- walker ---
 func _build_walker() -> void:
 	_walker = HideoutWalker.new()
-	_walker.position = ROOM_SIZE * 0.5 + Vector2(0, 110)
+	_walker.position = Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y - 110)
 	add_child(_walker)
-
+	# The whole backroom fits on screen: a fixed camera reads like a stage set.
 	var cam := Camera2D.new()
-	cam.zoom = Vector2(1.15, 1.15)
-	cam.position_smoothing_enabled = true
-	cam.position_smoothing_speed = 8.0
-	_walker.add_child(cam)
-	# make_current() rather than setting `current = true` directly: it needs
-	# the camera inside the tree first, which add_child just did.
+	cam.zoom = Vector2(0.9, 0.9)
+	cam.position = Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y * 0.5 - 70)
+	add_child(cam)
 	cam.make_current()
 
 # -------------------------------------------------------------- stations ---
+const VENDORS := {
+	&"weapons": ["WEAPON DEALER", "GUNS", Color("ff5a3a"), Vector2(150, 118)],
+	&"stocks": ["THE FENCE", "THE FENCE", Color("ffcc55"), Vector2(560, 176)],
+	&"blackmarket": ["BLACK MARKET", "BLACK MARKET", Color("c07aff"), Vector2(930, 210)],
+}
+
 func _build_stations() -> void:
-	_make_station(&"weapons", "WEAPON DEALER",
-		"Guns for the next job", Vector2(ROOM_SIZE.x * 0.22, ROOM_SIZE.y * 0.32),
-		Color(0.85, 0.4, 0.35))
-	_make_station(&"stocks", "THE FENCE",
-		"Move the market", Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y * 0.18),
-		GOLD)
-	_make_station(&"blackmarket", "BLACK MARKET",
-		"Case-specific gear", Vector2(ROOM_SIZE.x * 0.78, ROOM_SIZE.y * 0.32),
-		Color(0.6, 0.4, 0.85))
+	for kind: StringName in VENDORS:
+		var v: Array = VENDORS[kind]
+		_make_station(kind, v[0], "", v[3], v[2])
 
 func _make_station(kind: StringName, title: String, subtitle: String,
 		pos: Vector2, tint: Color) -> void:
 	var area := Area2D.new()
-	area.position = pos
+	area.position = pos + Vector2(0, 40)
 	area.collision_layer = 0
-	area.collision_mask = 4
+	area.collision_mask = Layers.PLAYER
 	add_child(area)
-
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
-	circle.radius = 52.0
+	circle.radius = 95.0
 	shape.shape = circle
 	area.add_child(shape)
-
-	var kiosk := Polygon2D.new()
-	kiosk.polygon = PackedVector2Array([
-		Vector2(-34, -22), Vector2(34, -22), Vector2(34, 22), Vector2(-34, 22)])
-	kiosk.color = tint.darkened(0.55)
-	area.add_child(kiosk)
-	var kiosk_edge := Polygon2D.new()
-	kiosk_edge.polygon = PackedVector2Array([
-		Vector2(-34, -22), Vector2(34, -22), Vector2(34, -17), Vector2(-34, -17)])
-	kiosk_edge.color = tint
-	area.add_child(kiosk_edge)
-
-	var title_l := Label.new()
-	title_l.text = title
-	title_l.add_theme_font_size_override("font_size", 15)
-	title_l.add_theme_color_override("font_color", tint)
-	title_l.position = Vector2(-48, -54)
-	area.add_child(title_l)
-
-	var sub_l := Label.new()
-	sub_l.text = subtitle
-	sub_l.add_theme_font_size_override("font_size", 10)
-	sub_l.add_theme_color_override("font_color", INK_SOFT)
-	sub_l.position = Vector2(-48, -39)
-	area.add_child(sub_l)
-
+	var vendor := HideoutArt.Vendor.new()
+	vendor.spec = _vendor_spec(kind)
+	vendor.lines = Story.vendor_lines(kind)
+	vendor.position = pos - Vector2(0, 62)
+	add_child(vendor)
+	var neon := HideoutArt.Neon.new()
+	neon.text = VENDORS[kind][1] if VENDORS.has(kind) else title
+	neon.color = tint
+	neon.position = Vector2(pos.x, -6)
+	add_child(neon)
 	var prompt := Label.new()
-	prompt.text = "[E] Talk"
-	prompt.add_theme_font_size_override("font_size", 12)
-	prompt.add_theme_color_override("font_color", Color.WHITE)
-	prompt.position = Vector2(-22, 28)
+	prompt.text = "[E] / USE  —  " + title
+	prompt.add_theme_font_override("font", VisualTheme.font("heading"))
+	prompt.add_theme_font_size_override("font_size", 20)
+	prompt.add_theme_color_override("font_color", Palette.PAPER)
+	prompt.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.8), tint, 1, 3, 6))
+	prompt.position = Vector2(-110, 58)
+	prompt.material = StreetArt._unshaded()
 	prompt.hide()
 	area.add_child(prompt)
-
-	var entry := {"area": area, "prompt": prompt, "kind": kind}
+	if subtitle != "":
+		prompt.text += "\n" + subtitle
+	var entry := {"area": area, "prompt": prompt, "kind": kind, "vendor": vendor}
 	_stations.append(entry)
 	area.body_entered.connect(_on_station_entered.bind(entry))
 	area.body_exited.connect(_on_station_exited.bind(entry))
+
+func _vendor_spec(kind: StringName) -> Dictionary:
+	var S := SpriteKit
+	match kind:
+		&"weapons":
+			return {"body": S.Body.BULKY, "head": S.Head.CAP, "gun": S.Gun.NONE, "color": Color("4a3a2a"), "trim": Color("b87a3a"), "hat": Color("2a2a2a"), "skin": S.SKIN[2], "acc": ["cigar"]}
+		&"stocks":
+			return {"body": S.Body.SUIT, "head": S.Head.FEDORA, "gun": S.Gun.LEDGER, "color": Color("2a2a3a"), "trim": Palette.GOLD, "hat": Color("1a1a22"), "band": Palette.GOLD_DIM, "skin": S.SKIN[0], "acc": ["tie", "pinstripe"]}
+		_:
+			return {"body": S.Body.HOODIE, "head": S.Head.HOOD, "gun": S.Gun.TABLET, "color": Color("3a2a4a"), "trim": Color("c07aff"), "hat": Color("261a30"), "skin": S.SKIN[3]}
 
 func _on_station_entered(body: Node, entry: Dictionary) -> void:
 	if not body.is_in_group("player"):
 		return
 	_near_station = entry
 	entry["prompt"].show()
+	entry["vendor"].talking = true
 
 func _on_station_exited(body: Node, entry: Dictionary) -> void:
 	if not body.is_in_group("player"):
@@ -213,44 +249,40 @@ func _on_station_exited(body: Node, entry: Dictionary) -> void:
 	if _near_station == entry:
 		_near_station = {}
 	entry["prompt"].hide()
+	entry["vendor"].talking = false
+	entry["vendor"].hush()
 
 # ------------------------------------------------------------------ door ---
 func _build_door() -> void:
 	var area := Area2D.new()
 	area.position = Vector2(ROOM_SIZE.x * 0.5, ROOM_SIZE.y - 16)
 	area.collision_layer = 0
-	area.collision_mask = 4
+	area.collision_mask = Layers.PLAYER
 	add_child(area)
-
 	var shape := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
-	rs.size = Vector2(76, 42)
+	rs.size = Vector2(120, 60)
 	shape.shape = rs
 	area.add_child(shape)
-
 	var door_visual := Polygon2D.new()
 	door_visual.polygon = PackedVector2Array([
-		Vector2(-38, -21), Vector2(38, -21), Vector2(38, 21), Vector2(-38, 21)])
-	door_visual.color = Color(0.4, 0.32, 0.12)
+		Vector2(-60, -8), Vector2(60, -8), Vector2(60, 24), Vector2(-60, 24)])
+	door_visual.color = Color("2a1a10")
 	area.add_child(door_visual)
-
-	var label := Label.new()
-	label.text = "OUT TO THE JOB BOARD"
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", GOLD_DIM)
-	label.position = Vector2(-60, -38)
-	label.custom_minimum_size = Vector2(140, 0)
-	area.add_child(label)
-
+	var exit_sign := HideoutArt.Neon.new()
+	exit_sign.text = "EXIT"
+	exit_sign.color = Palette.NEON_GREEN
+	exit_sign.position = Vector2(0, -34)
+	area.add_child(exit_sign)
 	_door_prompt = Label.new()
-	_door_prompt.text = "[E] Leave"
-	_door_prompt.add_theme_font_size_override("font_size", 12)
-	_door_prompt.add_theme_color_override("font_color", Color.WHITE)
-	_door_prompt.position = Vector2(-22, 24)
+	_door_prompt.text = "[E] / USE  —  BACK TO THE CASE WALL"
+	_door_prompt.add_theme_font_override("font", VisualTheme.font("heading"))
+	_door_prompt.add_theme_font_size_override("font_size", 20)
+	_door_prompt.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.8), Palette.NEON_GREEN, 1, 3, 6))
+	_door_prompt.position = Vector2(-180, -110)
+	_door_prompt.material = StreetArt._unshaded()
 	_door_prompt.hide()
 	area.add_child(_door_prompt)
-
 	area.body_entered.connect(_on_door_entered)
 	area.body_exited.connect(_on_door_exited)
 
@@ -265,43 +297,79 @@ func _on_door_exited(b: Node) -> void:
 		_door_prompt.hide()
 
 func _leave_hideout() -> void:
-	if RunState.run_map:
-		RunState.run_map.advance_step()
-	RunFlow.save()
-	get_tree().change_scene_to_file("res://map_ui_screen.tscn")
+	if _active_panel:
+		return
+	RunFlow.leave_hideout()
+
+var _hint: Label
+
+func _on_gold_changed(gold: int) -> void:
+	if is_instance_valid(_hint):
+		_hint.text = "Walk to a vendor and press E / USE.   Cash: $%d" % gold
 
 # --------------------------------------------------------------- overlay ---
 func _build_hud_hint() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 5
 	add_child(layer)
-	var l := Label.new()
-	l.text = "MOVE -- WASD / ARROWS      INTERACT -- E"
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", 12)
-	l.add_theme_color_override("font_color", Color(0.55, 0.55, 0.6))
-	l.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	l.offset_top = 14
-	layer.add_child(l)
+	var ui := Control.new()
+	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(ui)
+	var tape := TickerTape.new()
+	tape.size = Vector2(1280, 30)
+	ui.add_child(tape)
+	var title := VisualTheme.label("THE HIDEOUT", "HeadingLabel", 30)
+	title.position = Vector2(24, 40)
+	ui.add_child(title)
+	_hint = VisualTheme.label("", "DimLabel", 18)
+	_hint.position = Vector2(26, 82)
+	ui.add_child(_hint)
+	_on_gold_changed(RunEconomy.gold)
+	RunEconomy.gold_changed.connect(_on_gold_changed)
+	var leave := Button.new()
+	leave.text = "TO THE JOB BOARD"
+	leave.position = Vector2(960, 40)
+	leave.size = Vector2(296, 58)
+	leave.focus_mode = Control.FOCUS_NONE
+	leave.pressed.connect(_leave_hideout)
+	ui.add_child(leave)
 
 # ============================================================== STATIONS ===
 func _open_station(kind: StringName) -> void:
 	if _active_panel:
 		return
 	_walker.movement_enabled = false
+	# Each vendor's panel is built once per visit and only hidden on close, so
+	# its offers, opened cases and escalating reroll price persist until you
+	# walk out — closing and reopening is never a free reroll.
+	if _panels.has(kind) and is_instance_valid(_panels[kind]):
+		_active_panel = _panels[kind]
+		_active_panel.show()
+		_restore_vendor_state(kind)
+		_refresh_gold_label()
+		VisualTheme.focus_first(_active_panel)
+		return
 	match kind:
 		&"weapons": _active_panel = _build_weapon_dealer()
 		&"stocks": _active_panel = _build_stock_manipulation()
 		&"blackmarket": _active_panel = _build_black_market()
 	if _active_panel:
+		_panels[kind] = _active_panel
+		_vendor_state[kind] = _capture_vendor_state()
 		add_child(_active_panel)
+		VisualTheme.focus_first.call_deferred(_active_panel)
 
 func _close_panel() -> void:
 	if _active_panel:
-		_active_panel.queue_free()
+		for kind in _panels:
+			if _panels[kind] == _active_panel:
+				_vendor_state[kind] = _capture_vendor_state()
+		_active_panel.hide()
 		_active_panel = null
-	_active_gold_label = null
 	_walker.movement_enabled = true
+	if RunState.active:
+		RunFlow.save()
 
 ## Shared panel chrome: dim + centered frame + title + gold label + close.
 ## Returns {layer, body} where `body` is the VBoxContainer to fill with content.
@@ -347,7 +415,7 @@ func _panel_frame(title: String, kicker: String, accent: Color) -> Dictionary:
 	head_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var k := Label.new()
 	k.text = kicker
-	k.add_theme_font_size_override("font_size", 11)
+	k.add_theme_font_size_override("font_size", 19)
 	k.add_theme_color_override("font_color", GOLD_DIM)
 	head_col.add_child(k)
 	var t := Label.new()
@@ -386,7 +454,7 @@ func _refresh_gold_label() -> void:
 	if _active_gold_label == null:
 		return
 	var econ = get_node_or_null("/root/RunEconomy")
-	_active_gold_label.text = "\u26FF " + str(econ.gold if econ else 0)
+	_active_gold_label.text = "$" + str(econ.gold if econ else 0)
 
 ## A single buyable row. `on_buy` is a bound Callable taking no arguments
 ## (e.g. _buy_patch_kit, or _buy_weapon.bind(w)) -- never an inline lambda,
@@ -411,12 +479,12 @@ func _item_row(body: VBoxContainer, name_text: String, desc_text: String,
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var n := Label.new()
 	n.text = name_text
-	n.add_theme_font_size_override("font_size", 15)
+	n.add_theme_font_size_override("font_size", 22)
 	n.add_theme_color_override("font_color", accent)
 	info.add_child(n)
 	var d := Label.new()
 	d.text = desc_text
-	d.add_theme_font_size_override("font_size", 11)
+	d.add_theme_font_size_override("font_size", 19)
 	d.add_theme_color_override("font_color", INK_SOFT)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(d)
@@ -424,13 +492,13 @@ func _item_row(body: VBoxContainer, name_text: String, desc_text: String,
 
 	var right := VBoxContainer.new()
 	var price_l := Label.new()
-	price_l.text = "\u26FF " + str(price)
+	price_l.text = "$" + str(price)
 	price_l.add_theme_color_override("font_color", GOLD)
 	price_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(price_l)
 	var buy := Button.new()
 	buy.text = "Buy"
-	buy.custom_minimum_size = Vector2(74, 0)
+	buy.custom_minimum_size = Vector2(120, 68)
 	right.add_child(buy)
 	row.add_child(right)
 
@@ -441,14 +509,17 @@ func _on_row_buy(price: int, on_buy: Callable, buy: Button) -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
 	if econ == null or not econ.can_afford(price):
 		buy.modulate = RED
+		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(buy, "modulate", Color.WHITE, 0.4)
 		return
 	econ.spend(price)
+	Audio.play_ui("cash_register")
 	on_buy.call()
 	_refresh_gold_label()
 	buy.text = "Bought"
 	buy.disabled = true
+	RunFlow.save()
 
 # ============================================================ ALL VENDORS ===
 ## Every station -- Weapon Dealer, The Fence, Black Market -- follows the
@@ -472,14 +543,30 @@ var _current_offers: Array = []
 ## Shared entry point: builds the panel frame, intro line, reroll button, and
 ## the first roll of 3 offers. Each vendor just supplies its own generator.
 func _open_vendor(title: String, kicker: String, accent: Color,
-		intro_text: String, offer_generator: Callable) -> CanvasLayer:
+		intro_text: String, offer_generator: Callable, side: Control = null) -> CanvasLayer:
 	var frame := _panel_frame(title, kicker, accent)
 	var body: VBoxContainer = frame["body"]
+	if side:
+		# A second counter beside the offers (the Fence's positions).
+		var split := HBoxContainer.new()
+		split.add_theme_constant_override("separation", 26)
+		body.add_child(split)
+		var left := VBoxContainer.new()
+		left.custom_minimum_size = Vector2(560, 0)
+		left.add_theme_constant_override("separation", 10)
+		split.add_child(left)
+		var rule := ColorRect.new()
+		rule.custom_minimum_size = Vector2(2, 0)
+		rule.color = GOLD_DIM
+		rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		split.add_child(rule)
+		split.add_child(side)
+		body = left
 
 	if intro_text != "":
 		var intro := Label.new()
 		intro.text = intro_text
-		intro.add_theme_font_size_override("font_size", 11)
+		intro.add_theme_font_size_override("font_size", 19)
 		intro.add_theme_color_override("font_color", INK_SOFT)
 		intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		body.add_child(intro)
@@ -508,25 +595,39 @@ func _render_offer_rows() -> void:
 	for c in _offers_col.get_children():
 		c.queue_free()
 	for entry: Dictionary in _current_offers:
-		_item_row(_offers_col, entry["name"], entry["desc"], entry["price"],
+		_item_row(_offers_col, entry["name"], entry["desc"], _price(int(entry["price"])),
 			entry["accent"], entry["cb"])
+
+## Fence's Discount: every hideout price -15%.
+static func _price(base: int) -> int:
+	return roundi(base * 0.85) if RunState.has_relic(&"fences_discount") else base
+
+var _free_reroll_used := false
 
 func _update_reroll_button() -> void:
 	if _reroll_button:
-		_reroll_button.text = "\u21BB Reroll stock (\u26FF %d)" % _reroll_cost
+		if RunState.has_perk(&"fence_friend") and not _free_reroll_used:
+			_reroll_button.text = "Reroll stock (free today)"
+		else:
+			_reroll_button.text = "Reroll stock ($%d)" % _price(_reroll_cost)
 
 ## Rerolling costs gold and gets pricier each use THIS visit -- resets to
 ## base cost next time you walk in. A real decision, not a free retry loop.
 func _on_reroll_offers() -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
-	if econ == null or not econ.can_afford(_reroll_cost):
+	var free := RunState.has_perk(&"fence_friend") and not _free_reroll_used
+	if not free and (econ == null or not econ.can_afford(_price(_reroll_cost))):
 		_reroll_button.modulate = RED
+		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(_reroll_button, "modulate", Color.WHITE, 0.4)
 		return
-	econ.spend(_reroll_cost)
+	if free:
+		_free_reroll_used = true           # Friend at the Fence: one on the house
+	else:
+		econ.spend(_price(_reroll_cost))
+		_reroll_cost += REROLL_STEP
 	_refresh_gold_label()
-	_reroll_cost += REROLL_STEP
 	_current_offers = _offer_generator.call()
 	_render_offer_rows()
 	_update_reroll_button()
@@ -547,20 +648,20 @@ func _build_weapon_dealer() -> CanvasLayer:
 
 	var intro := Label.new()
 	intro.text = "Sealed off the truck. Nobody knows what's inside until it cracks -- but the grade only goes up the more heat you've weathered."
-	intro.add_theme_font_size_override("font_size", 11)
+	intro.add_theme_font_size_override("font_size", 19)
 	intro.add_theme_color_override("font_color", INK_SOFT)
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(intro)
 
 	var qb: int = RunState.run_map.quota_block if RunState.run_map else 0
 	_case_tier = _case_tier_for_quota(qb)
-	_case_price = _case_price_for_quota(qb)
+	_case_price = _price(_case_price_for_quota(qb))
 	_case_opened = [false, false, false]
 	_case_results = [null, null, null]
 	_spin_active = false
 
 	var tier_l := Label.new()
-	tier_l.text = "%s grade -- \u26FF %d each" % [LootRoller.tier_name(_case_tier), _case_price]
+	tier_l.text = "%s grade -- $%d each" % [LootRoller.tier_name(_case_tier), _case_price]
 	tier_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tier_l.add_theme_font_size_override("font_size", 12)
 	tier_l.add_theme_color_override("font_color", GOLD_DIM)
@@ -628,10 +729,15 @@ func _make_sealed_card(index: int) -> Button:
 	var icon_wrap := CenterContainer.new()
 	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(icon_wrap)
-	var icon := Label.new()
-	icon.text = "\u25A3"
-	icon.add_theme_font_size_override("font_size", 46)
-	icon.add_theme_color_override("font_color", edge)
+	# A drawn case (font glyphs are not guaranteed on every platform).
+	var icon := Control.new()
+	icon.custom_minimum_size = Vector2(80, 66)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var case_art := PropArt.new()
+	case_art.kind = "chest"
+	case_art.tone = edge
+	case_art.position = Vector2(40, 36)
+	icon.add_child(case_art)
 	icon_wrap.add_child(icon)
 
 	var name_l := Label.new()
@@ -641,7 +747,7 @@ func _make_sealed_card(index: int) -> Button:
 	col.add_child(name_l)
 
 	var price_l := Label.new()
-	price_l.text = "\u26FF %d" % _case_price
+	price_l.text = "$%d" % _case_price
 	price_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	price_l.add_theme_color_override("font_color", GOLD)
 	col.add_child(price_l)
@@ -651,7 +757,7 @@ func _make_sealed_card(index: int) -> Button:
 
 func _make_result_card(w: WeaponItem) -> PanelContainer:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(150, 210)
+	card.custom_minimum_size = Vector2(176, 246)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.09, 0.09, 0.12)
 	sb.border_color = w.rarity_color()
@@ -664,32 +770,40 @@ func _make_result_card(w: WeaponItem) -> PanelContainer:
 	col.add_theme_constant_override("separation", 6)
 	card.add_child(col)
 
-	var icon := Label.new()
-	icon.text = "\u2726"
-	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon.add_theme_font_size_override("font_size", 40)
-	icon.add_theme_color_override("font_color", w.rarity_color())
+	var icon := HudWidgets.WeaponIcon.new()
+	icon.gun = SpriteKit.gun_for(w)
+	icon.tint = w.rarity_color()
+	icon.custom_minimum_size = Vector2(150, 44)
 	col.add_child(icon)
 
 	var name_l := Label.new()
 	name_l.text = w.display_name
 	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_l.add_theme_font_size_override("font_size", 13)
+	name_l.add_theme_font_size_override("font_size", 16)
 	name_l.add_theme_color_override("font_color", w.rarity_color())
 	col.add_child(name_l)
 
 	var stats_l := Label.new()
-	stats_l.text = "%s\ndmg %d" % [w.rarity_name(), w.damage]
+	stats_l.text = "%s  ·  dmg %d" % [w.rarity_name(), w.damage]
 	stats_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stats_l.add_theme_font_size_override("font_size", 10)
+	stats_l.add_theme_font_size_override("font_size", 13)
 	stats_l.add_theme_color_override("font_color", INK_SOFT)
 	col.add_child(stats_l)
+
+	var trait_l := Label.new()
+	trait_l.text = w.trait_text()
+	trait_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	trait_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	trait_l.custom_minimum_size = Vector2(160, 0)
+	trait_l.add_theme_font_size_override("font_size", 13)
+	trait_l.add_theme_color_override("font_color", Palette.GOLD_PALE)
+	col.add_child(trait_l)
 
 	var tag := Label.new()
 	tag.text = "EQUIPPED"
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tag.add_theme_font_size_override("font_size", 11)
+	tag.add_theme_font_size_override("font_size", 19)
 	tag.add_theme_color_override("font_color", Color(0.55, 0.95, 0.6))
 	col.add_child(tag)
 
@@ -716,6 +830,7 @@ func _on_case_pressed(index: int, card: Button) -> void:
 	var econ = get_node_or_null("/root/RunEconomy")
 	if econ == null or not econ.can_afford(_case_price):
 		card.modulate = RED
+		Audio.play_ui("ui_deny")
 		var tw := create_tween()
 		tw.tween_property(card, "modulate", Color.WHITE, 0.4)
 		return
@@ -800,10 +915,21 @@ func _start_spin(index: int, w: WeaponItem) -> void:
 
 	strip.position = Vector2(start_x, 8)
 
+	_spin_last_slot = -1
 	var tw := create_tween()
-	tw.tween_property(strip, "position:x", target_x, SPIN_DURATION) \
+	tw.tween_method(_spin_step.bind(strip, pointer_x), start_x, target_x, SPIN_DURATION) \
 		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(_on_spin_landed.bind(index, w))
+
+var _spin_last_slot := -1
+
+## Moves the strip and ticks every time a new slot passes the pointer.
+func _spin_step(x: float, strip: Control, pointer_x: float) -> void:
+	strip.position.x = x
+	var slot := int((pointer_x - x) / SPIN_SLOT_PITCH)
+	if slot != _spin_last_slot:
+		_spin_last_slot = slot
+		Audio.play_ui("case_tick", 1.0 + slot * 0.004)
 
 func _make_spin_slot(color: Color) -> PanelContainer:
 	var slot := PanelContainer.new()
@@ -829,6 +955,7 @@ func _on_spin_landed(index: int, w: WeaponItem) -> void:
 		flash.tween_property(_spin_winner_slot, "scale", Vector2.ONE, 0.15)
 		_spin_winner_slot.pivot_offset = Vector2(SPIN_SLOT_WIDTH * 0.5, 107)
 
+	Audio.play_ui("reveal_%d" % clampi(int(w.rarity), 0, 4))
 	_case_result_label.text = "%s -- %s" % [w.rarity_name(), w.display_name]
 	_case_result_label.add_theme_color_override("font_color", w.rarity_color())
 
@@ -843,15 +970,16 @@ func _on_spin_landed(index: int, w: WeaponItem) -> void:
 
 # ----------------------------------------------------- stock manipulation --
 func _build_stock_manipulation() -> CanvasLayer:
-	return _open_vendor("THE FENCE", "STOCK MANIPULATION", GOLD,
+	return _open_vendor("THE FENCE", "STOCK MANIPULATION  ·  POSITIONS", GOLD,
 		"Three moves on offer today. Pay for a fourth if none of them suit you.",
-		_fence_offer_generator)
+		_fence_offer_generator, PositionsPanel.new())
 
 ## 3 of up to 6 possible offers, sampled fresh every open and every reroll.
 ## Perks drop out of the pool once owned, so they naturally stop appearing.
 func _fence_offer_generator() -> Array:
 	var qb: int = RunState.run_map.quota_block if RunState.run_map else 0
-	var scale := pow(1.55, qb)
+	# The Broker gets the Fence's friends-and-family rate.
+	var scale := pow(1.55, qb) * (1.0 - float(RunState.profile_value("fence_discount", 0.0)))
 	var pool: Array = [
 		{"name": "Spread Rumors", "desc": "+25% to your weakest venue.",
 			"price": int(120 * scale), "accent": GOLD, "cb": _op_pump_weak},
@@ -868,6 +996,18 @@ func _fence_offer_generator() -> Array:
 	if not RunState.has_perk(&"inside_trader"):
 		pool.append({"name": "Inside Trader", "desc": "+25% on positive stock swings from heist grades.",
 			"price": 300, "accent": Color(0.55, 0.75, 1.0), "cb": _buy_perk.bind(&"inside_trader")})
+	var perks := [
+		[&"fast_hands", "Fast Hands", "-25% reload time on every weapon.", 220],
+		[&"blood_dividend", "Blood Dividend", "Heal 1 for each 8 kills within a heist.", 320],
+		[&"quiet_shoes", "Quiet Shoes", "Dodge rolls make no noise.", 180],
+		[&"cool_head", "Cool Head", "Heat builds 25% slower over time.", 240],
+		[&"scavenger", "Scavenger", "+25% gold from floor valuables.", 260],
+		[&"golden_parachute", "Stop-Loss Order", "30% less stock loss when you take damage.", 280]
+	]
+	for perk: Array in perks:
+		if not RunState.has_perk(perk[0]):
+			pool.append({"name": perk[1], "desc": perk[2], "price": perk[3],
+				"accent": Color(0.35, 0.8, 0.72), "cb": _buy_perk.bind(perk[0])})
 	return _sample_pool(pool, 3)
 
 func _buy_perk(id: StringName) -> void:
@@ -927,8 +1067,6 @@ func _black_market_offer_generator() -> Array:
 	var qb: int = RunState.run_map.quota_block if RunState.run_map else 0
 	var scale := pow(1.4, qb)
 	var pool: Array = [
-		{"name": "Patch Kit", "desc": "Restore 1 health",
-			"price": int(140 * scale), "accent": Color(0.85, 0.4, 0.4), "cb": _buy_patch_kit},
 		{"name": "Ammo Crate", "desc": "Refill reserve ammo for all weapons",
 			"price": int(90 * scale), "accent": Color(0.85, 0.4, 0.4), "cb": _buy_ammo_crate},
 		{"name": "Kevlar Lining", "desc": "+1 max health, this run",
@@ -938,22 +1076,80 @@ func _black_market_offer_generator() -> Array:
 		{"name": "Filed Trigger", "desc": "Fire 12% faster, this run",
 			"price": int(260 * scale), "accent": Color(0.6, 0.4, 0.85), "cb": _buy_filed_trigger},
 	]
+	# No healing is ever sold to the Legend.
+	if not RunState.profile_value("no_healing", false):
+		pool.append({"name": "Patch Kit", "desc": "Restore 1 health",
+			"price": int(140 * scale), "accent": Color(0.85, 0.4, 0.4), "cb": _buy_patch_kit})
+	# Two relics and a weapon mod rotate through the stock.
+	var relic_rng := RandomNumberGenerator.new()
+	relic_rng.randomize()
+	var relics_on_offer: Array = []
+	for i in 2:
+		var r := Relics.roll(relic_rng)
+		if r and r.id not in relics_on_offer:
+			relics_on_offer.append(r.id)
+			pool.append({"name": r.display_name, "desc": "RELIC — " + r.description, "price": Relics.price_of(r, scale),
+				"accent": r.rarity_color(), "cb": _buy_relic.bind(r.id)})
+	var mod_ids: Array = WeaponMods.DATA.keys()
+	mod_ids.shuffle()
+	for m in mod_ids:
+		var target := WeaponMods.target_for(m)
+		if target:
+			var d: Array = WeaponMods.DATA[m]
+			pool.append({"name": d[0], "desc": "MOD for your %s — %s" % [target.display_name, d[1]], "price": int(d[2] * scale),
+				"accent": Palette.NEON_CYAN, "cb": _buy_weapon_mod.bind(m)})
+			break
+	# Case-specific stock: whatever the next leads' modifiers call for.
+	var gear := {
+		&"blackout": [&"night_vision", "Night-Vision Goggles", "Next job: the dark is less dark, and your flashlight reaches further."],
+		&"camera_network": [&"signal_jammer", "Signal Jammer", "Next job: cameras take twice as long to spot you."],
+		&"heavy_police": [&"police_scanner", "Police Scanner", "Next job: vans arrive 30% later."],
+		&"lockdown": [&"bolt_cutters", "Bolt Cutters", "Next job: one fire exit stays open through a lockdown."],
+		&"rival_crew": [&"body_armor", "Body Armor", "Next job: the first hit you take is absorbed."],
+		&"payday": [&"duffel_bag", "Duffel Bag", "Next job: loot +15%."],
+	}
+	var offered: Array = []
+	var gear_pool: Array = []
+	if RunState.run_map:
+		for opt in RunState.run_map.peek_next_heist_options():
+			if not (opt is MapNode) or not opt.known():
+				continue
+			for m in opt.modifiers:
+				if gear.has(m) and m not in offered and not RunState.has_job_gear(gear[m][0]):
+					offered.append(m)
+					var g: Array = gear[m]
+					gear_pool.append({"name": g[1], "desc": g[2], "price": int(150 * scale),
+						"accent": Color(1.0, 0.65, 0.15), "cb": _buy_job_gear.bind(g[0])})
 	if _next_rarity >= 4:
 		var tier_names := ["Light", "Light", "Moderate", "Moderate", "Heavy", "Heavy", "Maximum"]
 		var tier_word: String = tier_names[clampi(_next_rarity, 0, tier_names.size() - 1)]
 		pool.append({"name": "Insider Blueprints",
 			"desc": "Advance intel on a %s job: +1 max health and +8%% fire rate." % tier_word.to_lower(),
 			"price": int(480 * scale), "accent": Color(1.0, 0.65, 0.15), "cb": _buy_blueprints})
-	return _sample_pool(pool, 3)
+	# One slot always goes to gear for the coming job when there is any.
+	var picks: Array = []
+	if not gear_pool.is_empty():
+		gear_pool.shuffle()
+		picks.append(gear_pool.pop_back())
+	return picks + _sample_pool(pool + gear_pool, 3 - picks.size())
+
+func _buy_relic(id: StringName) -> void:
+	RunState.add_relic(id)
+
+func _buy_weapon_mod(id: StringName) -> void:
+	WeaponMods.install(id)
+
+func _buy_job_gear(id: StringName) -> void:
+	if id not in RunState.job_gear:
+		RunState.job_gear.append(id)
 
 func _buy_patch_kit() -> void:
 	RunState.heal(1)
 
 func _buy_ammo_crate() -> void:
 	if not RunState.loadout: return
-	var w: WeaponItem = RunState.loadout.get_active()
-	if w:
-		RunState.loadout.scavenge(w.ammo_type, 120)
+	for ammo: StringName in [&"light", &"heavy", &"shell"]:
+		RunState.loadout.scavenge(ammo, 9999)
 
 func _buy_kevlar() -> void:
 	RunState.add_max_health(1)
@@ -967,3 +1163,21 @@ func _buy_filed_trigger() -> void:
 func _buy_blueprints() -> void:
 	RunState.add_max_health(1)
 	RunState.add_stat_mod(&"fire_rate", 0.0, 0.92)
+
+## The shared vendor helpers keep "current panel" references in member vars;
+## snapshot and restore them so several cached panels can coexist.
+func _capture_vendor_state() -> Dictionary:
+	return {"offers_col": _offers_col, "reroll_button": _reroll_button,
+		"reroll_cost": _reroll_cost, "generator": _offer_generator,
+		"offers": _current_offers, "gold_label": _active_gold_label}
+
+func _restore_vendor_state(kind: StringName) -> void:
+	var st: Dictionary = _vendor_state.get(kind, {})
+	if st.is_empty():
+		return
+	_offers_col = st["offers_col"]
+	_reroll_button = st["reroll_button"]
+	_reroll_cost = st["reroll_cost"]
+	_offer_generator = st["generator"]
+	_current_offers = st["offers"]
+	_active_gold_label = st["gold_label"]

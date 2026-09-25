@@ -4,55 +4,44 @@ class_name CharacterSelect
 ## The pre-run flow, styled as a criminal dossier:
 ##   PHASE 1 — CASE FILES: three game files. An active file resumes its run;
 ##             an empty one moves on to crew selection. Files can be burned.
-##   PHASE 2 — THE CREW: five specialists on wanted-poster cards. One walks
-##             free; four are locked behind feats.
-##
+##   PHASE 2 — THE CREW: five specialists on mugshot cards. The Operator walks
+##             free; four are locked behind feats tracked in Meta.
 ## Scene: CanvasLayer root + this script. Everything is built in code.
-
-const GOLD := Color(0.91, 0.72, 0.26)
-const GOLD_DIM := Color(0.55, 0.45, 0.2)
-const PAPER := Color(0.86, 0.82, 0.72)
-const INK := Color(0.10, 0.10, 0.12)
-const BG := Color(0.045, 0.045, 0.06)
-const PANEL := Color(0.10, 0.10, 0.13)
-const PANEL_EDGE := Color(0.24, 0.24, 0.3)
-const RED := Color(0.78, 0.22, 0.2)
 
 const CREW := [
 	{
-		"id": &"operator", "name": "THE OPERATOR", "mono": "O",
-		"role": "All-rounder", "unlocked": true,
+		"id": &"operator", "name": "THE OPERATOR", "role": "All-rounder", "unlocked": true,
 		"blurb": "Steady hands, no habits, no records. The one every fence trusts.",
-		"hearts": "♥♥♥", "trait": "volatility x1.0 to x2.5",
-		"profile": "res://main_character.tres",
+		"hearts": 3, "trait": "Volatility x1.0 to x2.5",
+		"profile": "res://crew_operator.tres",
 	},
 	{
-		"id": &"ghost", "name": "THE GHOST", "mono": "G",
-		"role": "Infiltrator", "unlocked": false,
+		"id": &"ghost", "name": "THE GHOST", "role": "Infiltrator", "unlocked": false,
 		"blurb": "Nobody ever heard them coming. Nobody ever heard them leave.",
-		"hearts": "♥♥", "trait": "volatility x1.5 to x3.0\nsilent movement, guards hear nothing",
+		"hearts": 2, "trait": "Volatility x1.5 to x3.0\nSilent movement, gunshots -40%, cameras slower. Starts with a Silenced 9mm.",
 		"unlock": "Slip out a fire exit 5 times",
+		"profile": "res://crew_ghost.tres",
 	},
 	{
-		"id": &"wolf", "name": "THE WOLF", "mono": "W",
-		"role": "Heavy", "unlocked": false,
+		"id": &"wolf", "name": "THE WOLF", "role": "Heavy", "unlocked": false,
 		"blurb": "Doesn't case the place. Doesn't need to.",
-		"hearts": "♥♥♥♥", "trait": "volatility x0.8 to x2.0\nhits harder, bleeds louder",
+		"hearts": 4, "trait": "Volatility x0.8 to x2.0\n+25% damage. Getting hit makes noise.",
 		"unlock": "Put down 3 bosses",
+		"profile": "res://crew_wolf.tres",
 	},
 	{
-		"id": &"broker", "name": "THE BROKER", "mono": "B",
-		"role": "Market fixer", "unlocked": false,
+		"id": &"broker", "name": "THE BROKER", "role": "Market fixer", "unlocked": false,
 		"blurb": "Half the trades on the feed are theirs. The other half are lies.",
-		"hearts": "♥♥", "trait": "volatility x2.0 to x4.0\nstock swings amplified both ways",
+		"hearts": 2, "trait": "Volatility x2.0 to x4.0\nSwings x1.5, 3 positions, leverage 3, Fence -25%.",
 		"unlock": "Reach Index 350 in one run",
+		"profile": "res://crew_broker.tres",
 	},
 	{
-		"id": &"legend", "name": "THE LEGEND", "mono": "L",
-		"role": "One last job", "unlocked": false,
+		"id": &"legend", "name": "THE LEGEND", "role": "One last job", "unlocked": false,
 		"blurb": "Retired once already. This time it's personal — and it's all in.",
-		"hearts": "♥", "trait": "volatility x3.0 flat\none life, all in",
-		"unlock": "Retire — win a full run",
+		"hearts": 1, "trait": "Volatility x3.0 flat\nNo healing. Gold and stock gains x2. Starts with a Classified+ weapon.",
+		"unlock": "Reach a final ending — beat the Chairman",
+		"profile": "res://crew_legend.tres",
 	},
 ]
 
@@ -62,35 +51,22 @@ var _chosen_slot: int = -1
 
 func _ready() -> void:
 	layer = 60
+	Audio.music("menu")
+	for child in get_children():
+		child.queue_free()
 	_build_frame()
 	_show_case_files()
 
-# ------------------------------------------------------------------ frame ---
 func _build_frame() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_root)
-
-	var bg := ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = BG
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg := MenuBackdrop.new()
 	_root.add_child(bg)
-
-	# Faint diagonal caution stripes along the top and bottom edges.
-	for y_anchor in [0.0, 1.0]:
-		var stripe := ColorRect.new()
-		stripe.anchor_left = 0.0
-		stripe.anchor_right = 1.0
-		stripe.anchor_top = y_anchor
-		stripe.anchor_bottom = y_anchor
-		stripe.offset_top = -3 if y_anchor == 1.0 else 0
-		stripe.offset_bottom = 0 if y_anchor == 1.0 else 3
-		stripe.color = GOLD_DIM
-		stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_root.add_child(stripe)
-
+	var desk := CaseWallArt.Corkboard.new()
+	desk.modulate = Color(1, 1, 1, 0.92)
+	_root.add_child(desk)
 	_phase_holder = Control.new()
 	_phase_holder.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_phase_holder.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -100,143 +76,120 @@ func _clear_phase() -> void:
 	for c in _phase_holder.get_children():
 		c.queue_free()
 
-func _title_block(parent: Control, kicker: String, title: String) -> VBoxContainer:
-	var col := VBoxContainer.new()
-	col.set_anchors_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 60; col.offset_right = -60
-	col.offset_top = 34; col.offset_bottom = -30
-	col.add_theme_constant_override("separation", 6)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(col)
+func _title(kicker: String, title: String) -> void:
+	var strip := Panel.new()
+	strip.position = Vector2(40, 24)
+	strip.size = Vector2(620, 88)
+	strip.rotation = -0.01
+	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	strip.add_theme_stylebox_override("panel", VisualTheme.paper(Palette.PAPER, 0))
+	_phase_holder.add_child(strip)
+	var k := VisualTheme.label(kicker, "", 18, Palette.STAMP_RED)
+	k.add_theme_font_override("font", VisualTheme.font("type_bold"))
+	k.position = Vector2(22, 10)
+	strip.add_child(k)
+	var t := VisualTheme.label(title, "", 42, Palette.INK)
+	t.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+	t.position = Vector2(20, 28)
+	strip.add_child(t)
 
-	var k := Label.new()
-	k.text = kicker
-	k.add_theme_font_size_override("font_size", 13)
-	k.add_theme_color_override("font_color", GOLD_DIM)
-	col.add_child(k)
-
-	var t := Label.new()
-	t.text = title
-	t.add_theme_font_size_override("font_size", 34)
-	t.add_theme_color_override("font_color", GOLD)
-	col.add_child(t)
-
-	var rule := ColorRect.new()
-	rule.custom_minimum_size = Vector2(0, 2)
-	rule.color = GOLD_DIM
-	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(rule)
-	return col
-
-func _back_button(parent: Control, text: String, action: Callable) -> void:
+func _back_button(text: String, action: Callable) -> void:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(180, 38)
-	b.add_theme_font_size_override("font_size", 13)
+	b.position = Vector2(40, 636)
+	b.size = Vector2(300, 60)
 	b.pressed.connect(action)
-	parent.add_child(b)
+	_phase_holder.add_child(b)
 
 # ------------------------------------------------------- phase 1: files -----
 func _show_case_files() -> void:
 	_clear_phase()
-	var col := _title_block(_phase_holder, "PROPERTY OF THE FENCE — EYES ONLY",
-		"CASE FILES")
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 18)
-	col.add_child(spacer)
-
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 26)
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(row)
-
+	_title("PROPERTY OF THE FENCE — EYES ONLY", "CASE FILES")
+	var first: Button = null
 	for i in RunSave.SLOT_COUNT:
-		row.add_child(_make_file_card(i))
+		var card := _make_file_card(i)
+		card.position = Vector2(110 + i * 370, 150)
+		_phase_holder.add_child(card)
+		if first == null:
+			first = card
+	_back_button("< BACK TO THE STREET", _to_home)
+	var connections := Button.new()
+	connections.text = "CONNECTIONS"
+	connections.position = Vector2(940, 636)
+	connections.size = Vector2(300, 60)
+	connections.pressed.connect(_open_connections)
+	_phase_holder.add_child(connections)
+	if first:
+		first.grab_focus.call_deferred()
 
-	var foot := HBoxContainer.new()
-	foot.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_child(foot)
-	_back_button(foot, "← Back to the street", func():
-		get_tree().change_scene_to_file("res://home_screen.tscn"))
+## The Connections board over the case files.
+func _open_connections() -> void:
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.02, 0.03, 0.85)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.add_child(dim)
+	var panel := CareerPanel.new()
+	panel.add_theme_stylebox_override("panel", VisualTheme.panel(Palette.GOLD_DIM, 20))
+	center.add_child(panel)
+	_root.add_child(center)
+	panel.closed.connect(_close_connections.bind(center, dim))
 
-func _make_file_card(i: int) -> Control:
+func _close_connections(center: Control, dim: Control) -> void:
+	center.queue_free()
+	dim.queue_free()
+
+func _to_home() -> void:
+	RunFlow.queue_scene("res://home_screen.tscn")
+
+func _make_file_card(i: int) -> Button:
 	var data := RunSave.peek(i)
 	var active := not data.is_empty()
-
-	var card := Button.new()
-	card.custom_minimum_size = Vector2(240, 300)
-	card.focus_mode = Control.FOCUS_ALL
-	_style_card(card, GOLD if active else PANEL_EDGE)
+	var card := DossierCard.new()
+	card.size = Vector2(320, 440)
+	card.stock = Palette.MANILA
+	card.base_tilt = [-0.02, 0.015, -0.01][i]
 	card.pressed.connect(_on_file_chosen.bind(i))
-
-	var inner := VBoxContainer.new()
-	inner.set_anchors_preset(Control.PRESET_FULL_RECT)
-	inner.offset_left = 16; inner.offset_right = -16
-	inner.offset_top = 16; inner.offset_bottom = -14
-	inner.add_theme_constant_override("separation", 8)
-	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(inner)
-
-	# Manila-folder tab.
-	var tab := PanelContainer.new()
-	var tsb := StyleBoxFlat.new()
-	tsb.bg_color = PAPER
-	tsb.set_corner_radius_all(3)
-	tsb.content_margin_left = 10; tsb.content_margin_right = 10
-	tsb.content_margin_top = 3; tsb.content_margin_bottom = 3
-	tab.add_theme_stylebox_override("panel", tsb)
-	tab.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	tab.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tab_l := Label.new()
-	tab_l.text = "CASE FILE %02d" % (i + 1)
-	tab_l.add_theme_font_size_override("font_size", 12)
-	tab_l.add_theme_color_override("font_color", INK)
-	tab.add_child(tab_l)
-	inner.add_child(tab)
-
-	var status := Label.new()
-	status.add_theme_font_size_override("font_size", 17)
-	inner.add_child(status)
-
-	var detail := Label.new()
-	detail.add_theme_font_size_override("font_size", 12)
-	detail.add_theme_color_override("font_color", Color(0.62, 0.62, 0.7))
-	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inner.add_child(detail)
-
+	card.tab_text = "CASE FILE %02d" % (i + 1)
+	var lines: Array = []
 	if active:
-		status.text = "JOB IN PROGRESS"
-		status.add_theme_color_override("font_color", GOLD)
 		var stage_names := ["Town", "City", "World", "Doomsday"]
 		var st: int = clampi(int(data.get("stage", 0)), 0, 3)
-		detail.text = "Reached: %s\nGold on hand: ⦿ %d\n\nOpen the file to pick the job back up." % [
-			stage_names[st], int(data.get("gold", 0))]
-
-		# Burn button for an active file.
-		var burn := Button.new()
-		burn.text = "🔥 Burn file"
-		burn.add_theme_font_size_override("font_size", 11)
-		burn.custom_minimum_size = Vector2(0, 30)
-		burn.pressed.connect(func():
-			RunSave.delete_slot(i)
-			_show_case_files())
-		inner.add_child(burn)
+		var profile_path: String = data.get("profile_path", "")
+		var who := "The Operator"
+		for c: Dictionary in CREW:
+			if c.get("profile", "") == profile_path:
+				who = String(c["name"]).capitalize()
+		lines = ["SUBJECT: %s" % who, "LAST SEEN: %s" % stage_names[st], "CASH: $%d" % int(data.get("gold", 0)),
+			"HEISTS: %d" % int(data.get("heists_completed", 0)), "", "Open the file to pick", "the job back up."]
+		card.stamp_text = "ACTIVE"
+		card.stamp_color = Palette.STAMP_RED
 	else:
-		status.text = "EMPTY"
-		status.add_theme_color_override("font_color", Color(0.5, 0.5, 0.58))
-		detail.text = "A clean folder. No history, no heat, no name on it yet.\n\nOpen it to put a crew together."
-
+		lines = ["A clean folder.", "No history, no heat,", "no name on it yet.", "", "Open it to put a", "crew together."]
+		card.stamp_text = "EMPTY"
+		card.stamp_color = Palette.MUTED
+	card.body_lines = lines
+	if active:
+		var burn := Button.new()
+		burn.text = "BURN FILE"
+		burn.theme_type_variation = "DangerButton"
+		burn.position = Vector2(24, 368)
+		burn.size = Vector2(150, 46)
+		burn.add_theme_font_size_override("font_size", 18)
+		burn.pressed.connect(_burn.bind(i))
+		card.add_child(burn)
 	return card
+
+func _burn(i: int) -> void:
+	RunSave.delete_slot(i)
+	_show_case_files()
 
 func _on_file_chosen(i: int) -> void:
 	_chosen_slot = i
 	RunSave.slot = i
 	if RunSave.slot_has_run(i):
-		# Resume the job exactly where the file left off.
 		RunFlow.continue_run()
 	else:
 		_show_crew()
@@ -244,136 +197,65 @@ func _on_file_chosen(i: int) -> void:
 # -------------------------------------------------------- phase 2: crew -----
 func _show_crew() -> void:
 	_clear_phase()
-	var col := _title_block(_phase_holder,
-		"CASE FILE %02d — RECRUITMENT" % (_chosen_slot + 1), "CHOOSE YOUR SPECIALIST")
+	_title("CASE FILE %02d — RECRUITMENT" % (_chosen_slot + 1), "CHOOSE YOUR SPECIALIST")
+	var first: Button = null
+	for i in CREW.size():
+		var c: Dictionary = CREW[i]
+		var card := _make_crew_card(c)
+		card.position = Vector2(28 + i * 248, 136)
+		card.base_tilt = [-0.02, 0.012, -0.008, 0.018, -0.014][i]
+		_phase_holder.add_child(card)
+		if first == null and not card.disabled:
+			first = card
+	_back_button("< CASE FILES", _show_case_files)
+	if first:
+		first.grab_focus.call_deferred()
 
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 14)
-	col.add_child(spacer)
-
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 18)
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(row)
-
-	for c: Dictionary in CREW:
-		row.add_child(_make_crew_card(c))
-
-	var foot := HBoxContainer.new()
-	foot.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_child(foot)
-	_back_button(foot, "← Case files", _show_case_files)
-
-func _make_crew_card(c: Dictionary) -> Control:
-	var unlocked: bool = c["unlocked"]
-	var card := Button.new()
-	card.custom_minimum_size = Vector2(196, 340)
-	card.focus_mode = Control.FOCUS_ALL if unlocked else Control.FOCUS_NONE
+func _make_crew_card(c: Dictionary) -> Button:
+	var unlocked: bool = c["unlocked"] or Meta.is_specialist_unlocked(c["id"])
+	var card := DossierCard.new()
+	card.size = Vector2(232, 490)
+	card.stock = Palette.PAPER if unlocked else Color("8a857a")
+	card.tab_text = String(c["role"]).to_upper()
 	card.disabled = not unlocked
-	_style_card(card, GOLD if unlocked else Color(0.2, 0.2, 0.24))
+	card.focus_mode = Control.FOCUS_ALL if unlocked else Control.FOCUS_NONE
 	if unlocked:
 		card.pressed.connect(_on_crew_chosen.bind(c))
-
-	var inner := VBoxContainer.new()
-	inner.set_anchors_preset(Control.PRESET_FULL_RECT)
-	inner.offset_left = 14; inner.offset_right = -14
-	inner.offset_top = 16; inner.offset_bottom = -14
-	inner.add_theme_constant_override("separation", 7)
-	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(inner)
-
-	# Monogram medallion — the "mugshot".
-	var med_wrap := CenterContainer.new()
-	med_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	inner.add_child(med_wrap)
-	var med := PanelContainer.new()
-	var msb := StyleBoxFlat.new()
-	msb.bg_color = Color(0.16, 0.16, 0.2) if unlocked else Color(0.11, 0.11, 0.13)
-	msb.border_color = GOLD if unlocked else Color(0.3, 0.3, 0.34)
-	msb.set_border_width_all(2)
-	msb.set_corner_radius_all(40)
-	med.add_theme_stylebox_override("panel", msb)
-	med.custom_minimum_size = Vector2(80, 80)
-	med.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	med_wrap.add_child(med)
-	var mono := Label.new()
-	mono.text = c["mono"] if unlocked else "?"
-	mono.add_theme_font_size_override("font_size", 38)
-	mono.add_theme_color_override("font_color", GOLD if unlocked else Color(0.4, 0.4, 0.46))
-	mono.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mono.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	med.add_child(mono)
-
-	var name_l := Label.new()
-	name_l.text = c["name"]
-	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_l.add_theme_font_size_override("font_size", 16)
-	name_l.add_theme_color_override("font_color",
-		Color.WHITE if unlocked else Color(0.5, 0.5, 0.56))
-	inner.add_child(name_l)
-
-	var role_l := Label.new()
-	role_l.text = "— %s —" % c["role"]
-	role_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	role_l.add_theme_font_size_override("font_size", 11)
-	role_l.add_theme_color_override("font_color", GOLD_DIM)
-	inner.add_child(role_l)
-
-	# Health and trait on their own lines so nothing crowds the card edge.
-	var hearts_l := Label.new()
-	hearts_l.text = c["hearts"]
-	hearts_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hearts_l.add_theme_font_size_override("font_size", 14)
-	hearts_l.add_theme_color_override("font_color",
-		Color(0.9, 0.45, 0.45) if unlocked else Color(0.45, 0.38, 0.4))
-	inner.add_child(hearts_l)
-
-	var trait_l := Label.new()
-	trait_l.text = c["trait"]
-	trait_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	trait_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	trait_l.add_theme_font_size_override("font_size", 11)
-	trait_l.add_theme_color_override("font_color",
-		Color(0.85, 0.6, 0.6) if unlocked else Color(0.42, 0.42, 0.48))
-	inner.add_child(trait_l)
-
-	var blurb := Label.new()
-	blurb.text = c["blurb"]
-	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	blurb.add_theme_font_size_override("font_size", 11)
-	blurb.add_theme_color_override("font_color",
-		Color(0.6, 0.6, 0.68) if unlocked else Color(0.36, 0.36, 0.42))
-	blurb.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inner.add_child(blurb)
-
+	var portrait := PortraitArt.new()
+	portrait.who = c["id"]
+	portrait.unlocked = unlocked
+	portrait.position = Vector2(26, 44)
+	portrait.size = Vector2(180, 150)
+	card.add_child(portrait)
+	var name_l := VisualTheme.label(c["name"], "", 24, Palette.INK)
+	name_l.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+	name_l.position = Vector2(16, 200)
+	card.add_child(name_l)
+	var hearts := HudWidgets.Hearts.new()
+	hearts.position = Vector2(16, 236)
+	hearts.size = Vector2(200, 30)
+	hearts.set_health(c["hearts"], c["hearts"])
+	card.add_child(hearts)
+	var body := VisualTheme.label(c["trait"] + ("\n\n" + c["blurb"] if unlocked else ""), "", 15, Color("2a2418"))
+	body.add_theme_font_override("font", VisualTheme.font("type"))
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(200, 0)
+	body.position = Vector2(16, 272)
+	body.size = Vector2(200, 170)
+	card.add_child(body)
 	if unlocked:
-		var hire := Label.new()
-		hire.text = "▸ TAKE THE JOB"
-		hire.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		hire.add_theme_font_size_override("font_size", 13)
-		hire.add_theme_color_override("font_color", GOLD)
-		inner.add_child(hire)
+		card.stamp_text = "HIRE"
+		card.stamp_color = Palette.STAMP_GREEN
 	else:
-		# Red LOCKED stamp, slightly askew like it was slammed on.
-		var stamp := Label.new()
-		stamp.text = "L O C K E D"
-		stamp.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		stamp.add_theme_font_size_override("font_size", 15)
-		stamp.add_theme_color_override("font_color", RED)
-		stamp.rotation = -0.07
-		stamp.pivot_offset = Vector2(80, 10)
-		inner.add_child(stamp)
-		var how := Label.new()
-		how.text = c.get("unlock", "")
-		how.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.stamp_text = "LOCKED"
+		card.stamp_color = Palette.STAMP_RED
+		var how := VisualTheme.label("%s  (%s)" % [c.get("unlock", ""), Meta.unlock_progress(c["id"])], "", 16, Palette.STAMP_RED)
+		how.add_theme_font_override("font", VisualTheme.font("type_bold"))
 		how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		how.add_theme_font_size_override("font_size", 10)
-		how.add_theme_color_override("font_color", Color(0.55, 0.4, 0.4))
-		inner.add_child(how)
-
+		how.custom_minimum_size = Vector2(200, 0)
+		how.position = Vector2(16, 426)
+		how.size = Vector2(200, 50)
+		card.add_child(how)
 	return card
 
 func _on_crew_chosen(c: Dictionary) -> void:
@@ -383,20 +265,74 @@ func _on_crew_chosen(c: Dictionary) -> void:
 		profile = load(path)
 	RunSave.delete_run()          # fresh job in this file
 	RunFlow.start_new_run(profile)
+	# The prologue plays over the scene change: all of it on a case file's
+	# first run, a single line after that.
+	Prologue.play(self, Meta.take_prologue(RunSave.slot), RunSave.slot)
 
-# ------------------------------------------------------------------ style ---
-func _style_card(card: Button, edge: Color) -> void:
-	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = PANEL
-		if state == "hover" or state == "focus":
-			sb.bg_color = Color(0.14, 0.14, 0.18)
-		elif state == "pressed":
-			sb.bg_color = Color(0.07, 0.07, 0.09)
-		elif state == "disabled":
-			sb.bg_color = Color(0.075, 0.075, 0.095)
-		sb.border_color = edge if state != "hover" and state != "focus" \
-			else Color(1.0, 0.85, 0.4)
-		sb.set_border_width_all(2 if state == "normal" or state == "disabled" else 3)
-		sb.set_corner_radius_all(6)
-		card.add_theme_stylebox_override(state, sb)
+
+## A paper dossier card: tabbed folder drawn behind child content, a rubber
+## stamp in the corner, hover tilt. Flat Button so mouse/keys/touch all work.
+class DossierCard extends Button:
+	var stock := Palette.MANILA
+	var tab_text := ""
+	var stamp_text := ""
+	var stamp_color := Palette.STAMP_RED
+	var body_lines: Array = []
+	var base_tilt := 0.0
+	var _stamp: StampArt
+
+	func _ready() -> void:
+		text = ""
+		var clear := StyleBoxEmpty.new()
+		for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+			add_theme_stylebox_override(state, clear)
+		pivot_offset = size * 0.5
+		rotation = base_tilt
+		mouse_entered.connect(_lift.bind(true))
+		mouse_exited.connect(_lift.bind(false))
+		focus_entered.connect(_lift.bind(true))
+		focus_exited.connect(_lift.bind(false))
+		var y := 60.0
+		for line: String in body_lines:
+			var l := VisualTheme.label(line, "", 19, Palette.INK)
+			l.add_theme_font_override("font", VisualTheme.font("type"))
+			l.position = Vector2(22, y)
+			add_child(l)
+			y += 30.0
+		if stamp_text != "":
+			_stamp = StampArt.new()
+			_stamp.text = stamp_text
+			_stamp.ink = stamp_color
+			_stamp.font_size = 26
+			_stamp.tilt = -0.2
+			add_child(_stamp)
+			if disabled:
+				_stamp.position = Vector2(size.x * 0.5 - _stamp.size.x * 0.5, 96)
+			else:
+				_stamp.position = Vector2(size.x - _stamp.size.x - 10, size.y - _stamp.size.y - 16)
+			_stamp.slam(randf_range(0.05, 0.3))
+		for child in get_children():
+			if child is Control and not child is Button:
+				child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _lift(up: bool) -> void:
+		if disabled:
+			return
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(self, "rotation", 0.0 if up else base_tilt, 0.12)
+		tw.tween_property(self, "scale", Vector2(1.04, 1.04) if up else Vector2.ONE, 0.12)
+		var audio := get_node_or_null("/root/Audio")
+		if up and audio:
+			audio.play_ui("ui_hover")
+
+	func _draw() -> void:
+		var r := Rect2(Vector2(0, 18), size - Vector2(0, 18))
+		draw_rect(Rect2(r.position + Vector2(7, 9), r.size), Color(0, 0, 0, 0.5))
+		draw_rect(Rect2(Vector2(14, 0), Vector2(150, 26)), stock.darkened(0.08))
+		draw_rect(r, stock)
+		draw_rect(r, stock.darkened(0.35), false, 2.0)
+		draw_string(VisualTheme.font("type_bold"), Vector2(24, 19), tab_text, HORIZONTAL_ALIGNMENT_LEFT, 140, 15, Palette.INK)
+		if (has_focus() or is_hovered()) and not disabled:
+			draw_rect(r.grow(3), Palette.GOLD, false, 3.0)
+		if disabled:
+			draw_rect(r, Color(0, 0, 0, 0.18))

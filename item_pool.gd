@@ -40,7 +40,89 @@ static func weapons() -> Array:
 	out.append(_wpn(&"squadlmg", "Squad LMG", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
 		2, 0.14, 750.0, 0.06, 1, true, 40, 800, &"heavy"))    # sustained fire vs the Hand Cannon's heavy single hits
 
+
+	var ricochet := _wpn(&"ricochet", "Ricochet Bond", Rarity.Tier.RESTRICTED, WeaponItem.Slot.SMALL,
+		2, 0.46, 680.0, 0.015, 1, true, 8, 160, &"light")
+	ricochet.ricochets = 2
+	out.append(ricochet)
+	var breacher := _wpn(&"breacher", "Breach Hammer", Rarity.Tier.CLASSIFIED, WeaponItem.Slot.BIG,
+		2, 1.15, 470.0, 0.32, 9, true, 4, 80, &"shell")
+	breacher.knockback = 120.0
+	breacher.reload_time = 1.25
+	out.append(breacher)
+	var rail := _wpn(&"rail_dividend", "Rail Dividend", Rarity.Tier.COVERT, WeaponItem.Slot.BIG,
+		5, 1.0, 1200.0, 0.0, 1, true, 5, 80, &"heavy")
+	rail.pierce = 3
+	rail.reload_time = 1.4
+	out.append(rail)
+	var ghost := _wpn(&"ghost_wire", "Ghost Wire", Rarity.Tier.CLASSIFIED, WeaponItem.Slot.BIG,
+		1, 0.12, 750.0, 0.035, 1, true, 24, 360, &"light")
+	ghost.noise_radius = 190.0
+	out.append(ghost)
+	var nail := _wpn(&"nailgun", "Debt Collector", Rarity.Tier.RESTRICTED, WeaponItem.Slot.BIG,
+		2, 0.24, 850.0, 0.025, 1, true, 16, 240, &"light")
+	nail.pierce = 1
+	out.append(nail)
+	var scatter := _wpn(&"scatter_note", "Scatter Note", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		2, 0.65, 620.0, 0.20, 5, true, 8, 160, &"shell")
+	scatter.ricochets = 1
+	out.append(scatter)
+	var circuit := _wpn(&"circuit_smg", "Circuit Thief", Rarity.Tier.CLASSIFIED, WeaponItem.Slot.BIG,
+		1, 0.13, 850.0, 0.03, 1, true, 26, 390, &"light")
+	circuit.noise_radius = 160.0
+	circuit.pierce = 1
+	out.append(circuit)
+	var margin := _wpn(&"margin_call", "Margin Call", Rarity.Tier.COVERT, WeaponItem.Slot.SMALL,
+		4, 0.85, 1400.0, 0.0, 1, true, 5, 100, &"heavy")
+	margin.pierce = 2
+	out.append(margin)
+	var takeover := _wpn(&"hostile_takeover", "Hostile Takeover", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		2, 0.48, 740.0, 0.22, 6, true, 10, 150, &"shell")
+	takeover.ricochets = 1
+	out.append(takeover)
+	for weapon: WeaponItem in out:
+		if weapon.id == &"silenced9mm":
+			weapon.noise_radius = 230.0
+		# Stat-shaped signature traits.
+		match weapon.id:
+			&"handcannon":
+				weapon.pierce = maxi(weapon.pierce, 1)
+			&"shotgun":
+				weapon.knockback = 180.0
+			&"combatshotgun":
+				weapon.ricochets = 1
+
+	# Boss uniques: only ever dropped by the stage boss who carried them.
+	var eviction := _wpn(&"eviction_notice", "Eviction Notice", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		3, 0.9, 520.0, 0.3, 8, true, 4, 64, &"shell")
+	eviction.knockback = 160.0
+	out.append(eviction)
+	var red_pen := _wpn(&"red_pen", "The Red Pen", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.SMALL,
+		3, 0.3, 1100.0, 0.0, 1, true, 10, 120, &"heavy")
+	red_pen.pierce = 2
+	out.append(red_pen)
+	var pouch := _wpn(&"diplomatic_pouch", "Diplomatic Pouch", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.SMALL,
+		4, 0.55, 900.0, 0.12, 3, true, 6, 90, &"heavy")
+	out.append(pouch)
+	var gavel := _wpn(&"golden_gavel", "Golden Gavel", Rarity.Tier.TOP_SECRET, WeaponItem.Slot.BIG,
+		6, 1.1, 1300.0, 0.0, 1, true, 5, 60, &"heavy")
+	gavel.pierce = 4
+	gavel.knockback = 220.0
+	out.append(gavel)
 	return out
+
+## Each stage boss's unique drop.
+const BOSS_WEAPONS := {
+	&"landlord": &"eviction_notice", &"auditor": &"red_pen",
+	&"ambassador": &"diplomatic_pouch", &"chairman": &"golden_gavel",
+}
+
+static func boss_weapon(boss_id: StringName) -> WeaponItem:
+	var id: StringName = BOSS_WEAPONS.get(boss_id, &"")
+	for w: WeaponItem in weapons():
+		if w.id == id:
+			return w
+	return null
 
 ## Same pool, minus the starter pistol -- every player already has it equipped,
 ## so it's a wasted pull as a case/chest reward. Used anywhere a weapon is
@@ -49,7 +131,7 @@ static func weapons() -> Array:
 static func rewardable_weapons() -> Array:
 	var out := []
 	for w in weapons():
-		if w.id != &"pistol":
+		if w.id != &"pistol" and w.id not in BOSS_WEAPONS.values() and (not Meta.CATALOG.has(w.id) or w.id in Meta.unlocked_assets):
 			out.append(w)
 	return out
 
@@ -71,6 +153,15 @@ static func upgrades() -> Array:
 	out.append(_upg(&"juggernaut", "Juggernaut Plating", "+3 max health",
 		Rarity.Tier.TOP_SECRET, &"max_health", UpgradeItem.ApplyMode.ADD, 3.0))
 
+
+	out.append(_upg(&"hot_load", "Hot Load", "+1 projectile damage",
+		Rarity.Tier.COVERT, &"damage_bonus", UpgradeItem.ApplyMode.ADD, 1.0))
+	out.append(_upg(&"stabilizer", "Stabilizer", "-25% weapon spread",
+		Rarity.Tier.RESTRICTED, &"spread_multiplier", UpgradeItem.ApplyMode.MULTIPLY, 0.75))
+	out.append(_upg(&"speed_loader", "Speed Loader", "-20% reload time",
+		Rarity.Tier.CLASSIFIED, &"reload_multiplier", UpgradeItem.ApplyMode.MULTIPLY, 0.8))
+	out.append(_upg(&"long_slide", "Long Slide", "+20% dodge distance",
+		Rarity.Tier.STANDARD, &"dodge_speed", UpgradeItem.ApplyMode.MULTIPLY, 1.2))
 	return out
 
 static func _wpn(id: StringName, name: String, rarity: int, slot: int,
@@ -83,6 +174,7 @@ static func _wpn(id: StringName, name: String, rarity: int, slot: int,
 	w.spread = spread; w.pellets = pellets
 	w.uses_ammo = uses_ammo; w.mag_size = mag; w.max_reserve = reserve
 	w.ammo_type = ammo_type
+	w.trait_id = WeaponTraits.FOR_WEAPON.get(id, &"")
 	return w
 
 static func _upg(id: StringName, name: String, desc: String, rarity: int,

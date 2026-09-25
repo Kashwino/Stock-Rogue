@@ -12,6 +12,9 @@ signal price_updated(price: float, delta: float, direction: int)  # dir: +1/-1
 ## Fired when something noteworthy happens, so the comment feed can react.
 ## kind: &"kill", &"hit", &"damage", &"boss", &"grade", &"drift_up", &"drift_down"
 signal market_event(kind: StringName, magnitude: float)
+## A move caused by the player (hit, kill, damage, sabotage, shock): the
+## effective fraction after volatility. HUD chips and the ticker flash use it.
+signal player_moved(pct: float)
 
 @export var venue_asset_id: StringName = &""
 
@@ -23,6 +26,19 @@ signal market_event(kind: StringName, magnitude: float)
 ## Pull back toward the venue's base price each tick. Without this, a long
 ## heist could drift the stock ±30% on luck alone and swamp the player's grade.
 @export var mean_reversion: float = 0.004
+## Momentum is the market "running on" after news. Capped so a single big
+## shock (a boss kill, a pump) can't keep drifting the price for tens of
+## percent afterwards: at most ~4% of follow-through.
+const MAX_MOMENTUM := 0.012
+
+## The Auditor's AUDIT window doubles the crash from damage.
+var damage_multiplier := 1.0
+## A HIT is against this venue: your hits and kills drive it DOWN and the
+## damage you take props it up (the same as holding the in-heist short).
+var hit_job := false
+
+func inverted() -> bool:
+	return hit_job or ShortBook.targets(venue_asset_id)
 
 var _market: CriminalMarket = null
 var _player: Player = null
@@ -51,6 +67,7 @@ func _background_tick() -> void:
 	# instead of the price jittering around a fixed point.
 	_momentum = _momentum * momentum_retention \
 		+ _rng.randfn(0.0, noise_amplitude) * (1.0 - momentum_retention)
+	_momentum = clampf(_momentum, -MAX_MOMENTUM, MAX_MOMENTUM)
 	var move := _momentum + _rng.randfn(0.0, noise_amplitude * 0.5)
 	# Occasional larger orders hitting the book.
 	if _rng.randf() < 0.03:
@@ -86,10 +103,12 @@ func _asset() -> CriminalAsset:
 ## Apply a percentage move to the venue price, scaled by current volatility.
 ## pct is the base move (e.g. +0.01). Positive = up, negative = down.
 func _apply(pct: float) -> void:
+	pct = _specialist(pct)
 	# A player action doesn't just move the price once — it pushes the market's
 	# momentum, so a good run builds a visible rally and a bad one bleeds out.
-	_momentum += pct * 0.35
+	_momentum = clampf(_momentum + pct * 0.35, -MAX_MOMENTUM, MAX_MOMENTUM)
 	_apply_raw(pct * _current_vol())
+	player_moved.emit(pct * _current_vol())
 
 ## Move the price by an already-scaled fraction, with no extra volatility pass.
 func _apply_raw(effective: float) -> void:
@@ -107,23 +126,52 @@ func _apply_raw(effective: float) -> void:
 ## Player landed a bullet on an enemy.
 func report_hit_landed() -> void:
 	var base := _profile.gain_per_hit if _profile else 0.01
+	if inverted():
+		base = -base
 	_apply(base)
 	market_event.emit(&"hit", base)
 
 ## Player killed an enemy.
-func report_kill() -> void:
-	var base := _profile.gain_per_kill if _profile else 0.05
+## `multiplier`: the live combo's tier multiplier — the market rallies with you.
+func report_kill(multiplier: float = 1.0) -> void:
+	var base := (_profile.gain_per_kill if _profile else 0.05) * multiplier
+	if inverted():
+		base = -base
 	_apply(base)
 	market_event.emit(&"kill", base)
 
 ## Player took damage (crash, amplified at low health).
 func report_damage_taken(amount: int) -> void:
-	var base := (_profile.crash_per_damage if _profile else 0.04) * amount
-	_apply(-base)
+	var base := (_profile.crash_per_damage if _profile else 0.04) * amount * damage_multiplier
+	if RunState.has_perk(&"golden_parachute"):
+		base *= 0.7                     # the Fence's Stop-Loss Order
+	if RunState.has_relic(&"hedge_fund"):
+		base *= 0.7
+	if Verdicts.flipped(&"auditor"):
+		base *= 0.75                    # Cooked Books
+	if RunState.hedge_charges > 0:
+		RunState.hedge_charges -= 1
+		base *= 0.5
+	_apply(base if inverted() else -base)
 	market_event.emit(&"damage", base)
 
+func report_sabotage() -> void:
+	# Destroying a venue's security weakens its value regardless of your position.
+	_apply(-0.035)
+	market_event.emit(&"sabotage", 0.035)
+
 ## A big scripted move (boss pump, grade payout at extraction).
+## The Broker swings everything x1.5; the Legend doubles moves in his favour.
+func _specialist(pct: float) -> float:
+	pct *= float(RunState.profile_value("swing_mult", 1.0))
+	var favourable := (pct > 0.0) != inverted()
+	if favourable:
+		pct *= float(RunState.profile_value("gain_mult", 1.0))
+	return pct
+
 func report_shock(multiplier: float, kind: StringName = &"grade") -> void:
-	_momentum += (multiplier - 1.0) * 0.5
+	multiplier = 1.0 + _specialist(multiplier - 1.0)
+	_momentum = clampf(_momentum + (multiplier - 1.0) * 0.05, -MAX_MOMENTUM, MAX_MOMENTUM)
 	_apply_raw(multiplier - 1.0)
+	player_moved.emit(multiplier - 1.0)
 	market_event.emit(kind, absf(multiplier - 1.0))

@@ -19,6 +19,11 @@ enum Slot { BIG, SMALL }
 @export var spread: float = 0.0              # radians of random spread per shot
 @export var pellets: int = 1                 # >1 for shotguns
 
+@export var pierce: int = 0
+@export var ricochets: int = 0
+@export var knockback: float = 0.0
+@export var noise_radius: float = 900.0
+
 # --- Ammo / scavenging ---
 @export var uses_ammo: bool = true           # false = infinite (e.g. starter pistol)
 @export var reload_time: float = 0.9         # seconds; ALL weapons reload (even infinite)
@@ -34,3 +39,37 @@ func rarity_color() -> Color:
 
 func slot_name() -> String:
 	return "Big" if slot == Slot.BIG else "Small"
+
+# --- Identity: a signature trait and fitted mods ---
+## See WeaponTraits (set by ItemPool).
+@export var trait_id: StringName = &""
+## Fitted WeaponMods ids (1 slot on small weapons, 2 on big ones).
+var mods: Array = []
+
+func trait_text() -> String:
+	return WeaponTraits.text_of(self)
+
+func mod_slots() -> int:
+	return 2 if slot == Slot.BIG else 1
+
+func has_mod(id: StringName) -> bool:
+	return id in mods
+
+func can_take_mod(id: StringName) -> bool:
+	return mods.size() < mod_slots() and id not in mods
+
+## Stats after mods: what the player actually fires.
+func eff_damage() -> int:
+	return maxi(1, roundi(damage * 0.9)) if has_mod(&"suppressor") else damage
+
+func eff_spread() -> float:
+	return spread * (0.5 if has_mod(&"laser_sight") else 1.0)
+
+func eff_mag() -> int:
+	return int(ceil(mag_size * 1.5)) if has_mod(&"extended_mag") else mag_size
+
+func eff_reload() -> float:
+	return reload_time * (0.7 if has_mod(&"quick_hands") else 1.0)
+
+func eff_noise() -> float:
+	return noise_radius * (0.4 if has_mod(&"suppressor") else 1.0)
