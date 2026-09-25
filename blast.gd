@@ -9,6 +9,8 @@ var radius := 90.0
 var player_damage := 2
 var enemy_damage := 3
 var player_caused := false
+## Set by explosive props (Phase 5): kills count as prop kills.
+var from_prop := false
 ## Seconds left on the fuse; the ring fills as it runs down.
 var fuse_time := 0.0
 var _fuse_total := 0.0
@@ -62,6 +64,7 @@ func _explode() -> void:
 		_mark.queue_free()
 		_mark = null
 	material = StreetArt._unshaded()
+	var shot := KillInfo.next_shot_id()
 	var tree := get_tree()
 	var space := get_world_2d().direct_space_state
 	for group in ["player", "enemies", "civilians", "security"]:
@@ -79,7 +82,14 @@ func _explode() -> void:
 				if "last_hit_dir" in target:
 					target.last_hit_dir = off.normalized() if off.length() > 1.0 else Vector2.RIGHT
 				target.take_damage(player_damage)
-			elif group == "civilians":
+				continue
+			if target.has_method("note_hit"):
+				target.note_hit({
+					"source": &"blast", "dir": off.normalized() if off.length() > 1.0 else Vector2.from_angle(randf() * TAU),
+					"force": lerpf(820.0, 380.0, clampf(off.length() / maxf(radius, 1.0), 0.0, 1.0)),
+					"by_player": player_caused, "shot": shot, "prop": from_prop,
+				})
+			if group == "civilians":
 				target.take_blast(enemy_damage, player_caused)
 			else:
 				target.take_damage(enemy_damage)

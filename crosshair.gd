@@ -40,6 +40,18 @@ func _process(_delta: float) -> void:
 		_mark.reload = 1.0 - clampf(player.loadout._reload_remaining / total, 0.0, 1.0)
 	_mark.queue_redraw()
 
+## A landed round: a small white X for a beat.
+func hit() -> void:
+	if _mark and _mark.marker_until < Time.get_ticks_msec() + 60:
+		_mark.marker_until = Time.get_ticks_msec() + 120
+		_mark.marker_kill = false
+
+## A kill: the marker turns into a bigger red X.
+func kill() -> void:
+	if _mark:
+		_mark.marker_until = Time.get_ticks_msec() + 320
+		_mark.marker_kill = true
+
 func _exit_tree() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -47,6 +59,8 @@ func _exit_tree() -> void:
 class Mark extends Control:
 	var gap := 8.0
 	var reload := 0.0
+	var marker_until := 0                # real-time ms; hit-stop can't freeze it
+	var marker_kill := false
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
@@ -60,3 +74,13 @@ class Mark extends Control:
 		if reload > 0.0:
 			draw_arc(Vector2.ZERO, gap + 14.0, -PI * 0.5, -PI * 0.5 + TAU * reload, 32, Palette.GOLD, 3.0, true)
 			draw_arc(Vector2.ZERO, gap + 14.0, 0, TAU, 32, Color(1, 1, 1, 0.15), 1.0, true)
+		var left := marker_until - Time.get_ticks_msec()
+		if left > 0:
+			var r := (gap + 5.0) * (1.25 if marker_kill else 1.0)
+			var arm := 9.0 if marker_kill else 6.0
+			var mcol := Palette.DANGER if marker_kill else Color.WHITE
+			mcol.a = clampf(float(left) / 120.0, 0.0, 1.0)
+			for d in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+				var n: Vector2 = d.normalized()
+				draw_line(n * r + Vector2(1, 1), n * (r + arm) + Vector2(1, 1), Color(0, 0, 0, 0.6 * mcol.a), 4.0 if marker_kill else 3.0)
+				draw_line(n * r, n * (r + arm), mcol, 3.0 if marker_kill else 2.0)

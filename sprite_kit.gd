@@ -157,42 +157,9 @@ func set_tint(color: Color) -> void:
 # ----------------------------------------------------------- death decal ----
 ## Leaves a fallen body on the floor that fades after a while. Capped so long
 ## firefights don't pile up draw calls.
-static func drop_corpse(host: Node, at: Vector2, facing: float, kit_spec: Dictionary) -> void:
-	if host == null or not host.is_inside_tree():
-		return
-	var existing := host.get_tree().get_nodes_in_group("corpse")
-	if existing.size() >= 40:
-		existing[0].queue_free()
-	var corpse := Corpse.new()
-	corpse.spec = kit_spec
-	corpse.global_position = at
-	corpse.rotation = facing + PI * 0.5
-	host.add_child(corpse)
-
-class Corpse extends Node2D:
-	var spec: Dictionary
-	func _ready() -> void:
-		add_to_group("corpse")
-		z_index = -3
-		var kit := SpriteKit.new()
-		kit.apply(spec)
-		kit.modulate = Color(0.55, 0.52, 0.52)
-		add_child(kit)
-		kit.set_process(false)
-		kit._dead = true
-		scale = Vector2(0.4, 0.4)
-		var tw := create_tween()
-		tw.tween_property(self, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_interval(22.0)
-		tw.tween_property(self, "modulate:a", 0.0, 2.0)
-		tw.tween_callback(queue_free)
-		queue_redraw()
-	func _draw() -> void:
-		var pool := PackedVector2Array()
-		for i in 12:
-			var a := TAU * i / 12.0
-			pool.append(Vector2.from_angle(a) * (18.0 + sin(i * 2.7) * 5.0) + Vector2(-8, 0))
-		draw_colored_polygon(pool, Color(0.22, 0.02, 0.03, 0.55))
+## Kept for callers without a kill record; bodies live in corpse.gd.
+static func drop_corpse(host: Node, at: Vector2, facing: float, kit_spec: Dictionary, info: KillInfo = null) -> Corpse:
+	return Corpse.spawn(host, at, facing, kit_spec, info)
 
 # ------------------------------------------------------------- painting -----
 func _c(key: String, fallback: Color) -> Color:

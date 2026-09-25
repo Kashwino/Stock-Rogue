@@ -327,3 +327,58 @@ class RelicTokens extends Control:
 			x += 28.0
 			if x > size.x - 12.0:
 				break
+
+
+## DOUBLE / TRIPLE / MASSACRE, bottom-centre above the weapon panel. Pops in
+## (a plain fade with Reduce flashing), holds, fades. Updates in place while
+## the chain grows. Mouse-transparent.
+class MultiBanner extends Control:
+	var _label: Label
+	var _sub: Label
+	var _tween: Tween
+
+	static func title_for(count: int) -> String:
+		if count >= 4:
+			return "MASSACRE"
+		return "TRIPLE" if count == 3 else "DOUBLE"
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		position = Vector2(390, 566)
+		size = Vector2(500, 64)
+		pivot_offset = size * 0.5
+		_label = VisualTheme.label("", "", 44, Palette.GOLD)
+		_label.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+		_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		_label.add_theme_constant_override("outline_size", 8)
+		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_label.size = Vector2(500, 52)
+		add_child(_label)
+		_sub = VisualTheme.label("", "", 16, Palette.PAPER)
+		_sub.add_theme_font_override("font", VisualTheme.font("mono"))
+		_sub.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		_sub.add_theme_constant_override("outline_size", 5)
+		_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_sub.position = Vector2(0, 46)
+		_sub.size = Vector2(500, 20)
+		add_child(_sub)
+		modulate.a = 0.0
+
+	func show_count(count: int) -> void:
+		if count < 2:
+			return
+		_label.text = title_for(count)
+		_label.add_theme_color_override("font_color", Palette.DANGER if count >= 4 else Palette.GOLD)
+		_sub.text = "%d DOWN" % count
+		if _tween:
+			_tween.kill()
+		_tween = create_tween()
+		if Settings.values.get("reduce_flashing", false):
+			scale = Vector2.ONE
+			_tween.tween_property(self, "modulate:a", 1.0, 0.15)
+		else:
+			modulate.a = 1.0
+			scale = Vector2(1.5, 1.5)
+			_tween.tween_property(self, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_tween.tween_interval(1.1)
+		_tween.tween_property(self, "modulate:a", 0.0, 0.35)

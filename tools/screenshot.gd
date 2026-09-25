@@ -52,6 +52,23 @@ func _run() -> void:
 			scene.call(extra)
 		for i in 30:
 			await get_tree().process_frame
+	if args.has("kills") and scene is HeistFloor:
+		# A multi-kill in front of the player: bodies slide, guns skitter.
+		var owner: Enemy = null
+		for e: Enemy in get_tree().get_nodes_in_group("enemies"):
+			if not (e is Boss) and e.get_parent() is BuildingRoom:
+				owner = e
+				break
+		var kill_shot := KillInfo.next_shot_id()
+		var kind_arg := String(args.get("source", "bullet"))
+		for i in int(args["kills"]):
+			var v: Enemy = scene.spawn_companion(owner, Enemy.Kind.GRUNT, Vector2.ZERO)
+			v.global_position = scene.player.global_position + Vector2(120 + i * 26, -60 + i * 40)
+			await get_tree().physics_frame
+			v.note_hit({"source": StringName(kind_arg), "dir": Vector2(1, 0.2 * (i - 1)).normalized(), "force": 220.0, "by_player": true, "shot": kill_shot})
+			v.take_damage(v.health + int(args.get("excess", "3")))
+		for i in int(args.get("after", "12")):
+			await get_tree().process_frame
 	if args.has("hint"):
 		Meta.hints_seen.clear()
 		var hints := get_tree().root.find_children("*", "OnboardingHints", true, false)

@@ -67,6 +67,9 @@ var objective: StringName = &"loot"
 ## HIT jobs crash the venue instead of pumping it.
 var hit_job := false
 var fx: CombatFX
+var crosshair: Crosshair
+## Every death, classified: hit-stop, punch, multi chain (kill_feedback.gd).
+var kills: KillFeedback
 var security_disabled := 0
 var last_heat_source := "No reports. Stay out of sight."
 var quiet_seconds := 0.0
@@ -125,6 +128,9 @@ func _ready() -> void:
 	hooks = RelicHooks.new()
 	hooks.floor_host = self
 	add_child(hooks)
+	kills = KillFeedback.new()
+	kills.host = self
+	add_child(kills)
 	add_child(PauseMenu.new())
 	if Settings.values.get("tips", true) and OnboardingHints.pending():
 		var hints := OnboardingHints.new()
@@ -237,9 +243,9 @@ func _build_floor() -> void:
 	_ensure_prompt()
 	_spawn_car()
 	_dress_outside()
-	var cross := Crosshair.new()
-	cross.player = player
-	add_child(cross)
+	crosshair = Crosshair.new()
+	crosshair.player = player
+	add_child(crosshair)
 	_assign_guard_roles()
 	_spawn_civilians()
 	director.refresh()
@@ -602,8 +608,7 @@ func _on_enemy_died(e) -> void:
 		player.health = mini(player.health + 1, player.max_health)
 		player.health_changed.emit(player.health, player.max_health)
 	RunFlow.total_kills += 1
-	fx.add_trauma(0.2)
-	fx.hit_stop(0.065)
+	kills.on_kill(e.kill_info)
 	if live:
 		live.report_kill()
 
@@ -852,7 +857,7 @@ func _extract() -> void:
 	if _extracting:
 		return
 	_extracting = true
-	Engine.time_scale = 1.0
+	TimeController.clear()
 	Audio.loop("alarm", false)
 	Audio.loop("heartbeat", false)
 	Audio.play("cash_register")

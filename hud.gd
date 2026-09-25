@@ -25,6 +25,7 @@ var stock_change: Label
 var stock_chart: StockChart
 var trader_feed: TraderFeed
 var boss_bar: BossBar
+var multi_banner: HudWidgets.MultiBanner
 
 var _loadout = null
 var _live = null
@@ -110,6 +111,9 @@ func _ready() -> void:
 	relic_row.position = Vector2(14, 248)
 	relic_row.size = Vector2(318, 30)
 	root.add_child(relic_row)
+
+	multi_banner = HudWidgets.MultiBanner.new()
+	root.add_child(multi_banner)
 
 	weapon_panel = HudWidgets.WeaponPanel.new()
 	weapon_panel.position = Vector2(430, 638)

@@ -10,6 +10,7 @@ config/version="0.5.0"
 [autoload]
 Look="*res://visual_theme.gd"
 Settings="*res://settings.gd"
+TimeController="*res://time_controller.gd"
 RunEconomy="*res://run_economy.gd"
 RunSave="*res://run_save.gd"
 Meta="*res://meta.gd"

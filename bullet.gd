@@ -11,6 +11,11 @@ var knockback := 0.0
 var weapon: WeaponItem = null
 ## Stopping Power: a hit guard loses his next shot.
 var stagger := false
+## One trigger pull shares an id (multi-kills from one shot), where it left
+## the muzzle (point-blank checks) and whether it's a guaranteed crit.
+var shot_id := 0
+var origin := Vector2.ZERO
+var crit_shot := false
 var _dir := Vector2.RIGHT
 var _shooter: Node = null
 var _spent := false
@@ -43,6 +48,8 @@ func revive() -> void:
 	knockback = 0.0
 	weapon = null
 	stagger = false
+	shot_id = 0
+	crit_shot = false
 	_hit_ids.clear()
 	_excluded.clear()
 	show()
@@ -138,17 +145,29 @@ func _try_hit(target: Node) -> void:
 			Audio.play("impact_body", global_position)
 		else:
 			host.fx.spark(global_position, -_dir, Palette.NEON_CYAN)
+	var push := knockback if knockback > 0.0 else 45.0
+	if target.has_method("note_hit"):
+		var enemy := target as Enemy
+		var assassin := weapon != null and weapon.trait_id == &"assassin" and enemy != null and not enemy._provoked
+		target.note_hit({
+			"source": &"bullet", "dir": _dir, "force": push, "by_player": _shooter is Player,
+			"weapon": weapon.id if weapon else &"", "shot": shot_id,
+			"pellets": weapon.pellets if weapon else 1,
+			"point_blank": origin != Vector2.ZERO and origin.distance_to(global_position) <= KillInfo.POINT_BLANK,
+			"crit": crit_shot or assassin,
+		})
 	if target.is_in_group("civilians") and target.has_method("take_blast"):
 		target.take_blast(dmg, _shooter is Player)
 	else:
 		target.take_damage(dmg)
 	_after_hit(target, host)
-	var push := knockback if knockback > 0.0 else 45.0
 	if target is CharacterBody2D and not target.is_in_group("boss") and is_instance_valid(target) and target.is_inside_tree():
 		target.velocity += _dir * push
 		target.move_and_slide()
 	if target.is_in_group("enemies") and is_instance_valid(_shooter) and _shooter.has_method("register_hit_landed"):
 		_shooter.register_hit_landed()
+		if host is HeistFloor and host.crosshair:
+			host.crosshair.hit()
 	if pierce > 0:
 		pierce -= 1
 	else:

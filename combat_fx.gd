@@ -14,14 +14,10 @@ const CASING_CAP := 40
 var camera: Camera2D
 var lighting: HeistLighting
 var trauma := 0.0
-var slow_active := false
 var lead := Vector2.ZERO
 var _kick := Vector2.ZERO
 var _noise := FastNoiseLite.new()
 var _t := 0.0
-var _hitstop_until := 0
-var _slow_until := 0
-var _slow_scale := 1.0
 var _holes: Array = []
 var _casings: Array = []
 var _numbers: Array = []
@@ -55,6 +51,12 @@ func add_trauma(amount: float) -> void:
 func shake(amount: float) -> void:
 	add_trauma(amount / 22.0)
 
+## Throw the camera a few pixels toward something that just happened.
+func punch(direction: Vector2, strength: float) -> void:
+	if _low() or direction.length() < 0.01:
+		return
+	_kick += direction.normalized() * strength * float(Settings.values.get("shake", 1.0))
+
 func recoil(direction: Vector2, strength: float) -> void:
 	if _low():
 		return
@@ -62,17 +64,7 @@ func recoil(direction: Vector2, strength: float) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	var now := Time.get_ticks_msec()
-	# Time scale: hit-stop beats slow-mo beats normal. Real-time based, so a
-	# pause or a scene change can never leave the game stuck slow.
-	var target := 1.0
-	if now < _hitstop_until:
-		target = 0.06
-	elif now < _slow_until:
-		target = _slow_scale
-	if not get_tree().paused:
-		Engine.time_scale = target
-	slow_active = now < _slow_until
+	# Time scale belongs to TimeController; the camera works in real time.
 	if not is_instance_valid(camera):
 		return
 	var real_delta := delta / maxf(Engine.time_scale, 0.01) if Engine.time_scale < 1.0 else delta
@@ -84,29 +76,26 @@ func _process(delta: float) -> void:
 	camera.rotation = _noise.get_noise_2d(_t * 40.0, 99.0) * MAX_ROLL * amount
 
 # ------------------------------------------------------------------ time ----
-## A few frames of near-freeze on a kill: the hit lands.
+## Kept as thin wrappers: TimeController owns Engine.time_scale.
 func hit_stop(seconds: float = 0.06) -> void:
-	if _low():
-		return
-	_hitstop_until = maxi(_hitstop_until, Time.get_ticks_msec() + int(seconds * 1000.0))
+	TimeController.hit_stop(seconds)
 
 func slow_mo(seconds: float, scale: float) -> void:
-	if _low():
-		return
-	_slow_scale = scale
-	_slow_until = maxi(_slow_until, Time.get_ticks_msec() + int(seconds * 1000.0))
-	Engine.time_scale = scale
-	slow_active = true
+	TimeController.slow_mo(seconds, scale)
+
+var slow_active: bool:
+	get:
+		return TimeController.is_slowed()
 
 ## Last guard in a room: a short slow beat.
 func last_kill() -> void:
 	add_trauma(0.25)
-	if slow_active or _low():
+	if TimeController.is_slowed() or _low():
 		return
-	slow_mo(0.22, 0.35)
+	TimeController.slow_mo(0.22, 0.35, &"last_kill")
 
 func _exit_tree() -> void:
-	Engine.time_scale = 1.0
+	TimeController.clear()
 	if is_instance_valid(camera):
 		camera.offset = Vector2.ZERO
 		camera.rotation = 0.0

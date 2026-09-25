@@ -276,19 +276,26 @@ func _spawn_bullet(weapon: WeaponItem = null, last_round := false) -> void:
 			&"last_round":
 				if last_round:
 					dmg *= 3
+	var crit_shot := false
 	if hair_trigger:
 		hair_trigger = false
 		dmg *= 2
+		crit_shot = true
 	# The Wolf hits 25% harder; a fraction rounds up by chance.
 	var mult: float = RunState.profile_value("damage_mult", 1.0)
 	if mult != 1.0:
 		var scaled := dmg * mult
 		dmg = int(scaled) + (1 if randf() < fmod(scaled, 1.0) else 0)
 	_since_shot = 0.0
+	var shot := KillInfo.next_shot_id()
 
 	for i in pellets:
 		var b := BulletPool.take(self, bullet_scene)
 		b.global_position = muzzle.global_position
+		if "shot_id" in b:
+			b.shot_id = shot
+			b.origin = global_position
+			b.crit_shot = crit_shot
 		var dir := aim
 		if spread > 0.0:
 			dir = aim.rotated(randf_range(-spread, spread))

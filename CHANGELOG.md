@@ -447,6 +447,31 @@
 - **TESTING.md**: every automated check, and a 10–15 minute manual route from a
   fresh career through each ending.
 
+## Brief 2 · Phase 1 — Kill classes & feedback
+
+- **`TimeController`** (autoload) now owns `Engine.time_scale`. Hit-stop,
+  slow-mo and later kill/verdict moments are requests with a priority and a
+  real-time duration: the strongest live request wins, they never multiply,
+  the scale always returns to 1.0, and while the tree is paused the game runs
+  at normal speed and no request is taken. `CombatFX.hit_stop/slow_mo` are thin
+  wrappers; extraction and every scene change clear it.
+- **Every death is classified** (`KillInfo`): STANDARD, CRIT (Marksman Rifle
+  crits on unprovoked guards, any unprovoked victim, Hair Trigger shots),
+  OVERKILL (2+ damage past the remaining health, point-blank shotgun blasts,
+  the Hand Cannon), EXPLOSIVE (grenades, Volatile elites, props), BURN
+  (Incendiary), TAKEDOWN (Phase 4), plus a MULTI count (2+ kills within
+  0.4 s or from one trigger pull / one blast). Bullets, blasts and burns say
+  how they hit through `note_hit()` before `take_damage()`.
+- **Kill feedback** (`KillFeedback`): hit-stop per class (50 / 70 / 90 /
+  120 ms), a camera punch toward the body, the crosshair's hit marker turns
+  into a red X, a white kill-confirm flash on the body, and a DOUBLE /
+  TRIPLE / MASSACRE banner above the weapon panel (a plain fade with Reduce
+  flashing).
+- **Death motion** (`corpse.gd`): bodies slide along the killing blow with
+  friction and a little spin — further for overkills and heavy knockback,
+  thrown by explosions — and stop dead at walls. The victim's gun leaves his
+  hands and skitters away on its own path. Civilians fall the same way.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -554,3 +579,11 @@
   ~6.7 ms for 60 fps.
 - **Browser suite waits on frames**, not milliseconds: the QA probe reports
   the frame counter and every tap waits for the game to advance.
+- **(Brief 2) Branch.** The brief asks for `brief-2`; this session's git setup
+  designates `codex/mobile-web-beta`. Work is committed on `brief-2` and the
+  same commits are pushed to both branches.
+- **(Brief 2) MULTI window** runs on game time, so kills that land during a
+  hit-stop still chain.
+- **(Brief 2) Kill feedback is for the player's kills**: guards and rival
+  crews killing each other still get classified bodies and death motion, but
+  no hit-stop, punch or banner.

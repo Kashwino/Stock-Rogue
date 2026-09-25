@@ -74,6 +74,8 @@ func _run() -> void:
 	await _test_onboarding()
 	_test_fx_pools()
 	_test_debug_menu()
+	_test_time_controller()
+	await _test_kill_feedback()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -835,6 +837,74 @@ func _test_specialists() -> void:
 	RunState.start_run(wolf, 77)
 	check(RunState.max_health == 4 and RunState.profile_value("damage_mult", 1.0) == 1.25, "the Wolf: four hearts, +25% damage")
 	RunState.start_run(load("res://main_character.tres"), 4817)
+
+func _test_time_controller() -> void:
+	TimeController.clear()
+	TimeController.slow_mo(1.0, 0.35)
+	check(is_equal_approx(Engine.time_scale, 0.35), "slow-mo request applies at once")
+	TimeController.hit_stop(0.05)
+	check(is_equal_approx(Engine.time_scale, TimeController.HITSTOP_SCALE), "hit-stop outranks slow-mo instead of multiplying")
+	TimeController._requests[1]["until"] = Time.get_ticks_usec() - 1
+	TimeController._apply()
+	check(is_equal_approx(Engine.time_scale, 0.35), "when hit-stop ends the slow-mo resumes")
+	get_tree().paused = true
+	TimeController._apply()
+	check(Engine.time_scale == 1.0 and TimeController._requests.is_empty(), "nothing runs slow while paused")
+	TimeController.hit_stop(0.1)
+	check(TimeController._requests.is_empty(), "no requests are taken while paused")
+	get_tree().paused = false
+	TimeController.slow_mo(0.5, 0.2, &"swell")
+	TimeController.release(&"swell")
+	check(Engine.time_scale == 1.0, "a released request restores normal speed")
+	TimeController.clear()
+
+func _test_kill_feedback() -> void:
+	# Classification from the killing hit.
+	var cases := [
+		[{"source": &"bullet", "by_player": true}, 0, KillInfo.STANDARD],
+		[{"source": &"bullet", "by_player": true}, 2, KillInfo.OVERKILL],
+		[{"source": &"bullet", "by_player": true, "pellets": 6, "point_blank": true}, 0, KillInfo.OVERKILL],
+		[{"source": &"bullet", "by_player": true, "weapon": &"handcannon"}, 0, KillInfo.OVERKILL],
+		[{"source": &"bullet", "by_player": true, "unprovoked": true}, 0, KillInfo.CRIT],
+		[{"source": &"bullet", "by_player": true, "crit": true}, 1, KillInfo.CRIT],
+		[{"source": &"blast", "by_player": true}, 0, KillInfo.EXPLOSIVE],
+		[{"source": &"burn", "by_player": true}, 0, KillInfo.BURN],
+		[{"source": &"takedown", "by_player": true, "stealth": true}, 0, KillInfo.TAKEDOWN],
+	]
+	for c: Array in cases:
+		check(KillInfo.classify(null, c[0], c[1]).kill_class == c[2], "kill class %s from %s" % [c[2], c[0]])
+	check(KillInfo.classify(null, {"source": &"bullet", "by_player": false, "unprovoked": true}, 0).kill_class == KillInfo.STANDARD, "a guard's kill on a guard is no crit")
+	# A real kill in the heist: classified, the body slides, feedback fires.
+	var player := floor_scene.player
+	var owner: Enemy = null
+	for e: Enemy in get_tree().get_nodes_in_group("enemies"):
+		if not (e is Boss) and e.get_parent() is BuildingRoom:
+			owner = e
+			break
+	var victims: Array = []
+	for i in 2:
+		var v := floor_scene.spawn_companion(owner, Enemy.Kind.GRUNT, Vector2(0, 0))
+		v.global_position = player.global_position + Vector2(140 + i * 30, 0)
+		victims.append(v)
+	await get_tree().physics_frame
+	var chain_before := floor_scene.kills.chain
+	var shot := KillInfo.next_shot_id()
+	for v: Enemy in victims:
+		v.note_hit({"source": &"bullet", "dir": Vector2.RIGHT, "force": 180.0, "by_player": true, "shot": shot})
+		v.take_damage(v.health + 3)
+	var first: KillInfo = victims[0].kill_info
+	check(first != null and first.kill_class == KillInfo.OVERKILL and first.by_player, "a player kill is classified on death")
+	check(first.corpse != null and first.corpse.velocity.x > 60.0, "the body slides along the shot")
+	check(floor_scene.kills.chain >= 2 and victims[1].kill_info.multi >= 2, "two kills from one shot chain into a MULTI")
+	check(floor_scene.hud.multi_banner.modulate.a > 0.5 and floor_scene.hud.multi_banner._label.text == "DOUBLE", "the DOUBLE banner shows")
+	check(TimeController.has(&"hit_stop"), "a kill asks TimeController for hit-stop")
+	check(floor_scene.crosshair._mark.marker_kill, "the crosshair marker turns into the kill X")
+	await get_tree().create_timer(1.2).timeout
+	check(first.corpse.is_still() and first.corpse.velocity == Vector2.ZERO, "the body settles")
+	var skitter: Node = first.corpse.weapon
+	check(skitter != null and is_instance_valid(skitter) and skitter.global_position.distance_to(first.corpse.global_position) > 4.0, "the dropped gun skitters off on its own")
+	TimeController.clear()
+	check(chain_before >= 0 and HudWidgets.MultiBanner.title_for(3) == "TRIPLE" and HudWidgets.MultiBanner.title_for(5) == "MASSACRE", "multi titles")
 
 func _test_debug_menu() -> void:
 	var debug := get_node("/root/Debug")

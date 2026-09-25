@@ -50,6 +50,7 @@ func change_scene(path: String, style: String = "fade", stamp_text: String = "")
 	else:
 		await _fade_to(1.0, COVER_TIME)
 	covered.emit()
+	TimeController.clear()
 	var error := get_tree().change_scene_to_file(path)
 	if error != OK:
 		push_error("Transition: cannot open scene " + path + " (" + str(error) + ")")

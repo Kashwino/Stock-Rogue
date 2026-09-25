@@ -17,6 +17,13 @@ class_name Enemy
 
 signal died(enemy: Enemy)
 
+## The next take_damage's circumstances (see note_hit); consumed by it.
+var hit_info: Dictionary = {}
+## How this guard died, classified in _die() (null while alive).
+var kill_info: KillInfo = null
+var _killing_hit: Dictionary = {}
+var _last_excess := 0
+
 enum Role { PATROL, SENTRY }
 enum Alert { IDLE, INVESTIGATING, HUNTING }
 
@@ -793,9 +800,18 @@ func heal(amount: int) -> void:
 		flash.tween_property(kit, "modulate", Color(0.5, 1.4, 0.6), 0.1)
 		flash.tween_property(kit, "modulate", Color.WHITE, 0.25)
 
+## Say how the next hit lands before calling take_damage(): source (bullet,
+## blast, burn, takedown, execution), direction, force, weapon, shot id...
+## Whether the victim was still unprovoked is recorded here.
+func note_hit(info: Dictionary) -> void:
+	hit_info = info.duplicate()
+	hit_info["unprovoked"] = not _provoked
+
 func take_damage(amount: int = 1) -> void:
 	# queue_free() only frees at end of frame, so without this guard several
 	# bullets landing on the same frame would each count as a separate kill.
+	var info := hit_info
+	hit_info = {}
 	if _dead:
 		return
 	wake_for(3.0)
@@ -814,6 +830,9 @@ func take_damage(amount: int = 1) -> void:
 	radio_progress = maxf(radio_progress - 0.5, 0.0)
 	if red_marked:
 		amount += 1
+	if amount >= health:
+		_last_excess = amount - health
+		_killing_hit = info
 	health -= amount
 	if brain:
 		brain.on_hurt()
@@ -840,8 +859,9 @@ func _die() -> void:
 	# A body hitting the floor is heard by anyone nearby.
 	if has_node("/root/Noise"):
 		get_node("/root/Noise").death(global_position)
+	kill_info = KillInfo.classify(self, _killing_hit, _last_excess)
 	if kit and get_parent():
-		SpriteKit.drop_corpse(get_parent(), global_position, sprite.global_rotation if sprite else 0.0, kit.spec)
+		kill_info.corpse = Corpse.spawn(get_parent(), global_position, sprite.global_rotation if sprite else 0.0, kit.spec, kill_info)
 	Audio.play("death_enemy" if kind != Kind.DRONE else "impact_wall", global_position)
 	if brain:
 		brain.on_death()
@@ -978,10 +998,13 @@ var _burn_left := 0.0
 var _burn_clock := 0.0
 
 ## Incendiary rounds: 1 damage a second while it lasts.
-func ignite(seconds: float) -> void:
+var _burn_by_player := false
+
+func ignite(seconds: float, by_player := true) -> void:
 	if _burn_left <= 0.0:
 		_burn_clock = 1.0
 	_burn_left = maxf(_burn_left, seconds)
+	_burn_by_player = by_player
 
 func _tick_burn(delta: float) -> void:
 	if _burn_left <= 0.0:
@@ -992,6 +1015,7 @@ func _tick_burn(delta: float) -> void:
 		kit.modulate = Color(1.4, 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.02), 0.5)
 	if _burn_clock <= 0.0:
 		_burn_clock = 1.0
+		note_hit({"source": &"burn", "by_player": _burn_by_player})
 		take_damage(1)
 	if _burn_left <= 0.0 and kit and not _dead:
 		kit.modulate = Color.WHITE

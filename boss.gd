@@ -140,6 +140,7 @@ func take_damage(amount: int = 1) -> void:
 	if _dead:
 		return
 	if invulnerable or not intro_done or immune_reason != "":
+		hit_info = {}
 		var host := heist()
 		if host and randf() < 0.35:
 			host.fx.chip(global_position, "IMMUNE" if immune_reason != "" else "—", Palette.PAPER_DIM)

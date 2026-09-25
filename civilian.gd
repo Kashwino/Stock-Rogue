@@ -197,6 +197,12 @@ func take_damage(amount: int = 1) -> void:
 func take_blast(amount: int, player_caused: bool) -> void:
 	_hurt(amount, player_caused)
 
+## How the next hit lands (direction, force); the body slides with it.
+var hit_info: Dictionary = {}
+
+func note_hit(info: Dictionary) -> void:
+	hit_info = info.duplicate()
+
 func _hurt(amount: int, player_caused: bool) -> void:
 	if _dead:
 		return
@@ -211,7 +217,8 @@ func _hurt(amount: int, player_caused: bool) -> void:
 		if c is CollisionShape2D:
 			c.set_deferred("disabled", true)
 	if get_parent():
-		SpriteKit.drop_corpse(get_parent(), global_position, sprite.global_rotation, kit.spec)
+		var info := KillInfo.classify(self, hit_info, 0)
+		Corpse.spawn(get_parent(), global_position, sprite.global_rotation, kit.spec, info)
 	Audio.play("death_enemy", global_position, 0.0, 1.3)
 	var noise := get_node_or_null("/root/Noise")
 	if noise:
