@@ -862,7 +862,9 @@ func _die() -> void:
 	kill_info = KillInfo.classify(self, _killing_hit, _last_excess)
 	if kit and get_parent():
 		kill_info.corpse = Corpse.spawn(get_parent(), global_position, sprite.global_rotation if sprite else 0.0, kit.spec, kill_info)
-	Audio.play("death_enemy" if kind != Kind.DRONE else "impact_wall", global_position)
+	# Kill sounds (impact + body + fall) play from the heist's KillFeedback.
+	if heist() == null:
+		Audio.play("death_enemy" if kind != Kind.DRONE else "impact_wall", global_position)
 	if brain:
 		brain.on_death()
 	var host := heist()

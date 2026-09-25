@@ -19,9 +19,9 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Multi-kill banner (DOUBLE / TRIPLE / MASSACRE), reduce-flashing aware
 
 ## Phase 2 — Kill sounds
-- [ ] gen_sfx.py: flesh impacts ×4, bone crunch, splatter, gib burst, falls ×4 floors, clatter, confirm tick, crit ding, sizzle, takedown, multi stings
-- [ ] Three-layer kill playback (impact + body + fall), floor-matched falls
-- [ ] Voice limit (~6 death layers), variance, music duck on overkill/takedown
+- [x] gen_sfx.py: flesh impacts ×4, bone crunch, splatter, gib burst, falls ×4 floors, clatter, confirm tick, crit ding, sizzle, takedown, multi stings
+- [x] Three-layer kill playback (impact + body + fall), floor-matched falls
+- [x] Voice limit (~6 death layers), variance, music duck on overkill/takedown
 
 ## Phase 3 — Gore
 - [ ] Settings: Gore Off/Low/Full, Blood style Red/Noir

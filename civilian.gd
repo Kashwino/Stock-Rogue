@@ -218,8 +218,11 @@ func _hurt(amount: int, player_caused: bool) -> void:
 			c.set_deferred("disabled", true)
 	if get_parent():
 		var info := KillInfo.classify(self, hit_info, 0)
-		Corpse.spawn(get_parent(), global_position, sprite.global_rotation, kit.spec, info)
-	Audio.play("death_enemy", global_position, 0.0, 1.3)
+		info.corpse = Corpse.spawn(get_parent(), global_position, sprite.global_rotation, kit.spec, info)
+		var floor_host := heist()
+		Audio.play_kill(info, floor_host.floor_surface() if floor_host else "concrete")
+	else:
+		Audio.play("death_enemy", global_position, 0.0, 1.3)
 	var noise := get_node_or_null("/root/Noise")
 	if noise:
 		noise.death(global_position)

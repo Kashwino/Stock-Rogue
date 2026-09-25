@@ -13,13 +13,27 @@ const SFX_DIR := "res://assets/audio/sfx/"
 const MUSIC_DIR := "res://assets/audio/music/"
 
 ## ids with numbered variants: footstep -> footstep_1..3
-const VARIANTS := {"footstep": 3}
+const VARIANTS := {"footstep": 3, "flesh": 4}
 ## Max simultaneous voices per id (default 3).
 const LIMITS := {
 	"shot_pistol": 5, "shot_smg": 6, "shot_lmg": 6, "shot_rifle": 4, "shot_enemy": 6,
 	"shot_shotgun": 3, "impact_wall": 4, "impact_body": 4, "footstep": 2, "case_tick": 2,
 	"ui_hover": 2, "typewriter": 2, "loot_0": 3, "loot_1": 3,
+	"flesh": 4, "fall_concrete": 3, "fall_carpet": 3, "fall_marble": 3, "fall_metal": 3,
+	"kill_tick": 2, "crit_ding": 2, "multi_2": 1, "multi_3": 1, "multi_4": 1,
 }
+## Voice groups share one limit on top of the per-id limits: a massacre
+## never piles up more than ~6 death layers at once.
+const GROUPS := {
+	"flesh": "death", "bone_crunch": "death", "splatter": "death", "gib_burst": "death",
+	"fall_concrete": "death", "fall_carpet": "death", "fall_marble": "death", "fall_metal": "death",
+	"clatter": "death", "burn_sizzle": "death", "takedown_knife": "death", "takedown_crack": "death",
+	"death_enemy": "death",
+}
+const GROUP_LIMITS := {"death": 6}
+## Floor under a body, per stage: Town concrete, City carpet, World marble,
+## Doomsday metal.
+const FLOORS := ["concrete", "carpet", "marble", "metal"]
 ## Mix offsets in dB so generated sounds sit together.
 const GAIN := {
 	"shot_enemy": -7.0, "footstep": -14.0, "impact_wall": -8.0, "impact_body": -6.0,
@@ -27,6 +41,10 @@ const GAIN := {
 	"dry_fire": -6.0, "camera_spot": -4.0, "stock_up": -10.0, "stock_down": -10.0, "heartbeat": -2.0,
 	"alarm": -10.0, "van_engine": -6.0, "drone": -12.0, "typewriter": -8.0, "death_enemy": -4.0,
 	"paper": -6.0, "radio": -6.0,
+	"flesh": -4.0, "bone_crunch": -3.0, "splatter": -5.0, "gib_burst": -2.0, "fall_concrete": -7.0,
+	"fall_carpet": -6.0, "fall_marble": -8.0, "fall_metal": -8.0, "clatter": -9.0, "kill_tick": -9.0,
+	"crit_ding": -10.0, "burn_sizzle": -5.0, "takedown_knife": -3.0, "takedown_crack": -2.0,
+	"multi_2": -5.0, "multi_3": -4.0, "multi_4": -3.0,
 }
 const POSITIONAL_POOL := 24
 const FLAT_POOL := 10
@@ -45,6 +63,12 @@ var _layered := false
 var _intensity := 0.0
 var _intensity_target := 0.0
 var _rng := RandomNumberGenerator.new()
+## Music ducking: an Amplify effect on the Music bus (the bus volume itself
+## belongs to Settings).
+var _duck_fx: AudioEffectAmplify
+var _duck_db := 0.0
+var _duck_depth := 0.0
+var _duck_until := 0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -73,14 +97,73 @@ func _ready() -> void:
 	_music_b.bus = &"Music"
 	add_child(_music_b)
 	get_tree().node_added.connect(_on_node_added)
-	# The AI hearing bus doubles as a sound cue: a body hitting the floor.
-	var noise_bus := get_node_or_null("/root/Noise")
-	if noise_bus:
-		noise_bus.heard.connect(_on_noise)
+	var music_bus := AudioServer.get_bus_index("Music")
+	if music_bus >= 0:
+		for i in AudioServer.get_bus_effect_count(music_bus):
+			if AudioServer.get_bus_effect(music_bus, i) is AudioEffectAmplify:
+				_duck_fx = AudioServer.get_bus_effect(music_bus, i)
+		if _duck_fx == null:
+			_duck_fx = AudioEffectAmplify.new()
+			AudioServer.add_bus_effect(music_bus, _duck_fx)
 
-func _on_noise(at: Vector2, _radius: float, kind: StringName) -> void:
-	if kind == &"death":
-		play("impact_body", at, -6.0, 0.55)
+## Dip the music by `db` for `seconds` (overkills, takedowns, boss intros,
+## verdicts). Overlapping ducks take the deeper dip and the later end.
+func duck(db: float = -3.0, seconds: float = 0.6) -> void:
+	var now := Time.get_ticks_msec()
+	_duck_depth = minf(_duck_depth if now < _duck_until else 0.0, db)
+	_duck_until = maxi(_duck_until, now + int(seconds * 1000.0))
+
+func _tick_duck(delta: float) -> void:
+	if _duck_fx == null:
+		return
+	var target := _duck_depth if Time.get_ticks_msec() < _duck_until else 0.0
+	_duck_db = move_toward(_duck_db, target, delta * (40.0 if target < _duck_db else 10.0))
+	_duck_fx.volume_db = _duck_db
+
+# ------------------------------------------------------------- kills --------
+## A death in three layers — impact, body, fall — plus the confirm tick, a
+## crit ding and the multi-kill sting for the player's kills. `surface` is
+## one of FLOORS.
+func play_kill(info: KillInfo, surface: String = "concrete") -> void:
+	var at := info.position
+	var gore := int(Settings.values.get("gore", 2))
+	var drone := info.victim_kind == Enemy.Kind.DRONE
+	# Impact.
+	match info.kill_class:
+		KillInfo.EXPLOSIVE:
+			play("gib_burst" if gore >= 2 else "flesh", at)
+		KillInfo.BURN:
+			play("burn_sizzle", at)
+		KillInfo.TAKEDOWN:
+			play("takedown_knife" if info.stealth else "takedown_crack", at)
+		_:
+			play("impact_wall" if drone else "flesh", at)
+	# Body.
+	if info.is_violent() and not drone:
+		play("bone_crunch", at)
+		if gore >= 1:
+			play("splatter", at, -2.0)
+	elif gore >= 1 and info.kill_class == KillInfo.CRIT:
+		play("splatter", at, -6.0)
+	elif not drone:
+		play("death_enemy", at, -6.0)
+	# Fall: the body lands a beat later (longer when it was thrown).
+	var land := 0.18 + clampf(info.force / 900.0, 0.0, 0.4)
+	_later(land, "fall_" + (surface if surface in FLOORS else "concrete"), at, 0.0)
+	if info.corpse and is_instance_valid(info.corpse) and info.corpse.get("was_moving"):
+		_later(land + 0.08, "clatter", at, 0.0)
+	if info.by_player:
+		play("kill_tick")
+		if info.kill_class == KillInfo.CRIT or info.crit:
+			play("crit_ding", null, 0.0, _rng.randf_range(0.98, 1.04))
+		if info.multi >= 2:
+			play("multi_%d" % mini(info.multi, 4))
+		if info.overkill or info.kill_class in [KillInfo.TAKEDOWN, KillInfo.EXPLOSIVE]:
+			duck(-3.0, 0.5)
+
+func _later(seconds: float, id: String, at: Vector2, volume_db: float) -> void:
+	var timer := get_tree().create_timer(seconds, true, false, true)
+	timer.timeout.connect(play.bind(id, at, volume_db))
 
 # ------------------------------------------------------------------ SFX -----
 func _stream(id: String) -> AudioStream:
@@ -99,10 +182,32 @@ func _resolve(id: String) -> String:
 	return id
 
 func _free_voice(id: String) -> bool:
+	var owned := _live_voices(id)
+	if owned.size() >= int(LIMITS.get(id, 3)):
+		return false
+	var group: String = GROUPS.get(id, "")
+	if group != "":
+		var total := 0
+		for other: String in GROUPS:
+			if GROUPS[other] == group:
+				total += _live_voices(other).size()
+		if total >= int(GROUP_LIMITS.get(group, 99)):
+			return false
+	return true
+
+func _live_voices(id: String) -> Array:
 	var owned: Array = _voices.get(id, [])
 	owned = owned.filter(func(p): return is_instance_valid(p) and p.playing)
 	_voices[id] = owned
-	return owned.size() < int(LIMITS.get(id, 3))
+	return owned
+
+## How many voices of a group are sounding right now (tests, debugging).
+func group_voices(group: String) -> int:
+	var total := 0
+	for other: String in GROUPS:
+		if GROUPS[other] == group:
+			total += _live_voices(other).size()
+	return total
 
 func _claim(id: String, player: Node) -> void:
 	if not _voices.has(id):
@@ -263,6 +368,7 @@ func _fade_out(p: AudioStreamPlayer, fade: float) -> void:
 	tw.tween_callback(p.stop)
 
 func _process(delta: float) -> void:
+	_tick_duck(delta)
 	if not _layered or not _music_a.playing:
 		return
 	_intensity = move_toward(_intensity, _intensity_target, delta * (0.8 if _intensity_target > _intensity else 0.25))

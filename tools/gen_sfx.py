@@ -318,6 +318,108 @@ def sfx_bank():
     s["scream"] = drive(mul(tone(760, n, "saw", sweep_to=520, vibrato=0.05, vib_rate=7), env(n, 0.02, 0.35, release=0.15)), 1.6)
     n = secs(0.09)
     s["beep"] = mul(tone(1400, n, "square"), env(n, 0.001, 0.04, release=0.02))
+    s.update(kill_bank())
+    return s
+
+
+def droplets(n, count, cut, spread=1.0, seed=0):
+    """A scatter of tiny wet ticks across the first `spread` of n samples."""
+    r = random.Random(4400 + seed)
+    buf = [0.0] * n
+    for _ in range(count):
+        m = secs(r.uniform(0.008, 0.03))
+        part = mul(lowpass(noise(m), cut * r.uniform(0.6, 1.4)), env(m, 0.0005, m / SR * 0.4, release=0.004, curve=6))
+        add(buf, int(r.uniform(0, spread) * (n - m)), part, r.uniform(0.25, 0.7))
+    return buf
+
+
+def kill_bank():
+    """Kill layers: impact + body + fall, plus confirm ticks and stings.
+    Percussive and tonal only: no voices."""
+    s = {}
+    # Flesh impacts: a wet thump with a slightly different body each time.
+    for i, (cut, thump, length) in enumerate([(700, 95, 0.16), (900, 80, 0.18), (1100, 110, 0.14), (620, 70, 0.2)]):
+        n = secs(length)
+        s["flesh_%d" % (i + 1)] = drive(mix(
+            (mul(lowpass(noise(n), cut), env(n, 0.0008, 0.05 + i * 0.01, release=0.03, curve=5)), 1.0),
+            (mul(tone(thump, n, "sine", sweep_to=thump * 0.6), env(n, 0.0008, 0.06, release=0.03)), 0.9),
+            (mul(highpass(noise(n), 3000), env(n, 0.0003, 0.006, release=0.003, curve=8)), 0.25),
+            (droplets(n, 3, 1400, 0.6, i), 0.35)), 1.6)
+    # Bone crunch: a knot of dry cracks over a thud.
+    n = secs(0.32)
+    crunch = [0.0] * n
+    r = random.Random(77)
+    for k in range(6):
+        m = secs(r.uniform(0.012, 0.03))
+        part = mul(highpass(noise(m), 1800 + k * 300), env(m, 0.0003, 0.008, release=0.004, curve=7))
+        add(crunch, secs(0.006 + k * r.uniform(0.012, 0.03)), part, r.uniform(0.6, 1.0))
+    s["bone_crunch"] = drive(mix((crunch, 1.0),
+        (mul(tone(70, n, "sine", sweep_to=40), env(n, 0.001, 0.09, release=0.04)), 0.9),
+        (mul(lowpass(noise(n), 500), env(n, 0.001, 0.07, release=0.04)), 0.6)), 2.0)
+    # Wet splatter: a smear of noise and a spray of droplets.
+    n = secs(0.45)
+    s["splatter"] = mix((mul(lowpass(highpass(noise(n), 300), 1800), env(n, 0.002, 0.12, release=0.08, curve=4)), 0.8),
+                        (droplets(n, 14, 2200, 0.8, 9), 0.9))
+    # Gib burst: a wet explosion — brown-noise punch, low thump, droplets.
+    n = secs(0.7)
+    s["gib_burst"] = drive(mix((mul(lowpass(noise(n, "brown"), 900), env(n, 0.001, 0.18, release=0.1)), 1.0),
+                               (mul(tone(58, n, "sine", sweep_to=32), env(n, 0.001, 0.2, release=0.1)), 1.0),
+                               (droplets(n, 22, 2000, 0.9, 13), 0.8)), 2.2)
+    # Body falls, matched to the floor.
+    n = secs(0.45)
+    base = mul(tone(62, n, "sine", sweep_to=44), env(n, 0.002, 0.09, release=0.05))
+    s["fall_concrete"] = mix((base, 1.0), (mul(lowpass(noise(n), 700), env(n, 0.002, 0.08, release=0.05)), 0.8),
+                             (mul(highpass(noise(n), 2500), env(n, 0.03, 0.08, release=0.05)), 0.15))
+    s["fall_carpet"] = mix((base, 0.9), (mul(lowpass(noise(n), 260), env(n, 0.004, 0.07, release=0.05)), 0.9))
+    n = secs(0.6)
+    slap = mix((mul(tone(62, n, "sine", sweep_to=44), env(n, 0.002, 0.08, release=0.05)), 1.0),
+               (mul(highpass(noise(n), 1600), env(n, 0.001, 0.03, release=0.02, curve=6)), 0.6))
+    s["fall_marble"] = echo(slap, 0.06, 0.3)
+    ring = mix((mul(tone(523, n), env(n, 0.001, 0.25, release=0.1)), 0.18),
+               (mul(tone(1347, n), env(n, 0.001, 0.18, release=0.08)), 0.12),
+               (mul(tone(2217, n), env(n, 0.001, 0.12, release=0.06)), 0.08))
+    s["fall_metal"] = mix((slap, 0.9), (ring, 1.0))
+    # A dropped gun clattering: three metal hits, each softer.
+    n = secs(0.55)
+    clat = [0.0] * n
+    for k, (t, g) in enumerate([(0.0, 1.0), (0.09, 0.6), (0.2, 0.35), (0.27, 0.2)]):
+        m = secs(0.08)
+        hit = mix((mul(tone(1800 + k * 230, m, "square"), env(m, 0.0003, 0.012, release=0.006, curve=7)), 0.3),
+                  (mul(tone(3100 - k * 180, m), env(m, 0.0003, 0.03, release=0.01)), 0.3),
+                  (mul(highpass(noise(m), 2500), env(m, 0.0003, 0.01, release=0.005, curve=7)), 0.5))
+        add(clat, secs(t), hit, g)
+    s["clatter"] = clat
+    # The kill registered: a crisp double tick; a crit rings a bell.
+    n = secs(0.12)
+    tick = [0.0] * n
+    add(tick, 0, mul(tone(2400, secs(0.03)), env(secs(0.03), 0.0003, 0.01, release=0.005, curve=7)), 0.6)
+    add(tick, secs(0.035), mul(tone(3200, secs(0.04)), env(secs(0.04), 0.0003, 0.015, release=0.008, curve=7)), 0.5)
+    s["kill_tick"] = tick
+    n = secs(0.7)
+    s["crit_ding"] = mix((mul(tone(1568, n), env(n, 0.0008, 0.3, release=0.1)), 0.5),
+                         (mul(tone(2349, n), env(n, 0.0008, 0.22, release=0.08)), 0.35),
+                         (mul(tone(3951, n), env(n, 0.0008, 0.08, release=0.04)), 0.15))
+    # Burn: a crackling sizzle.
+    n = secs(0.8)
+    crackle = droplets(n, 18, 5000, 0.95, 21)
+    s["burn_sizzle"] = mix((mul(highpass(noise(n), 3500), env(n, 0.02, 0.35, release=0.2, curve=3)), 0.5), (crackle, 0.6))
+    # Takedowns: a muffled slash, or a muffled crack.
+    n = secs(0.3)
+    swoosh = mul(highpass(lowpass(noise(n), 5000), 1200), env(n, 0.03, 0.05, release=0.03, curve=3))
+    s["takedown_knife"] = mix((swoosh, 0.6), (mul(lowpass(noise(n), 500), env(n, 0.001, 0.06, release=0.03)), 0.9),
+                              (mul(tone(85, n, "sine", sweep_to=55), env(n, 0.001, 0.07, release=0.03)), 0.6))
+    s["takedown_crack"] = lowpass(drive(mix((crunch[:n] + [0.0] * max(0, n - len(crunch)), 0.8),
+                                            (mul(tone(75, n, "sine", sweep_to=45), env(n, 0.001, 0.08, release=0.03)), 1.0)), 2.0), 2200)
+    # Multi-kill stings: minor-key brass hits, rising and thickening.
+    for count, notes in [(2, [57, 60]), (3, [57, 60, 64]), (4, [57, 60, 64, 67, 69])]:
+        n = secs(1.0)
+        buf = [0.0] * n
+        for k, m in enumerate(notes):
+            start = secs(0.055 * k)
+            part = mul(lowpass(tone(note_hz(m), n - start, "saw", vibrato=0.004), 2200), env(n - start, 0.004, 0.35, release=0.15))
+            add(buf, start, part, 0.28)
+        add(buf, 0, mul(tone(note_hz(33), secs(0.5), "sine"), env(secs(0.5), 0.002, 0.2, release=0.1)), 0.7 if count >= 4 else 0.4)
+        s["multi_%d" % count] = echo(drive(buf, 1.4), 0.12, 0.25)
     return s
 
 

@@ -1201,6 +1201,10 @@ func _add_device(room, kind: int, local: Vector2) -> SecurityDevice:
 	add_child(device)
 	return device
 
+## What a falling body lands on here (kill sounds): per stage.
+func floor_surface() -> String:
+	return Audio.FLOORS[clampi(stage_index(), 0, Audio.FLOORS.size() - 1)]
+
 func stage_index() -> int:
 	return _stage
 

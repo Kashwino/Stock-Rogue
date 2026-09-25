@@ -46,6 +46,7 @@ func on_kill(info: KillInfo) -> void:
 		best_multi = maxi(best_multi, chain)
 		by_class[info.kill_class] = int(by_class.get(info.kill_class, 0)) + 1
 		_feedback(info)
+	Audio.play_kill(info, host.floor_surface() if host else "concrete")
 	killed.emit(info)
 
 func _feedback(info: KillInfo) -> void:

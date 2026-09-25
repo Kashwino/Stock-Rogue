@@ -472,6 +472,25 @@
   thrown by explosions — and stop dead at walls. The victim's gun leaves his
   hands and skitters away on its own path. Civilians fall the same way.
 
+## Brief 2 · Phase 2 — Kill sounds
+
+- `tools/gen_sfx.py` grew a kill bank (stdlib only, no voices): four flesh
+  impacts, a bone crunch, a wet splatter, a gib burst, body falls on
+  concrete / carpet / marble / metal, a weapon clatter, the kill-confirm
+  tick, a crit ding, a burn sizzle, a muffled knife slash and a muffled
+  crack for takedowns, and minor-key brass stings for DOUBLE, TRIPLE and
+  QUAD+.
+- Every death plays three layers — impact, body, fall — chosen by its class
+  (gib burst for explosions, sizzle for burns, bone crunch plus splatter for
+  overkills), with the fall landing a beat later on the stage's floor (Town
+  concrete, City carpet, World marble, Doomsday metal) and the dropped gun
+  clattering after it. The player's kills add the tick, the crit ding and
+  the multi sting.
+- A shared "death" voice group caps kill layers at six at once, on top of
+  the per-sound limits and the usual pitch variance. Overkills, takedowns
+  and explosions duck the music 3 dB for half a second (an Amplify effect on
+  the Music bus, so the volume setting is untouched).
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -587,3 +606,5 @@
 - **(Brief 2) Kill feedback is for the player's kills**: guards and rival
   crews killing each other still get classified bodies and death motion, but
   no hit-stop, punch or banner.
+- **(Brief 2) Floor sounds follow the stage**, not the individual room:
+  every stage has one dominant floor material in its art.

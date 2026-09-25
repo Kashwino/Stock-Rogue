@@ -76,6 +76,7 @@ func _run() -> void:
 	_test_debug_menu()
 	_test_time_controller()
 	await _test_kill_feedback()
+	await _test_kill_sounds()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -905,6 +906,28 @@ func _test_kill_feedback() -> void:
 	check(skitter != null and is_instance_valid(skitter) and skitter.global_position.distance_to(first.corpse.global_position) > 4.0, "the dropped gun skitters off on its own")
 	TimeController.clear()
 	check(chain_before >= 0 and HudWidgets.MultiBanner.title_for(3) == "TRIPLE" and HudWidgets.MultiBanner.title_for(5) == "MASSACRE", "multi titles")
+
+func _test_kill_sounds() -> void:
+	for id: String in ["flesh_1", "flesh_2", "flesh_3", "flesh_4", "bone_crunch", "splatter", "gib_burst",
+			"fall_concrete", "fall_carpet", "fall_marble", "fall_metal", "clatter", "kill_tick", "crit_ding",
+			"burn_sizzle", "takedown_knife", "takedown_crack", "multi_2", "multi_3", "multi_4"]:
+		check(ResourceLoader.exists("res://assets/audio/sfx/%s.wav" % id), "kill sound generated: " + id)
+	check(floor_scene.floor_surface() in Audio.FLOORS, "bodies land on the stage's floor")
+	Audio.silence()
+	var info := KillInfo.classify(null, {"source": &"bullet", "by_player": true}, 3)
+	info.position = floor_scene.player.global_position
+	info.multi = 2
+	Audio.play_kill(info, "marble")
+	check(Audio._live_voices("flesh").size() == 1 and Audio._live_voices("bone_crunch").size() == 1, "an overkill plays impact and bone crunch")
+	check(Audio._live_voices("kill_tick").size() == 1 and Audio._live_voices("multi_2").size() == 1, "the player's kill ticks and a double stings")
+	await get_tree().create_timer(0.7).timeout
+	check(Audio._live_voices("fall_marble").size() == 1, "the body lands a beat later, on the floor it fell on")
+	for i in 12:
+		Audio.play_kill(info, "concrete")
+	check(Audio.group_voices("death") <= Audio.GROUP_LIMITS["death"], "a massacre never stacks more than six death layers")
+	await get_tree().create_timer(0.15).timeout
+	check(Audio._duck_fx != null and Audio._duck_fx.volume_db < -1.0, "overkills duck the music")
+	Audio.silence()
 
 func _test_debug_menu() -> void:
 	var debug := get_node("/root/Debug")
