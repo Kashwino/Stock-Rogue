@@ -81,11 +81,15 @@ func _ready() -> void:
 	scale = Vector2(0.4, 0.4)
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Gore off: bodies don't linger. Otherwise they stay all heist.
+	if int(Settings.values.get("gore", Settings.GORE_FULL)) == Settings.GORE_OFF:
+		tw.tween_interval(3.0)
+		tw.tween_property(self, "modulate:a", 0.0, 0.8)
+		tw.tween_callback(retire)
 	was_moving = velocity.length() > 5.0
 	if was_moving:
 		_drop_weapon.call_deferred()
 	set_process(true)
-	queue_redraw()
 
 ## The victim's gun leaves his hands and skitters away on its own.
 func _drop_weapon() -> void:
@@ -131,9 +135,15 @@ func _process(delta: float) -> void:
 		_kit.modulate = Color(0.55, 0.52, 0.52)
 		settled.emit(self)
 
-## Leave the stage (over the cap): fade out.
+## Leave the stage (over the cap): fade out, leaving a dark shape baked
+## into the floor.
 func retire() -> void:
+	if not is_in_group("corpse"):
+		return
 	remove_from_group("corpse")
+	var host := get_tree().current_scene if is_inside_tree() else null
+	if host is HeistFloor and host.gore:
+		host.gore.bake_body(global_position)
 	var tw := create_tween()
 	tw.tween_property(self, "modulate:a", 0.0, 1.0)
 	tw.tween_callback(queue_free)
@@ -142,13 +152,6 @@ func retire() -> void:
 
 func is_still() -> bool:
 	return not is_processing()
-
-func _draw() -> void:
-	var pool := PackedVector2Array()
-	for i in 12:
-		var a := TAU * i / 12.0
-		pool.append(Vector2.from_angle(a) * (18.0 + sin(i * 2.7) * 5.0) + Vector2(-8, 0))
-	draw_colored_polygon(pool, Color(0.22, 0.02, 0.03, 0.55))
 
 
 ## A dropped gun sliding across the floor.

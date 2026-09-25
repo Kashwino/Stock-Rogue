@@ -24,14 +24,14 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Voice limit (~6 death layers), variance, music duck on overkill/takedown
 
 ## Phase 3 — Gore
-- [ ] Settings: Gore Off/Low/Full, Blood style Red/Noir
-- [ ] Directional spray per hit, exit spray on pierce
-- [ ] Decals: floor splatters, wall splats, pools, smears, drip trails
-- [ ] Baked per-room decal layer with caps
-- [ ] Gibs (Full) with wall bounce and trails
-- [ ] Bloody footprints (player + guards)
-- [ ] Player blood vignette + 1-HP drips
-- [ ] Bodies are evidence (guards investigate, radio on a second body; civilians flee; Ghost +50%)
+- [x] Settings: Gore Off/Low/Full, Blood style Red/Noir
+- [x] Directional spray per hit, exit spray on pierce
+- [x] Decals: floor splatters, wall splats, pools, smears, drip trails
+- [x] Baked per-room decal layer with caps
+- [x] Gibs (Full) with wall bounce and trails
+- [x] Bloody footprints (player + guards)
+- [x] Player blood vignette + 1-HP drips
+- [x] Bodies are evidence (guards investigate, radio on a second body; civilians flee; Ghost +50%)
 
 ## Phase 4 — Takedowns
 - [ ] `melee` input action (F + right mouse)

@@ -13,6 +13,7 @@ const PANIC_HEARING := 0.85
 
 var state := State.CALM
 var health := 2
+var max_health := 2
 var runner := false               # heads for an alarm panel when panicked
 var stage := 0
 var look_seed := 0
@@ -83,6 +84,23 @@ func _on_noise(pos: Vector2, radius: float, kind: StringName) -> void:
 		return
 	panic(pos)
 
+var _body_scan := 0.0
+
+## A body in plain sight: panic.
+func _look_for_bodies(delta: float) -> void:
+	_body_scan -= delta
+	if _body_scan > 0.0:
+		return
+	_body_scan = 0.4
+	var space := get_world_2d().direct_space_state
+	for body: Node2D in get_tree().get_nodes_in_group("corpse"):
+		if global_position.distance_to(body.global_position) > 320.0:
+			continue
+		var query := PhysicsRayQueryParameters2D.create(global_position, body.global_position, Layers.WALLS)
+		if space.intersect_ray(query).is_empty():
+			panic(body.global_position)
+			return
+
 ## Gunfire nearby: cower, flee, or (runners) go for the alarm.
 func panic(source: Vector2) -> void:
 	if _dead or state != State.CALM:
@@ -117,6 +135,7 @@ func _physics_process(delta: float) -> void:
 	match state:
 		State.CALM:
 			_wander(delta)
+			_look_for_bodies(delta)
 		State.COWER:
 			velocity = velocity.lerp(Vector2.ZERO, 0.3)
 		State.FLEE:

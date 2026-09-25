@@ -141,7 +141,7 @@ func _try_hit(target: Node) -> void:
 	if host is HeistFloor:
 		host.fx.damage_number(global_position, dmg, Palette.GOLD_PALE if dmg >= 3 else Palette.PAPER)
 		if target.is_in_group("enemies") or target.is_in_group("civilians"):
-			host.fx.blood(global_position, _dir)
+			host.gore.on_hit(global_position, _dir, dmg, false, target)
 			Audio.play("impact_body", global_position)
 		else:
 			host.fx.spark(global_position, -_dir, Palette.NEON_CYAN)
@@ -170,6 +170,9 @@ func _try_hit(target: Node) -> void:
 			host.crosshair.hit()
 	if pierce > 0:
 		pierce -= 1
+		# Through and out the far side: an exit spray.
+		if host is HeistFloor and (target.is_in_group("enemies") or target.is_in_group("civilians")):
+			host.gore.on_hit(global_position + _dir * 12.0, _dir, dmg, true, target)
 	else:
 		_finish()
 

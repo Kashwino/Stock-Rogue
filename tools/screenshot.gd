@@ -17,6 +17,11 @@ func _run() -> void:
 	var shot: String = args.get("shot", "home")
 	var out: String = args.get("out", "/tmp/shot.png")
 	var frames := int(args.get("frames", "90"))
+	# Session-only settings for the shot (never saved).
+	if args.has("gore"):
+		Settings.values["gore"] = int(args["gore"])
+	if args.has("blood"):
+		Settings.values["blood_style"] = int(args["blood"])
 	var scene := await _setup(shot)
 	for i in frames:
 		await get_tree().process_frame
@@ -69,6 +74,11 @@ func _run() -> void:
 			v.take_damage(v.health + int(args.get("excess", "3")))
 		for i in int(args.get("after", "12")):
 			await get_tree().process_frame
+		if args.has("hp"):
+			scene.player.health = int(args["hp"])
+			scene.player.health_changed.emit(scene.player.health, scene.player.max_health)
+			for i in 20:
+				await get_tree().process_frame
 	if args.has("hint"):
 		Meta.hints_seen.clear()
 		var hints := get_tree().root.find_children("*", "OnboardingHints", true, false)

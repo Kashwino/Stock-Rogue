@@ -491,6 +491,41 @@
   and explosions duck the music 3 dB for half a second (an Amplify effect on
   the Music bus, so the volume setting is untouched).
 
+## Brief 2 · Phase 3 — Gore
+
+- **Settings**: Gore off / low / full (default full) and Blood red / noir
+  (ink-black with a red rim).
+  - *Off*: sparks and dust puffs instead of blood; bodies fade after 3 s.
+  - *Low*: spray particles and marks that fade after 8 s; no gibs, pools
+    or footprints.
+  - *Full*: everything below.
+- **Sprays** (`gore.gd`): every hit throws droplets along the shot, more for
+  bigger hits, and a pierced body throws an exit spray out the far side.
+  Spray that reaches a wall paints it.
+- **The building remembers**: settled marks are blitted into one texture per
+  room (a floor layer under the bodies and a wall layer over the wall art),
+  uploaded at most five times a second, so hundreds of marks cost about one
+  draw call per room for the whole heist. Marks outside the rooms are live
+  nodes capped at 60, oldest first.
+- **Pools** spread under a body over two seconds, then bake. **Smears** trail
+  a sliding body; a body that hits a wall splats it. **Drips** follow guards
+  and civilians below 30% health, and the player at 1 HP.
+- **Gibs** (full only) on overkills and explosions: 5–10 shards in the
+  victim's coat colour and blood, sliding with friction, bouncing off walls
+  (ray checks against layer 1 — no new physics layers), leaving trails, and
+  settling into the floor. At most 80 at once; the oldest settles first.
+- **Bloody footprints**: walking through a pool leaves twelve fading prints,
+  for the player and for guards.
+- **Blood vignette** (`blood_vignette.gd`): ragged blood creeps in from the
+  screen edges as health drops and throbs with the heartbeat at 1 HP (the
+  post-process red pulse still runs beneath it); follows the blood style.
+- **Bodies are evidence**: bodies now stay for the whole heist (40 per
+  building; the oldest leaves a dark shape baked into the floor). An
+  unprovoked guard who sees one goes to look — investigating, not hunting —
+  and radios it in if he finds a second. Civilians who see a body panic.
+  With the Ghost's slow cameras guards also take half again as long to take
+  a body in.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -608,3 +643,9 @@
   no hit-stop, punch or banner.
 - **(Brief 2) Floor sounds follow the stage**, not the individual room:
   every stage has one dominant floor material in its art.
+- **(Brief 2) Gore needs no post-processing**: the blood vignette is its own
+  overlay, so it works with Post-processing off (and hides with Gore off).
+- **(Brief 2) Decal resolution** is half the world resolution (one texel per
+  two pixels): sharp enough for blood, a quarter of the memory.
+- **(Brief 2) Corpses no longer fade** after 22 s — they're evidence now —
+  except with Gore off.

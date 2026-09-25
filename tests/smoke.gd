@@ -77,6 +77,7 @@ func _run() -> void:
 	_test_time_controller()
 	await _test_kill_feedback()
 	await _test_kill_sounds()
+	await _test_gore()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -928,6 +929,113 @@ func _test_kill_sounds() -> void:
 	await get_tree().create_timer(0.15).timeout
 	check(Audio._duck_fx != null and Audio._duck_fx.volume_db < -1.0, "overkills duck the music")
 	Audio.silence()
+
+## Two points in the start room with a clear line between them.
+func _clear_pair(span: float) -> Array:
+	var room: Node2D = floor_scene.generator.start_room
+	var space := floor_scene.get_world_2d().direct_space_state
+	var size: Vector2 = room.get("room_size")
+	for y in range(80, int(size.y) - 80, 30):
+		for x in range(80, int(size.x - span) - 80, 30):
+			var a: Vector2 = room.global_position + Vector2(x, y)
+			var b := a + Vector2(span, 0)
+			var q := PhysicsRayQueryParameters2D.create(a, b, Layers.SOLID)
+			if space.intersect_ray(q).is_empty():
+				return [a, b]
+	return [room.global_position + Vector2(100, 100), room.global_position + Vector2(100 + span, 100)]
+
+func _test_gore() -> void:
+	var gore := floor_scene.gore
+	check(Settings.values["gore"] == Settings.GORE_FULL and Settings.values["blood_style"] == 0, "gore defaults to full, red")
+	check(gore._layers.size() == floor_scene.generator.rooms.size() and gore._walls.size() == gore._layers.size(), "every room gets a floor and a wall decal layer")
+	var pair := _clear_pair(140.0)
+	var at: Vector2 = pair[0]
+	var before := gore.stamps
+	gore.on_hit(at, Vector2.RIGHT, 2)
+	await get_tree().create_timer(0.45).timeout
+	check(gore.stamps > before, "a hit sprays blood that lands as baked marks")
+	var layer: Gore.RoomLayer = gore._layer_at(at, false)
+	check(layer != null and not layer.dirty, "baked marks upload to the room texture")
+	# Noir: ink core with a red rim (two stamps per blot).
+	Settings.values["blood_style"] = 1
+	gore._read_settings()
+	check(gore.core_color().r < 0.1 and gore.rim_color().r > 0.5, "noir blood is ink with a red rim")
+	Settings.values["blood_style"] = 0
+	gore._read_settings()
+	# Gibs only in FULL, only for violent deaths.
+	var info := KillInfo.classify(null, {"source": &"bullet", "by_player": true, "dir": Vector2.RIGHT}, 3)
+	info.position = at
+	gore.on_kill(info)
+	check(gore.active_gibs() >= 5 and gore.active_gibs() <= 10, "an overkill throws 5-10 gibs")
+	await get_tree().create_timer(2.0).timeout
+	check(gore.active_gibs() == 0, "gibs settle into the floor")
+	Settings.values["gore"] = Settings.GORE_LOW
+	gore._read_settings()
+	var gibs := gore.gibs_spawned
+	gore.on_kill(info)
+	check(gore.gibs_spawned == gibs, "low gore throws no gibs")
+	var live_before := gore._live.size()
+	gore.on_hit(at, Vector2.DOWN, 1)
+	await get_tree().create_timer(0.35).timeout
+	check(gore._live.size() > live_before and gore._live.back().life > 0.0, "low gore leaves short-lived marks")
+	Settings.values["gore"] = Settings.GORE_OFF
+	gore._read_settings()
+	var stamps_off := gore.stamps
+	var live_off := gore._live.size()
+	gore.on_hit(at, Vector2.LEFT, 2)
+	await get_tree().create_timer(0.35).timeout
+	check(gore.stamps == stamps_off and gore._live.size() == live_off, "gore off: sparks and dust, no blood")
+	Settings.values["gore"] = Settings.GORE_FULL
+	gore._read_settings()
+	# A body settles, a pool grows under it and is baked; walking through it
+	# leaves prints.
+	var victim_owner: Enemy = null
+	for e: Enemy in get_tree().get_nodes_in_group("enemies"):
+		if not (e is Boss) and e.get_parent() is BuildingRoom:
+			victim_owner = e
+			break
+	var v := floor_scene.spawn_companion(victim_owner, Enemy.Kind.GRUNT, Vector2.ZERO)
+	v.global_position = pair[1]
+	await get_tree().physics_frame
+	var pools := gore._pools.size()
+	v.note_hit({"source": &"bullet", "dir": Vector2.RIGHT, "force": 40.0, "by_player": true})
+	v.take_damage(v.health)
+	var body: Corpse = v.kill_info.corpse
+	await get_tree().create_timer(3.0).timeout
+	check(gore._pools.size() == pools + 1, "a pool spreads under the body and is baked")
+	var player := floor_scene.player
+	var saved := player.global_position
+	player.global_position = gore._pools.back()[0]
+	gore._tick_footprints()
+	var steps_start := gore.stamps
+	for i in 4:
+		player.global_position += Vector2(0, 20)
+		gore._tick_footprints()
+	check(gore.stamps > steps_start, "walking through a pool leaves bloody footprints")
+	check(int(gore._tracks[player.get_instance_id()][1]) < Gore.FOOTPRINT_STEPS - 3, "each step spends one of the twelve prints")
+	player.global_position = saved
+	# Bodies are evidence.
+	var guard := floor_scene.spawn_companion(victim_owner, Enemy.Kind.GRUNT, Vector2.ZERO)
+	guard.global_position = pair[0]
+	guard._provoked = false
+	guard._alert = Enemy.Alert.IDLE
+	for i in 4:
+		guard._notice_bodies(0.3)
+	check(guard.bodies_found == 1 and guard._alert == Enemy.Alert.INVESTIGATING and guard._investigate_target.distance_to(body.global_position) < 1.0, "a guard who spots a body goes to look")
+	check(not guard._provoked, "a body alone doesn't make him hunt")
+	var alerts := floor_scene.alerts
+	var second := Corpse.spawn(body.get_parent(), Vector2(pair[0]) + Vector2(70, 0), 0.0, body.spec)
+	for i in 4:
+		guard._notice_bodies(0.3)
+	check(guard.bodies_found == 2 and floor_scene.alerts == alerts + 1, "a second body gets radioed in")
+	guard.queue_free()
+	second.queue_free()
+	# The screen bleeds with missing health.
+	floor_scene.blood_vignette.set_health(1, 3)
+	check(floor_scene.blood_vignette._target > 0.6 and floor_scene.blood_vignette._last_heart, "the blood vignette deepens with missing health")
+	floor_scene.blood_vignette.set_health(player.health, player.max_health)
+	# The corpse cap retires the oldest body.
+	check(Corpse.CAP == 40, "forty bodies per building")
 
 func _test_debug_menu() -> void:
 	var debug := get_node("/root/Debug")

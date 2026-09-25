@@ -70,6 +70,8 @@ var fx: CombatFX
 var crosshair: Crosshair
 ## Every death, classified: hit-stop, punch, multi chain (kill_feedback.gd).
 var kills: KillFeedback
+## Blood, decals, gibs and footprints (gore.gd; Settings "gore").
+var gore: Gore
 var security_disabled := 0
 var last_heat_source := "No reports. Stay out of sight."
 var quiet_seconds := 0.0
@@ -86,6 +88,7 @@ var _boss_music := false
 var env: EnvTheme
 var lighting: HeistLighting
 var post_fx: PostFX
+var blood_vignette: BloodVignette
 var building_bounds := Rect2()
 var wall_art: Array = []
 var bullet_pool: BulletPool
@@ -147,6 +150,8 @@ func _ready() -> void:
 	add_child(fx)
 	post_fx = PostFX.new()
 	add_child(post_fx)
+	blood_vignette = BloodVignette.new()
+	add_child(blood_vignette)
 
 	_ensure_chest_ui()
 	_ensure_results()
@@ -246,6 +251,10 @@ func _build_floor() -> void:
 	crosshair = Crosshair.new()
 	crosshair.player = player
 	add_child(crosshair)
+	gore = Gore.new()
+	add_child(gore)
+	gore.setup(self)
+	kills.killed.connect(gore.on_kill)
 	_assign_guard_roles()
 	_spawn_civilians()
 	director.refresh()
@@ -301,6 +310,7 @@ func _spawn_player() -> void:
 		RunState.apply_to_player(player)
 	player.died.connect(_on_player_died)
 	player.health_changed.connect(_on_player_health)
+	_on_player_health.call_deferred(player.health, player.max_health)
 	var pcam = player.get_node_or_null("Camera2D")
 	if pcam:
 		pcam.enabled = false
@@ -957,6 +967,8 @@ func _tick_market_chip(delta: float) -> void:
 func _on_player_health(current: int, maximum: int) -> void:
 	if post_fx:
 		post_fx.set_health(current, maximum)
+	if blood_vignette:
+		blood_vignette.set_health(current, maximum)
 
 ## Damage feedback shared by every hit on the player.
 func _on_reload_finished() -> void:

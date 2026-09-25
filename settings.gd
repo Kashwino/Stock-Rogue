@@ -6,7 +6,14 @@ const PATH := "user://settings.cfg"
 const WEB_KEY := "stock-rogue-settings-v1"
 const DEFAULTS := {"master": 0.8, "music": 0.7, "sfx": 0.8, "ui": 0.8, "fullscreen": false,
 	"low_effects": false, "frame_cap": 60, "touch_mode": 0, "shake": 1.0, "dynamic_shadows": false,
-	"post_fx": true, "reduce_flashing": false, "damage_numbers": true, "tips": true}
+	"post_fx": true, "reduce_flashing": false, "damage_numbers": true, "tips": true,
+	"gore": 2, "blood_style": 0}
+## Gore: 0 off (sparks and dust, bodies fade), 1 low (particles and short-lived
+## marks), 2 full (decals that stay, pools, gibs, footprints).
+## Blood style: 0 red, 1 noir (ink-black with a red rim).
+const GORE_OFF := 0
+const GORE_LOW := 1
+const GORE_FULL := 2
 const AUDIO_KEYS := {"master": "Master", "music": "Music", "sfx": "SFX", "ui": "UI"}
 const FLOAT_KEYS := ["master", "music", "sfx", "ui", "shake"]
 const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers", "tips"]
@@ -46,6 +53,12 @@ func _sanitize() -> void:
 		values["frame_cap"] = 60
 	if values["touch_mode"] not in [0, 1, 2]:
 		values["touch_mode"] = 0
+	if not (values["gore"] is int or values["gore"] is float) or int(values["gore"]) not in [0, 1, 2]:
+		values["gore"] = DEFAULTS["gore"]
+	values["gore"] = int(values["gore"])
+	if not (values["blood_style"] is int or values["blood_style"] is float) or int(values["blood_style"]) not in [0, 1]:
+		values["blood_style"] = DEFAULTS["blood_style"]
+	values["blood_style"] = int(values["blood_style"])
 
 func set_setting(key: String, value: Variant) -> void:
 	if not DEFAULTS.has(key):

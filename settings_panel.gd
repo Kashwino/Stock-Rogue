@@ -56,6 +56,23 @@ func _ready() -> void:
 	touch.custom_minimum_size = Vector2(360, 52)
 	touch.item_selected.connect(_on_touch)
 	options.add_child(touch)
+	var gore_row := HBoxContainer.new()
+	gore_row.add_theme_constant_override("separation", 12)
+	add_child(gore_row)
+	var gore := OptionButton.new()
+	for label in ["Gore: off", "Gore: low", "Gore: full"]:
+		gore.add_item(label)
+	gore.select(int(Settings.values["gore"]))
+	gore.custom_minimum_size = Vector2(300, 52)
+	gore.item_selected.connect(_on_choice.bind("gore"))
+	gore_row.add_child(gore)
+	var blood := OptionButton.new()
+	for label in ["Blood: red", "Blood: noir (ink with a red rim)"]:
+		blood.add_item(label)
+	blood.select(int(Settings.values["blood_style"]))
+	blood.custom_minimum_size = Vector2(360, 52)
+	blood.item_selected.connect(_on_choice.bind("blood_style"))
+	gore_row.add_child(blood)
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 20)
 	add_child(foot)
@@ -90,6 +107,9 @@ func _on_save_failed(message: String) -> void:
 func _on_fullscreen(on: bool) -> void:
 	Settings.set_setting("fullscreen", on)
 	Settings.apply_display_from_gesture()
+
+func _on_choice(index: int, key: String) -> void:
+	Settings.set_setting(key, index)
 
 func _on_rate(index: int, rate: OptionButton) -> void:
 	Settings.set_setting("frame_cap", rate.get_item_id(index))

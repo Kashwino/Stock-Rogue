@@ -396,7 +396,7 @@ func take_damage(amount: int = 1) -> void:
 	if host is HeistFloor:
 		host.fx.add_trauma(0.45)
 		host.fx.hit_stop(0.05)
-		host.fx.blood(global_position, last_hit_dir)
+		host.gore.on_hit(global_position, last_hit_dir, 1, false, self)
 		host.on_player_hurt()
 	_knock = last_hit_dir * 260.0
 	if kit:

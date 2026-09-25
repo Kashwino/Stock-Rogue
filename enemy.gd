@@ -537,6 +537,9 @@ func _physics_process(delta: float) -> void:
 	# Being seen while in the player's room counts as provocation on its own.
 	if sees and not _provoked and _player_in_my_room():
 		_provoked = true
+	# Bodies are evidence: an unprovoked guard who spots one goes to look.
+	if not _provoked and _alert != Alert.HUNTING and faction == &"guard" and not (self is Boss):
+		_notice_bodies(delta)
 	if _radio_step(delta, sees):
 		velocity = Vector2.ZERO
 		return
@@ -903,6 +906,63 @@ func _radio_step(delta: float, sees: bool) -> bool:
 		if host:
 			host.security_alert(get_parent(), "Guard radio call", 10.0)
 	return true
+
+# ------------------------------------------------------------- evidence ----
+## Seconds of looking before a body registers (the Ghost's slower cameras
+## make guards half again as slow to take one in).
+const BODY_NOTICE := 0.6
+var bodies_found := 0
+var _body_scan := 0.0
+var _body_look := 0.0
+var _body_target: Node2D = null
+var _radioed_bodies := false
+
+func _notice_bodies(delta: float) -> void:
+	_body_scan -= delta
+	if _body_scan > 0.0:
+		return
+	_body_scan = 0.25
+	var best: Node2D = null
+	var best_d := sight_range * 0.8
+	var space := get_world_2d().direct_space_state
+	for body: Node2D in get_tree().get_nodes_in_group("corpse"):
+		if get_instance_id() in body.get("seen_by"):
+			continue
+		var d := global_position.distance_to(body.global_position)
+		if d >= best_d:
+			continue
+		var query := PhysicsRayQueryParameters2D.create(global_position, body.global_position, solid_mask())
+		query.exclude = [get_rid()]
+		if not space.intersect_ray(query).is_empty():
+			continue
+		best = body
+		best_d = d
+	if best == null:
+		_body_look = 0.0
+		_body_target = null
+		return
+	_body_look = _body_look + 0.25 if best == _body_target else 0.25
+	_body_target = best
+	var need := BODY_NOTICE * (1.5 if float(RunState.profile_value("camera_spot_rate", 1.0)) < 1.0 else 1.0)
+	if _body_look < need:
+		return
+	# Found one.
+	best.seen_by.append(get_instance_id())
+	bodies_found += 1
+	_body_look = 0.0
+	_body_target = null
+	wake_for(6.0)
+	_alert = Alert.INVESTIGATING
+	_investigate_target = best.global_position
+	_lose_timer = LOSE_INTEREST_TIME * 1.5
+	Audio.play("alert", global_position, -8.0, 1.25)
+	var host := heist()
+	if host:
+		host.fx.chip(global_position, "BODY?", Palette.SODIUM)
+		if bodies_found >= 2 and not _radioed_bodies:
+			_radioed_bodies = true
+			Audio.play("radio", global_position)
+			host.security_alert(get_parent(), "Guard found bodies", 8.0)
 
 # ------------------------------------------------------------ brain help ----
 func heist() -> HeistFloor:
