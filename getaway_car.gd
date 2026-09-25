@@ -74,10 +74,11 @@ func _build_visual() -> void:
 	anchor.position = Vector2(0, -zone_radius - 34)
 	add_child(anchor)
 	_label = Label.new()
-	_label.add_theme_font_size_override("font_size", 14)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_label.custom_minimum_size = Vector2(220, 0)
-	_label.position = Vector2(-110, 0)
+	_label.custom_minimum_size = Vector2(260, 0)
+	_label.position = Vector2(-130, 0)
+	_label.material = StreetArt._unshaded()
+	HudKit.style_label(_label, 14, Palette.GOLD)
 	anchor.add_child(_label)
 	_reset_label()
 

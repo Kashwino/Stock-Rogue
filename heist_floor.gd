@@ -612,8 +612,12 @@ func _ensure_prompt() -> void:
 	add_child(layer)
 	_prompt = Label.new()
 	_prompt.text = "WAY OUT — the car is parked outside"
-	_prompt.add_theme_font_size_override("font_size", 28)
+	# Pulp type with an ink outline (Brief 3); no box, it sits over the room.
+	_prompt.add_theme_font_override("font", VisualTheme.font("pulp"))
+	_prompt.add_theme_font_size_override("font_size", 26)
 	_prompt.add_theme_color_override("font_color", Color(0.95, 0.85, 0.4))
+	_prompt.add_theme_color_override("font_outline_color", Palette.HUD_INK)
+	_prompt.add_theme_constant_override("outline_size", 6)
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt.anchor_left = 0.0
 	_prompt.anchor_right = 1.0
@@ -2217,11 +2221,11 @@ func _setup_tactics() -> void:
 	tactical_map.full_reveal = has_mod(&"insider")
 	ui.add_child(tactical_map)
 	tactical_map.hide()
-	var toggle := Button.new()
-	toggle.text = "MAP"
-	toggle.position = Vector2(1040, 38)
-	toggle.size = Vector2(98, 58)
-	toggle.focus_mode = Control.FOCUS_NONE
+	var toggle := TypewriterKey.new()
+	toggle.icon_name = "map"
+	toggle.caption = "MAP"
+	toggle.position = Vector2(1280 - 16 - 66 - 74, 30)
+	toggle.size = Vector2(66, 72)
 	toggle.pressed.connect(_toggle_map)
 	ui.add_child(toggle)
 	if hud and hud.has_method("bind_floor"):

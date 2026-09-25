@@ -7,7 +7,12 @@ const WEB_KEY := "stock-rogue-settings-v1"
 const DEFAULTS := {"master": 0.8, "music": 0.7, "sfx": 0.8, "ui": 0.8, "fullscreen": false,
 	"low_effects": false, "frame_cap": 60, "touch_mode": 0, "shake": 1.0, "dynamic_shadows": false,
 	"post_fx": true, "reduce_flashing": false, "damage_numbers": true, "tips": true,
-	"gore": 2, "blood_style": 0, "dynamic_music": true, "combo_hud_scale": 1.0}
+	"gore": 2, "blood_style": 0, "dynamic_music": true, "combo_hud_scale": 1.0,
+	"hud_style": 0, "hud_scale": 1.0, "hud_opacity": 1.0, "reduce_motion": false}
+## HUD style: 0 Noir Props (paper, chips, bullets, pulp slants), 1 Minimal
+## (frameless outlined text and icons).
+const HUD_PROPS := 0
+const HUD_MINIMAL := 1
 ## Gore: 0 off (sparks and dust, bodies fade), 1 low (particles and short-lived
 ## marks), 2 full (decals that stay, pools, gibs, footprints).
 ## Blood style: 0 red, 1 noir (ink-black with a red rim).
@@ -16,7 +21,7 @@ const GORE_LOW := 1
 const GORE_FULL := 2
 const AUDIO_KEYS := {"master": "Master", "music": "Music", "sfx": "SFX", "ui": "UI"}
 const FLOAT_KEYS := ["master", "music", "sfx", "ui", "shake"]
-const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers", "tips", "dynamic_music"]
+const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers", "tips", "dynamic_music", "reduce_motion"]
 var values: Dictionary = DEFAULTS.duplicate()
 var last_save_error: int = OK
 
@@ -62,6 +67,14 @@ func _sanitize() -> void:
 	if not (values["combo_hud_scale"] is float or values["combo_hud_scale"] is int) or not is_finite(float(values["combo_hud_scale"])):
 		values["combo_hud_scale"] = DEFAULTS["combo_hud_scale"]
 	values["combo_hud_scale"] = clampf(float(values["combo_hud_scale"]), 0.75, 1.5)
+	for key: String in ["hud_scale", "hud_opacity"]:
+		if not (values[key] is float or values[key] is int) or not is_finite(float(values[key])):
+			values[key] = DEFAULTS[key]
+	values["hud_scale"] = clampf(float(values["hud_scale"]), 0.75, 1.5)
+	values["hud_opacity"] = clampf(float(values["hud_opacity"]), 0.5, 1.0)
+	if not (values["hud_style"] is int or values["hud_style"] is float) or int(values["hud_style"]) not in [0, 1]:
+		values["hud_style"] = DEFAULTS["hud_style"]
+	values["hud_style"] = int(values["hud_style"])
 
 func set_setting(key: String, value: Variant) -> void:
 	if not DEFAULTS.has(key):

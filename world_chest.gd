@@ -41,6 +41,14 @@ func _ready() -> void:
 	add_child(_ring)
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	# The scene's plain label becomes a typewriter-key prompt (Brief 3).
+	if prompt is Label:
+		var wp := WorldPrompt.new()
+		wp.text = "REWARD CASE\n" + String(prompt.text)
+		wp.position = Vector2(0, -52)
+		prompt.queue_free()
+		add_child(wp)
+		prompt = wp
 	if prompt:
 		prompt.hide()
 

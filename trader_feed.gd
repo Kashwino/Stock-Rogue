@@ -72,7 +72,10 @@ const HYPE := [
 	"i will not be taking questions",
 ]
 
-var _lines: Array[Label] = []
+var _lines: Array[Control] = []
+## Brief 3: lines arrive as telegram strips pasted on the table (the HUD);
+## off, they are plain labels.
+var telegram := false
 var _cooldown: float = 0.0
 var _rng := RandomNumberGenerator.new()
 var _stock = null
@@ -127,22 +130,32 @@ func _on_market_event(kind: StringName, magnitude: float) -> void:
 
 ## Add a line to the feed, scrolling older ones up.
 func post(handle: String, text: String, colour: Color = Color.WHITE) -> void:
-	var l := Label.new()
-	l.text = "%s: %s" % [handle, text]
-	l.add_theme_font_size_override("font_size", 15)
-	l.add_theme_font_override("font", VisualTheme.font("body"))
-	l.add_theme_color_override("font_color", colour)
-	l.autowrap_mode = TextServer.AUTOWRAP_OFF
-	l.clip_text = true
-	l.size = Vector2(size.x - 8, LINE_HEIGHT)
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l: Control
+	if telegram:
+		var strip := HudPaper.Telegram.new()
+		strip.handle = handle
+		strip.message = text
+		strip.ink = colour
+		strip.size = Vector2(size.x - 8, LINE_HEIGHT - 1)
+		l = strip
+	else:
+		var label := Label.new()
+		label.text = "%s: %s" % [handle, text]
+		label.add_theme_font_size_override("font_size", 15)
+		label.add_theme_font_override("font", VisualTheme.font("body"))
+		label.add_theme_color_override("font_color", colour)
+		label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		label.clip_text = true
+		label.size = Vector2(size.x - 8, LINE_HEIGHT)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		l = label
 	l.modulate.a = 0.0
 	add_child(l)
 	_lines.append(l)
 
 	# Drop the oldest line once the feed is full.
 	while _lines.size() > MAX_LINES:
-		var old: Label = _lines.pop_front()
+		var old: Control = _lines.pop_front()
 		if is_instance_valid(old):
 			old.queue_free()
 
@@ -152,7 +165,7 @@ func post(handle: String, text: String, colour: Color = Color.WHITE) -> void:
 
 func _relayout() -> void:
 	for i in _lines.size():
-		var l: Label = _lines[i]
+		var l: Control = _lines[i]
 		if not is_instance_valid(l):
 			continue
 		var target_y := 4.0 + i * LINE_HEIGHT

@@ -192,55 +192,109 @@ func blood(at: Vector2, direction: Vector2) -> void:
 	b.restart(direction)
 
 # ---------------------------------------------------------------- numbers ---
-func damage_number(at: Vector2, amount: int, color: Color = Palette.PAPER) -> void:
+## Brief 3: small italic pulp numbers with an ink outline; a crit gets a
+## little impact star behind it.
+func damage_number(at: Vector2, amount: int, color: Color = Palette.PAPER, crit := false) -> void:
 	if not Settings.values.get("damage_numbers", true):
 		return
-	_float_label(at + Vector2(randf_range(-10, 10), -20), str(amount), color, 20)
+	_float_mark(at + Vector2(randf_range(-10, 10), -20), str(amount), color, FloatMark.NUMBER, crit)
 
-## The market reacting to what you just did: "+2.3%" near the player.
+## The market reacting to what you just did ("CRNR +1.2%", "ARMOR"...): a
+## small ticker slip that flutters up and away.
 func chip(at: Vector2, text: String, color: Color) -> void:
-	_float_label(at + Vector2(randf_range(-20, 20), -46), text, color, 18, true)
+	_float_mark(at + Vector2(randf_range(-20, 20), -46), text, color, FloatMark.SLIP, false)
 
-func _float_label(at: Vector2, text: String, color: Color, size: int, boxed := false) -> void:
-	var l: Label = null
-	for existing: Label in _numbers:
+func _float_mark(at: Vector2, text: String, color: Color, kind: int, crit: bool) -> void:
+	var m: FloatMark = null
+	for existing: FloatMark in _numbers:
 		if is_instance_valid(existing) and not existing.visible:
-			l = existing
+			m = existing
 			break
-	if l == null:
+	if m == null:
 		if _numbers.size() >= 28:
-			l = _numbers.pop_front()
-			_numbers.append(l)
+			m = _numbers.pop_front()
+			_numbers.append(m)
 		else:
-			l = Label.new()
-			l.add_theme_font_override("font", VisualTheme.font("mono"))
-			l.material = StreetArt._unshaded()
-			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			l.z_index = 60
-			l.z_as_relative = false
-			world().add_child(l)
-			_numbers.append(l)
-	l.text = text
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	l.add_theme_constant_override("outline_size", 5)
-	if boxed:
-		l.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.7), color, 1, 3, 3))
-	else:
-		l.remove_theme_stylebox_override("normal")
-	l.reset_size()
-	l.global_position = at - l.size * 0.5
-	l.visible = true
-	l.modulate.a = 1.0
-	l.scale = Vector2(1.25, 1.25)
-	l.pivot_offset = l.size * 0.5
-	var tw := l.create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(l, "scale", Vector2.ONE, 0.12)
-	tw.tween_property(l, "global_position:y", l.global_position.y - 36.0, 0.8).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(l, "modulate:a", 0.0, 0.35).set_delay(0.5)
-	tw.chain().tween_callback(l.hide)
+			m = FloatMark.new()
+			world().add_child(m)
+			_numbers.append(m)
+	m.start(at, text, color, kind, crit)
+
+
+## A pooled floating mark in the world: a pulp damage number or a ticker
+## slip. Rises, (slips flutter), fades, hides itself for reuse.
+class FloatMark extends Node2D:
+	const NUMBER := 0
+	const SLIP := 1
+	var text := ""
+	var color := Color.WHITE
+	var kind := NUMBER
+	var crit := false
+	var _life := 0.0
+	var _start := Vector2.ZERO
+	var _sway := 0.0
+
+	func _ready() -> void:
+		material = StreetArt._unshaded()
+		z_index = 60
+		z_as_relative = false
+		hide()
+
+	func start(at: Vector2, t: String, c: Color, k: int, is_crit: bool) -> void:
+		text = t
+		color = c
+		kind = k
+		crit = is_crit
+		_start = at
+		global_position = at
+		_life = 0.0
+		_sway = randf_range(-1.0, 1.0)
+		rotation = 0.0
+		scale = Vector2(1.3, 1.3)
+		modulate.a = 1.0
+		show()
+		set_process(true)
+		queue_redraw()
+
+	func _process(delta: float) -> void:
+		_life += delta
+		var k := _life / (0.85 if kind == NUMBER else 1.2)
+		if k >= 1.0:
+			hide()
+			set_process(false)
+			return
+		var rise := 1.0 - pow(1.0 - k, 2.0)
+		scale = Vector2.ONE * lerpf(1.3, 1.0, minf(_life / 0.12, 1.0))
+		if kind == SLIP and not HudKit.reduce_motion():
+			global_position = _start + Vector2(sin(_life * 7.0 + _sway) * 8.0, -52.0 * rise)
+			rotation = sin(_life * 5.0 + _sway) * 0.18
+		else:
+			global_position = _start + Vector2(0, -36.0 * rise)
+		modulate.a = clampf((1.0 - k) / 0.4, 0.0, 1.0)
+
+	func _draw() -> void:
+		if kind == NUMBER:
+			var pulp := VisualTheme.font("pulp")
+			var size := 20 if not crit else 24
+			if crit and not HudKit.minimal():
+				draw_colored_polygon(HudKit.impact(Vector2.ZERO, 22, 13, 5, 10), Palette.with_alpha(Palette.GOLD, 0.9))
+			HudKit.text_centered(self, pulp, Vector2.ZERO, text, size, color if not crit else Palette.PAPER_CREAM)
+			return
+		var type := VisualTheme.font("type_bold")
+		var w := HudKit.text_width(type, text, 14) + 14.0
+		if HudKit.minimal():
+			HudKit.text_centered(self, type, Vector2.ZERO, text, 15, color)
+			return
+		var rect := Rect2(Vector2(-w * 0.5, -11), Vector2(w, 22))
+		HudKit.draw_paper(self, rect, hash(text) % 997, 10, 0.0, Palette.PAPER_CREAM, Palette.PAPER_EDGE, true)
+		var ink := color
+		if color == Palette.UP or color == Palette.NEON_GREEN:
+			ink = Palette.STAMP_GREEN
+		elif color == Palette.DOWN or color == Palette.DANGER:
+			ink = Palette.RED_PENCIL
+		elif color.get_luminance() > 0.6:
+			ink = Palette.HUD_INK if color != Palette.GOLD else Palette.GOLD.darkened(0.45)
+		draw_string(type, Vector2(-w * 0.5 + 7, 5), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, ink)
 
 
 class Spark extends Node2D:

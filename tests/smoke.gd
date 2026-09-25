@@ -83,6 +83,7 @@ func _run() -> void:
 	await _test_wanted()
 	_test_music()
 	await _test_verdicts()
+	await _test_noir_hud()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -196,6 +197,7 @@ func _run() -> void:
 	var card: VerdictCard = floor_scene._verdict_card
 	check(card != null and get_tree().paused and card._options == Verdicts.STAGE_OPTIONS, "the VERDICT card pauses the heist with four options")
 	check(card.process_mode == Node.PROCESS_MODE_ALWAYS and not card._cards[3].disabled, "the card runs while paused; the deal is on the table")
+	card.slam_time = 0.0
 	card.choose(Verdicts.EXECUTE)
 	check(not get_tree().paused and boss.verdict == Verdicts.EXECUTE and RunState.verdicts.get("auditor", "") == "execute" and RunState.fear == 1, "EXECUTE is recorded with +1 Fear")
 	check(floor_scene.player.is_busy_meleeing(), "EXECUTE runs the finisher")
@@ -960,6 +962,53 @@ func _test_deal() -> void:
 	holder.queue_free()
 	await get_tree().process_frame
 
+## Brief 3: the Noir Props HUD — every element in its new form, the style,
+## scale, opacity and reduce-motion settings, props that only redraw on change.
+func _test_noir_hud() -> void:
+	var hud = floor_scene.hud
+	check(hud.ticker.paper and hud.chips is HudProps.ChipStack and hud.money is HudProps.MoneyClip and hud.weapon_panel is HudProps.WeaponRack, "vitals and the gun are props on the table")
+	check(hud.objective_note is HudPaper.ObjectiveNote and hud.minimap is HudPaper.BlueprintMap and hud.stock is HudPaper.TickerMachine and hud.trader_feed.telegram, "notepad, blueprint, ticker machine and telegrams")
+	check(hud.heat is HudPulp.HeatBar and hud.combo_panel is HudPulp.ComboSlab and hud.multi_banner is HudPulp.Banner and hud._combo_popup is HudPulp.Caption and hud.matchbooks is HudProps.Matchbooks, "pulp heat bar, combo slab, banners and matchbooks")
+	check(hud.root.mouse_filter == Control.MOUSE_FILTER_IGNORE and not get_tree().paused, "one mouse-transparent root; the HUD never pauses")
+	# Settings: scale about each corner, opacity on the whole HUD, Minimal.
+	var saved := Settings.values.duplicate()
+	Settings.values["hud_scale"] = 1.25
+	Settings.values["hud_opacity"] = 0.6
+	Settings.changed.emit()
+	var corner: Control = hud._clusters["bottom_left"][0]
+	check(is_equal_approx(corner.scale.x, 1.25) and is_equal_approx(hud.root.modulate.a, 0.6), "HUD scale and HUD opacity apply")
+	check(is_equal_approx(corner.position.y + corner.pivot_offset.y, hud.root.size.y - 8.0), "a scaled cluster stays pinned to its corner")
+	Settings.values["hud_style"] = Settings.HUD_MINIMAL
+	check(HudKit.minimal(), "Minimal style switches the props off")
+	Settings.values["reduce_motion"] = true
+	hud.money.set_gold(RunEconomy.gold + 500)
+	check(is_equal_approx(hud.money.shown, float(hud.money.target)), "Reduce motion: cash updates at once, no roll")
+	for key in ["hud_scale", "hud_opacity", "hud_style", "reduce_motion"]:
+		Settings.values[key] = saved[key]
+	Settings.changed.emit()
+	# Props redraw only while they animate.
+	hud.chips.set_health(2, 3)
+	check(hud.chips.is_processing() and hud.chips._lost > 0.0, "losing a heart flips a chip off the stack")
+	for i in 50:
+		await get_tree().process_frame
+	check(not hud.chips.is_processing() and not hud.objective_note.is_processing(), "static props stop redrawing once the animation ends")
+	hud.chips.set_health(floor_scene.player.health, floor_scene.player.max_health)
+	# The objective: a new note strikes the old one through.
+	hud.set_objective("TEST", "One line.")
+	hud.set_objective("TEST", "Another line entirely.")
+	check(hud.objective_note._slide > 0.0 or HudKit.reduce_motion(), "a new objective slides in over the old one")
+	hud.set_objective("TEST", "Lockdown in 0:41")
+	hud.set_objective("TEST", "Lockdown in 0:40")
+	check(hud.objective_note.body == "Lockdown in 0:40", "a ticking clock updates in place")
+	# World prompts read the key off the device.
+	var prompt := WorldPrompt.new()
+	prompt.text = "ALARM PANEL\nHOLD USE / E  —  CUT THE LINE"
+	var parts: Array = prompt.parts()
+	check(parts[0] == ["ALARM PANEL"] and parts[1] != "" and parts[2] == "HOLD · CUT THE LINE", "a prompt becomes a key cap and a skewed label")
+	prompt.free()
+	var keys := get_tree().root.find_children("*", "TypewriterKey", true, false)
+	check(keys.size() >= 2 and keys.all(func(k): return k.get_meta("qa_label", "") in ["MAP", "PAUSE"]), "MAP and PAUSE are typewriter keys")
+
 ## Verdict state back to a clean run for the tests that follow.
 func _reset_verdicts() -> void:
 	RunState.verdicts.clear()
@@ -1134,7 +1183,7 @@ func _test_kill_feedback() -> void:
 	check(first != null and first.kill_class == KillInfo.OVERKILL and first.by_player, "a player kill is classified on death")
 	check(first.corpse != null and first.corpse.velocity.x > 60.0, "the body slides along the shot")
 	check(floor_scene.kills.chain >= 2 and victims[1].kill_info.multi >= 2, "two kills from one shot chain into a MULTI")
-	check(floor_scene.hud.multi_banner.modulate.a > 0.5 and floor_scene.hud.multi_banner._label.text == "DOUBLE", "the DOUBLE banner shows")
+	check(floor_scene.hud.multi_banner._life > 0.0 and floor_scene.hud.multi_banner.title == "DOUBLE", "the DOUBLE banner shows")
 	check(TimeController.has(&"hit_stop"), "a kill asks TimeController for hit-stop")
 	check(floor_scene.crosshair._mark.marker_kill, "the crosshair marker turns into the kill X")
 	await get_tree().create_timer(1.2).timeout
@@ -1357,7 +1406,7 @@ func _test_combo() -> void:
 	# Tiers and multipliers.
 	combo.add_points(4)
 	check(combo.live and combo.tier == 0 and combo.tier_name() == "TICK", "the first kill starts a combo at TICK")
-	check(floor_scene.hud.combo_panel.visible, "the combo panel shows while a combo is live")
+	check(floor_scene.hud.combo_panel._shown, "the combo panel shows while a combo is live")
 	combo.add_points(1)
 	check(combo.tier == 1 and combo.tier_name() == "RALLY" and is_equal_approx(combo.multiplier(), 1.2), "5 points: RALLY x1.2")
 	check(is_equal_approx(combo.market_multiplier(), 1.2), "the market rallies with the combo")
@@ -1398,14 +1447,14 @@ func _test_combo() -> void:
 	combo.window_left = 0.01
 	await get_tree().create_timer(0.1).timeout
 	check(not combo.live and RunEconomy.gold >= gold + expect and combo.cashed_gold == cashed_before + expect, "letting the window run out cashes the combo out")
-	check(floor_scene.hud._combo_popup.text.begins_with("COMBO CASHED"), "the cash-out popup names the take")
+	check(floor_scene.hud._combo_popup.line.begins_with("COMBO CASHED"), "the cash-out popup names the take")
 	# Panic sell.
 	combo.add_points(20)
 	var pending := combo.pending_gold()
 	gold = RunEconomy.gold
 	floor_scene.on_player_hurt()
 	check(not combo.live and RunEconomy.gold - gold <= int(round(pending * 0.25)) + 1, "taking damage is a PANIC SELL: 75% lost")
-	check(floor_scene.hud._combo_popup.text.begins_with("PANIC SELL"), "the panic-sell slam shows")
+	check(floor_scene.hud._combo_popup.line.begins_with("PANIC SELL"), "the panic-sell slam shows")
 	# Relics and character hooks.
 	RunState.add_relic(&"dead_cat_bounce")
 	combo.dead_cat_used = false

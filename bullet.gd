@@ -145,7 +145,7 @@ func _try_hit(target: Node) -> void:
 	var dmg := _damage_against(target)
 	var host := get_tree().current_scene
 	if host is HeistFloor:
-		host.fx.damage_number(global_position, dmg, Palette.GOLD_PALE if dmg >= 3 else Palette.PAPER)
+		host.fx.damage_number(global_position, dmg, Palette.GOLD_PALE if dmg >= 3 else Palette.PAPER, crit_shot)
 		if target.is_in_group("enemies") or target.is_in_group("civilians"):
 			host.gore.on_hit(global_position, _dir, dmg, false, target)
 			Audio.play("impact_body", global_position)

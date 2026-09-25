@@ -97,6 +97,23 @@ const OPTION_NAMES := {
 static func option_name(v: StringName) -> String:
 	return OPTION_NAMES.get(v, String(v).to_upper())
 
+## The VERDICT card's stamp ink per option.
+static func stamp_color(v: StringName) -> Color:
+	match v:
+		EXECUTE, SEAT:
+			return Palette.STAMP_RED
+		FLIP:
+			return Palette.STAMP_GREEN
+		SHAKE, BURN:
+			return Palette.GOLD.darkened(0.2)
+	return Color("2f5d9e")
+
+## The option's title on its stamp ("TAKE HER DEAL" for the Ambassador).
+static func card_title(v: StringName, id: StringName) -> String:
+	if v == DEAL and id == &"ambassador":
+		return "TAKE HER DEAL"
+	return option_name(v)
+
 static func his(id: StringName) -> String:
 	return "her" if id == &"ambassador" else "his"
 

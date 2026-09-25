@@ -5,7 +5,7 @@ extends CanvasLayer
 ## job, start any boss job, set the run's verdicts, spawn any guard next to
 ## you, play any of the eleven endings or a BUSTED front page. In a heist:
 ## combo points and tiers, WANTED stars, a gore dummy, an explosive prop, and
-## force the boss to his knees (then open his VERDICT card).
+## force the boss to his knees (then open his VERDICT card), and HUD SHOTS.
 ## Debug endings and boss jobs run as practice, so they never touch the career.
 ## Pauses the tree while open (and restores it on close).
 
@@ -120,6 +120,7 @@ func _build() -> void:
 			["FRENZY", _combo_tier.bind(4)], ["BLACK SWAN", _combo_tier.bind(5)], ["PANIC SELL", _combo_panic]])
 		_row("WANTED", [["0", _stars.bind(0)], ["1", _stars.bind(1)], ["2", _stars.bind(2)], ["3", _stars.bind(3)], ["4", _stars.bind(4)], ["5", _stars.bind(5)]])
 		_row("GORE", [["GORE DUMMY", _gore_dummy], ["EXPLOSIVE PROP", _explosive_prop]])
+		_row("HUD", [["HUD SHOTS", _hud_shots]])
 	_body.add_child(_button("CLOSE", close))
 
 func _row(title: String, entries: Array) -> void:
@@ -322,6 +323,18 @@ func _gore_dummy() -> void:
 		dummy.stand_down()
 		dummy.overhead.tag = "GORE DUMMY"
 	close()
+
+## Capture the HUD in a lit room, a dark room, the rain, at 1 HP, in a
+## FRENZY and in a boss fight, to user://hud_shots/ (hud_shots.gd).
+func _hud_shots() -> Node:
+	var floor_scene := _floor()
+	if floor_scene == null:
+		return null
+	close()
+	var shots := HudShots.new()
+	shots.floor_host = floor_scene
+	floor_scene.add_child(shots)
+	return shots
 
 func _explosive_prop() -> void:
 	var floor_scene := _floor()

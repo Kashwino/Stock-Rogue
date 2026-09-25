@@ -16,7 +16,7 @@ var scan_angle := 0.0
 var detected := 0.0
 var clock := 0.0
 var transmit_clock := 0.0
-var caption: Label
+var caption: WorldPrompt
 var hold := 0.0
 const RANGE := 450.0
 const HOLD_TIME := 1.5
@@ -33,12 +33,9 @@ func _ready() -> void:
 	box.size = Vector2(42, 32)
 	shape.shape = box
 	add_child(shape)
-	caption = Label.new()
-	caption.position = Vector2(-130, -65)
-	caption.size = Vector2(260, 60)
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	caption.add_theme_font_size_override("font_size", 17)
-	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	caption = WorldPrompt.new()
+	caption.position = Vector2(0, -58)
+	caption.color = Palette.SODIUM
 	add_child(caption)
 	_update_caption()
 	caption.hide()

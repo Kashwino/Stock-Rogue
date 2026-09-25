@@ -13,19 +13,15 @@ class ChargePoint extends Node2D:
 	var done := false
 	var hold := 0.0
 	var _t := 0.0
-	var _label: Label
+	var _label: WorldPrompt
 
 	func _ready() -> void:
 		z_index = 20
 		material = StreetArt._unshaded()
-		_label = Label.new()
+		_label = WorldPrompt.new()
 		_label.text = "PLANT CHARGE\nHOLD USE / E"
-		_label.position = Vector2(-90, -78)
-		_label.size = Vector2(180, 44)
-		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_label.add_theme_font_size_override("font_size", 15)
-		_label.add_theme_color_override("font_color", Palette.GOLD_PALE)
-		_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_label.color = Palette.GOLD_PALE
+		_label.position = Vector2(0, -56)
 		_label.hide()
 		add_child(_label)
 
@@ -72,19 +68,15 @@ class PackageCase extends Node2D:
 	var floor_host: HeistFloor
 	var carried := false
 	var _t := 0.0
-	var _label: Label
+	var _label: WorldPrompt
 
 	func _ready() -> void:
 		z_index = 20
 		material = StreetArt._unshaded()
-		_label = Label.new()
+		_label = WorldPrompt.new()
 		_label.text = "THE PACKAGE\nUSE / E TO TAKE"
-		_label.position = Vector2(-90, -76)
-		_label.size = Vector2(180, 44)
-		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_label.add_theme_font_size_override("font_size", 15)
-		_label.add_theme_color_override("font_color", Palette.GOLD_PALE)
-		_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_label.color = Palette.GOLD_PALE
+		_label.position = Vector2(0, -54)
 		_label.hide()
 		add_child(_label)
 

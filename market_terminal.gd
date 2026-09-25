@@ -2,7 +2,7 @@ extends Node2D
 class_name MarketTerminal
 var used := false
 var opened := false
-var prompt: Label
+var prompt: WorldPrompt
 var ui: CanvasLayer
 var _target: OptionButton
 var _status: Label
@@ -17,15 +17,10 @@ func _ready() -> void:
 	_ring.color = Palette.NEON_CYAN
 	_ring.radius = 46.0
 	add_child(_ring)
-	prompt = Label.new()
+	prompt = WorldPrompt.new()
 	prompt.text = "MARKET TERMINAL\nUSE / E"
-	prompt.add_theme_font_override("font", VisualTheme.font("heading"))
-	prompt.add_theme_stylebox_override("normal", VisualTheme.box(Color(0, 0, 0, 0.75), Palette.NEON_CYAN, 1, 3, 6))
-	prompt.material = StreetArt._unshaded()
-	prompt.position = Vector2(-120, -70)
-	prompt.size = Vector2(240, 60)
-	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prompt.color = Palette.NEON_CYAN
+	prompt.position = Vector2(0, -62)
 	add_child(prompt)
 
 func _process(_delta: float) -> void:

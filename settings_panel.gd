@@ -5,7 +5,8 @@ class_name SettingsPanel
 ##   DISPLAY  low effects, post-processing, shadows, fullscreen, frame rate,
 ##            touch controls
 ##   EFFECTS  screen shake, reduce flashing, damage numbers, tips, gore, blood
-##   HUD      combo panel size
+##   HUD      style (Noir Props / Minimal), scale, opacity, reduce motion,
+##            combo panel size
 ## Every change applies immediately and persists (Settings autoload).
 signal closed
 var status: Label
@@ -117,7 +118,11 @@ func _build_effects(cols: Array) -> void:
 	_choice(cols[1], ["Blood: red", "Blood: noir (ink with a red rim)"], "blood_style")
 
 func _build_hud(cols: Array) -> void:
-	_slider(cols[0], "Combo panel size", "combo_hud_scale", 0.75, 1.5)
+	_choice(cols[0], ["HUD: Noir Props", "HUD: Minimal (outlined text only)"], "hud_style")
+	_slider(cols[0], "HUD scale", "hud_scale", 0.75, 1.5)
+	_slider(cols[0], "HUD opacity", "hud_opacity", 0.5, 1.0)
+	_toggle(cols[1], "Reduce motion", "reduce_motion")
+	_slider(cols[1], "Combo panel size", "combo_hud_scale", 0.75, 1.5)
 
 func show_page(tab: String) -> void:
 	current = tab

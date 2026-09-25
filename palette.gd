@@ -43,6 +43,17 @@ const PLAYER_BULLET := Color("fff2c2")
 const ENEMY_BULLET := Color("ff6a2a")
 const LOOT_GLOW := Color("ffd76a")
 
+# The Noir Props HUD (Brief 3): paper, ink, pencil, blueprint, chips, brass.
+const PAPER_CREAM := Color("e6dcc3")
+const PAPER_EDGE := Color("c9b991")
+const HUD_INK := Color("15151a")
+const RED_PENCIL := Color("b8322c")
+const BLUEPRINT := Color("1e3a5f")
+const BLUEPRINT_LINE := Color("9ec3e6")
+const CHIP_RED := Color("a8322d")
+const CHIP_GOLD := Color("e8b842")
+const BRASS := Color("b08d57")
+
 static func with_alpha(c: Color, a: float) -> Color:
 	return Color(c.r, c.g, c.b, a)
 

@@ -1,9 +1,9 @@
 extends CanvasLayer
 class_name BloodVignette
-## Screen-edge blood that deepens with missing health and throbs with the
-## heartbeat at 1 HP (the post-process's red pulse still runs underneath).
-## Follows the blood style (red / noir); hidden with Gore off. Sits under
-## the HUD, over the world.
+## Low health as an ink bleed creeping in from the screen edges, deepening
+## with missing health and throbbing with the heartbeat at 1 HP (the
+## post-process's red pulse still runs underneath). Red with the Red blood
+## style, pure ink with Noir or Gore off. Sits under the HUD, over the world.
 
 var _rect: ColorRect
 var _mat: ShaderMaterial
@@ -28,11 +28,13 @@ func _ready() -> void:
 	_apply_style()
 	Settings.changed.connect(_apply_style)
 
+## Brief 3: an ink bleed. Red blood style tints the ink red; Noir (and Gore
+## off: it's ink, not blood) is pure ink.
 func _apply_style() -> void:
-	var noir := int(Settings.values.get("blood_style", 0)) == 1
-	_mat.set_shader_parameter("core", Color(0.04, 0.03, 0.035) if noir else Color(0.42, 0.02, 0.04))
-	_mat.set_shader_parameter("rim", Color(0.6, 0.03, 0.06) if noir else Color(0.22, 0.0, 0.02))
-	visible = int(Settings.values.get("gore", 2)) != Settings.GORE_OFF
+	var ink := int(Settings.values.get("blood_style", 0)) == 1 or int(Settings.values.get("gore", 2)) == Settings.GORE_OFF
+	_mat.set_shader_parameter("core", Color(0.035, 0.035, 0.045) if ink else Color(0.3, 0.02, 0.04))
+	_mat.set_shader_parameter("rim", Color(0.09, 0.09, 0.11) if ink else Color(0.12, 0.0, 0.02))
+	visible = true
 
 func set_health(current: int, maximum: int) -> void:
 	_target = 0.0 if maximum <= 0 else clampf(1.0 - float(current) / float(maximum), 0.0, 1.0)

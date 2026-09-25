@@ -16,6 +16,10 @@ const FONT_DIR := "res://assets/fonts/"
 
 static var _fonts: Dictionary = {}
 
+## Drop the HUD's baked textures before the renderer shuts down.
+func _exit_tree() -> void:
+	HudKit.release_cache()
+
 func _ready() -> void:
 	var theme := ThemeDB.get_project_theme()
 	if theme == null:
@@ -37,6 +41,7 @@ static func font(role: String) -> Font:
 		"mono": f = _file("IBMPlexMono-Medium.ttf", ["IBM Plex Mono", "DejaVu Sans Mono", "Courier New", "monospace"])
 		"type": f = _file("CourierPrime-Regular.ttf", ["Courier Prime", "Courier New", "monospace"])
 		"type_bold": f = _file("CourierPrime-Bold.ttf", ["Courier Prime", "Courier New", "monospace"])
+		"pulp": f = _pulp()
 		_: f = ThemeDB.fallback_font
 	_fonts[role] = f
 	return f
@@ -50,6 +55,15 @@ static func _file(file: String, fallback: Array) -> Font:
 	var sys := SystemFont.new()
 	sys.font_names = PackedStringArray(fallback)
 	return sys
+
+## Heavy condensed italic for the HUD's pulp elements: Oswald at full weight,
+## slanted (the fonts ship no italic, so the glyphs are sheared).
+static func _pulp() -> Font:
+	var fv := FontVariation.new()
+	fv.base_font = font("heading_bold")
+	fv.variation_transform = Transform2D(Vector2(1, 0), Vector2(0.22, 1), Vector2.ZERO)
+	fv.variation_embolden = 0.25
+	return fv
 
 static func _variable(file: String, weight: int, fallback: Array) -> Font:
 	var base := _file(file, fallback)

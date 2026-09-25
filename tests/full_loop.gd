@@ -114,6 +114,7 @@ class Runner extends Node:
 		floor_scene.open_verdict(chairman)
 		var card: VerdictCard = floor_scene._verdict_card
 		check(card != null and card._options == Verdicts.CHAIRMAN_OPTIONS and get_tree().paused, "the last VERDICT: seat, burn or walk")
+		card.slam_time = 0.0
 		card.choose(Verdicts.SEAT)
 		check(RunState.chairman_verdict == "seat" and not get_tree().paused, "TAKE THE SEAT")
 		await get_tree().create_timer(5.0).timeout

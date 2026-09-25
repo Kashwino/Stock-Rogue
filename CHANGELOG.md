@@ -716,6 +716,61 @@
   combo break vs cash-out, stars 0 → 5 and the music, verdicts, the finale,
   routes to every ending, CASE CLOSED).
 
+## Brief 3 — Noir Props HUD
+
+The in-heist HUD and its overlays in a new visual language: props on the heist
+table for vitals and information, pulp slants for action, and the ticker tape
+as the one straight strip across the top. No information was removed
+(`PROGRESS_3.md` maps every element to its new form).
+
+- **Props** (`hud_props.gd`): health as a poker-chip stack (gold chips for
+  bonus max HP; a hit flips the top chip off with a clack, a heal drops one
+  on, the last chip wobbles and glows at 1 HP); cash on a banknote in a brass
+  money clip (three stack tiers, bills riffle and the number rolls up on a
+  gain, a bill slides out on a spend) with the loot multiplier on a swinging
+  luggage tag; the gun as a silhouette with its rounds as real cartridges (a
+  revolver's cylinder, a shotgun's shells), a cartridge box for the reserve
+  or a stamped infinity, rounds ejecting on each shot, refilling one by one on
+  a reload, a card-flip on a swap; relics as matchbooks fanned along the
+  bottom with hover tooltips.
+- **Paper and machines** (`hud_paper.gd`, `typewriter_key.gd`): the objective
+  on a torn, paperclipped notepad page (red-pencil strike-through and a fresh
+  note sliding in; Smash & Grab clocks in red, ticking in place); the minimap
+  on a folded blueprint with a pushpin and a torn corner; the venue's chart on
+  ticker tape curling out of a glass-dome ticker machine (stamped name,
+  red-pencil quota with the gap scribbled on, gold-ink index); the trader feed
+  as pasted telegram strips; MAP and PAUSE as round typewriter keys; tips as
+  torn manila notes; the ticker as a perforated paper strip.
+- **Pulp** (`hud_pulp.gd`): a slanted, hatched heat bar with police notches,
+  a green EXIT sign and five police badges that flash on a new star; THE
+  RALLY as an italic count on a skewed slab with a halftone burst, a slanted
+  tier banner and a draining skewed bar (speed-line slam on a tier-up, torn
+  apart by a PANIC SELL); DOUBLE / TRIPLE / MASSACRE on skewed banners (an
+  impact star for MASSACRE); captions on a slant; damage numbers in pulp
+  italics (crits get an impact star); market chips as fluttering ticker slips;
+  the boss bar as a long skewed bar with a slanted title card that cracks and
+  shatters when the boss kneels; the VERDICT card as his case file with four
+  rubber stamps, the chosen one slamming onto the file.
+- **World prompts** (`world_prompt.gd`): terminal, alarm panel, camera,
+  charge, package and reward-case prompts, guard takedown / execute prompts
+  and the boss's verdict prompt as a typewriter key cap with a skewed label;
+  guard tags on small skewed slabs.
+- **Screen effects**: low health is an ink bleed creeping in from the edges
+  (red with the Red blood style, pure ink with Noir); the crosshair's reload
+  ring is a spinning revolver cylinder.
+- **Settings** (HUD tab): HUD style (Noir Props / Minimal — frameless,
+  outlined text and icons), HUD scale (75-150%, each corner cluster scales
+  about its corner), HUD opacity (50-100%), Reduce motion (no idle wobble,
+  riffles, flutters or slides; values update at once). Reduce flashing also
+  holds the badges, the police-light bar and every slam steady.
+- **Tooling**: `tools/hud_preview.tscn` cycles every element through every
+  state; F1 → HUD SHOTS saves the HUD in a lit room, a dark room, outside in
+  the rain, at 1 HP, in a FRENZY and in a boss fight to `user://hud_shots/`
+  (also `tools/screenshot.tscn -- shot=heist hudshots=1`).
+- **Performance**: props redraw only when their value changes or while an
+  animation runs; halftone and paper grain are baked textures; the perf bench
+  still costs ~9.8 ms of CPU per 60 fps frame with 50 guards and Full gore.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -912,3 +967,23 @@
   settings); the browser suite now taps DISPLAY before Low effects.
 - **(Brief 2) The frame budget is measured on the CPU** (headless, no GPU),
   as in Brief 1: the massacre bench's p99 is the number that matters.
+- **(Brief 3) Modal menus keep their menu styling**: the pause menu, the
+  reward-case reveal, the lobby terminal and the tactical map are full-screen
+  menus rather than HUD; only their triggers (the MAP / PAUSE keys and the
+  world prompts) took the new form.
+- **(Brief 3) Layout on other aspect ratios**: the project letterboxes
+  (`stretch/aspect = keep`), so the 1280x720 canvas always holds; the HUD
+  still anchors every cluster to its screen corner from the root's size, so
+  it would also hold with an expanding canvas.
+- **(Brief 3) Touch layout**: with touch controls on screen the thumbs own
+  the bottom corners, so the vitals sit under the objective, the gun at the
+  bottom centre, the combo on the left, and the trader telegrams step aside
+  for the MELEE button (the chatter is flavour, not information).
+- **(Brief 3) Chip count**: the stack also carries a typed "xN" — counting
+  poker chips at a glance mid-fight is harder than it looks.
+- **(Brief 3) The ink bleed shows with Gore off too** (as pure ink): it is a
+  health warning, not blood.
+- **(Brief 3) Inner classes never name their own script's class**: an inner
+  class calling `OwnScript.helper()` made the script hold itself and leak at
+  exit, so shared helpers live in `HudKit` / `Verdicts`, and MAP/PAUSE's key
+  is its own script (an inner-class node in an autoload leaked the same way).

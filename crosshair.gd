@@ -72,8 +72,19 @@ class Mark extends Control:
 			draw_line(a, b, col, 2.0)
 		draw_circle(Vector2.ZERO, 1.8, col)
 		if reload > 0.0:
-			draw_arc(Vector2.ZERO, gap + 14.0, -PI * 0.5, -PI * 0.5 + TAU * reload, 32, Palette.GOLD, 3.0, true)
-			draw_arc(Vector2.ZERO, gap + 14.0, 0, TAU, 32, Color(1, 1, 1, 0.15), 1.0, true)
+			# Brief 3: a revolver cylinder spinning while you reload; its
+			# chambers fill as the reload runs.
+			var r := gap + 16.0
+			var spin := reload * TAU * (0.0 if HudKit.reduce_motion() else 1.5)
+			draw_arc(Vector2.ZERO, r, 0, TAU, 32, Color(0, 0, 0, 0.55), 4.0, true)
+			draw_arc(Vector2.ZERO, r, 0, TAU, 32, Palette.with_alpha(Palette.GOLD_PALE, 0.55), 1.6, true)
+			for i in 6:
+				var c := Vector2.from_angle(spin + TAU * i / 6.0 - PI * 0.5) * r
+				var loaded := float(i) < reload * 6.0
+				draw_circle(c, 4.2, Color(0, 0, 0, 0.6))
+				if loaded:
+					draw_circle(c, 3.2, Palette.BRASS.lightened(0.2))
+				draw_arc(c, 3.6, 0, TAU, 10, Palette.GOLD_PALE, 1.2, true)
 		var left := marker_until - Time.get_ticks_msec()
 		if left > 0:
 			var r := (gap + 5.0) * (1.25 if marker_kill else 1.0)

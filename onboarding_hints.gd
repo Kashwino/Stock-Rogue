@@ -138,15 +138,22 @@ func _show(id: String) -> void:
 	_card = Card.new()
 	_card.title = words[0]
 	_card.body = words[1]
-	_card.position = Vector2(360, 88)
+	# Under the heat bar, or under the boss bar while one is up.
+	var low := _boss_bar_up()
+	_card.position = Vector2(360, 214 + (70 if low else 0))
 	var text_h := VisualTheme.font("body").get_multiline_string_size(words[1], HORIZONTAL_ALIGNMENT_LEFT, 528, 17).y
 	_card.size = Vector2(560, 44 + text_h)
 	_card.modulate.a = 0.0
 	_root.add_child(_card)
 	var tw := _card.create_tween()
 	tw.tween_property(_card, "modulate:a", 1.0, 0.25)
-	tw.parallel().tween_property(_card, "position:y", 96.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_card, "position:y", 222.0 + (70.0 if low else 0.0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	Audio.play_ui("paper")
+
+func _boss_bar_up() -> bool:
+	var scene := get_tree().current_scene
+	var hud = scene.get("hud") if scene else null
+	return hud != null and hud.get("boss_bar") != null and hud.boss_bar.visible
 
 func _hide_card() -> void:
 	_showing = ""
@@ -158,7 +165,8 @@ func _hide_card() -> void:
 	_card = null
 
 
-## A slim manila strip: kicker title, one sentence.
+## A torn manila note under the heat bar (the Noir Props HUD): kicker
+## title, one sentence, a red pencil margin.
 class Card extends Control:
 	var title := ""
 	var body := ""
@@ -177,7 +185,8 @@ class Card extends Control:
 		line.set_deferred("size", Vector2(size.x - 32, 0))
 
 	func _draw() -> void:
-		draw_rect(Rect2(Vector2(4, 5), size), Color(0, 0, 0, 0.45))
-		draw_rect(Rect2(Vector2.ZERO, size), Palette.MANILA)
-		draw_rect(Rect2(Vector2.ZERO, Vector2(6, size.y)), Palette.STAMP_RED)
-		draw_rect(Rect2(Vector2.ZERO, size), Palette.MANILA_DARK, false, 1.5)
+		if HudKit.minimal():
+			draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.03, 0.72))
+			return
+		HudKit.draw_paper(self, Rect2(Vector2.ZERO, size), 61, 15, 0.0, Palette.MANILA, Palette.MANILA_DARK)
+		draw_line(Vector2(8, 6), Vector2(8, size.y - 6), Palette.RED_PENCIL, 2.0)

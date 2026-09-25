@@ -22,6 +22,20 @@ func _run() -> void:
 		Settings.values["gore"] = int(args["gore"])
 	if args.has("blood"):
 		Settings.values["blood_style"] = int(args["blood"])
+	if args.has("set"):
+		# set=hud_style:1,hud_scale:1.25,reduce_motion:true (session only)
+		for pair in String(args["set"]).split(","):
+			var key := pair.get_slice(":", 0)
+			var raw := pair.get_slice(":", 1)
+			var value: Variant = raw
+			if raw == "true" or raw == "false":
+				value = raw == "true"
+			elif raw.is_valid_int():
+				value = int(raw)
+			elif raw.is_valid_float():
+				value = float(raw)
+			Settings.values[key] = value
+		Settings.changed.emit()
 	var scene := await _setup(shot)
 	for i in frames:
 		await get_tree().process_frame
@@ -85,11 +99,12 @@ func _run() -> void:
 			v.take_damage(v.health + int(args.get("excess", "3")))
 		for i in int(args.get("after", "12")):
 			await get_tree().process_frame
-		if args.has("hp"):
-			scene.player.health = int(args["hp"])
-			scene.player.health_changed.emit(scene.player.health, scene.player.max_health)
-			for i in 20:
-				await get_tree().process_frame
+
+	if args.has("hp") and scene is HeistFloor:
+		scene.player.health = int(args["hp"])
+		scene.player.health_changed.emit(scene.player.health, scene.player.max_health)
+		for i in 20:
+			await get_tree().process_frame
 	if args.has("melee") and scene is HeistFloor:
 		# A guard to knife from behind, and a staggered one.
 		var src: Enemy = null
@@ -116,6 +131,32 @@ func _run() -> void:
 		scene.add_heat(float(args["heat"]), "Test")
 		for i in 30:
 			await get_tree().process_frame
+	if args.has("combo") and scene is HeistFloor:
+		# combo=4: a live combo at that tier (FRENZY), with a few bonuses.
+		var t := int(args["combo"])
+		scene.combo.add_points(maxi(1, scene.combo.threshold(t)))
+		scene.combo._log("+2 TAKEDOWN")
+		scene.combo._log("+1 OVERKILL")
+		scene.combo._log("+1 CRIT")
+		scene.combo.window = 999.0
+		scene.combo.window_left = 600.0
+		for i in 12:
+			await get_tree().process_frame
+	if args.has("banner") and scene is HeistFloor:
+		scene.hud.multi_banner.show_count(int(args["banner"]))
+		for i in 4:
+			await get_tree().process_frame
+	if args.has("caption") and scene is HeistFloor:
+		scene.hud.combo_popup("COMBO CASHED — 27 pts · BULL RUN · +$84 · +0.8%", Combo.TIER_COLORS[2], false)
+		for i in 4:
+			await get_tree().process_frame
+	if args.has("hudshots") and scene is HeistFloor:
+		var shots = get_node("/root/Debug")._hud_shots()
+		if shots:
+			var paths: Array = await shots.finished
+			print("HUD SHOTS: ", paths)
+		get_tree().quit(0)
+		return
 	if args.has("hint"):
 		Meta.hints_seen.clear()
 		var hints := get_tree().root.find_children("*", "OnboardingHints", true, false)
@@ -140,6 +181,12 @@ func _run() -> void:
 		for i in 20:
 			await get_tree().process_frame
 	var image := get_viewport().get_texture().get_image()
+	if args.has("crop"):
+		# crop=x,y,w,h (and zoom=2): a close look at part of the screen.
+		var c := String(args["crop"]).split(",")
+		image = image.get_region(Rect2i(int(c[0]), int(c[1]), int(c[2]), int(c[3])))
+		var z := float(args.get("zoom", "2"))
+		image.resize(int(image.get_width() * z), int(image.get_height() * z), Image.INTERPOLATE_NEAREST)
 	image.save_png(out)
 	print("SHOT SAVED ", out, " ", image.get_size())
 	get_tree().quit(0)

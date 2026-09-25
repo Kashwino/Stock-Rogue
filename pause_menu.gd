@@ -24,12 +24,12 @@ func _ready() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
-	var pause := Button.new()
-	pause.text = "PAUSE"
-	pause.add_theme_font_size_override("font_size", 20)
-	pause.position = Vector2(1148, 38)
-	pause.size = Vector2(118, 58)
-	pause.focus_mode = Control.FOCUS_NONE
+	# A round typewriter key in a brass ring (Brief 3), top-right.
+	var pause := TypewriterKey.new()
+	pause.icon_name = "pause"
+	pause.caption = "PAUSE"
+	pause.position = Vector2(1280 - 16 - 66, 30)
+	pause.size = Vector2(66, 72)
 	pause.pressed.connect(open_pause)
 	root.add_child(pause)
 	_pause_button = pause
@@ -168,9 +168,9 @@ func _build_job_card() -> void:
 		var floor_scene := scene as HeistFloor
 		# Same words as the HUD's objective panel (boss jobs read TAKE HIM DOWN).
 		var hud = floor_scene.hud
-		if hud and hud.get("objective_title") and hud.get("objective_body"):
-			lines.append("OBJECTIVE  %s" % String(hud.objective_title.text).to_upper())
-			lines.append(String(hud.objective_body.text).replace("\n", " "))
+		if hud and hud.get("objective_note"):
+			lines.append("OBJECTIVE  %s" % String(hud.objective_note.title).to_upper())
+			lines.append(String(hud.objective_note.body).replace("\n", " "))
 		else:
 			lines.append("OBJECTIVE  %s" % Objectives.title(floor_scene.objective).to_upper())
 			lines.append(Objectives.brief(floor_scene.objective))

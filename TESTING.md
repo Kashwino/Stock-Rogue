@@ -13,6 +13,8 @@ Run these from the project folder (Godot 4.6.1 on the `PATH` as `godot`).
 | `godot --headless --path . res://tools/loot_census.tscn` | Rebuilds `tools/loot_census.json` (money in real buildings per stage). Rerun after changing rooms, props or loot. |
 | `godot --headless --path . res://tools/perf_bench.tscn` | 50 guards hunting the player in a World heist while he fires: CPU cost of a 60 fps frame (about 10 ms of the 16.7 ms budget on the CI machine) and physics keeping real time. Add `-- variant=massacre` for Full gore: five violent kills every 20 frames (sprays, gibs, pools, bodies) with the crowd kept at 50; it reports the frame p99 and the corpse / gib caps. |
 | Web: `rm -rf build/web && mkdir -p build/web && godot --headless --path . --export-release Web build/web/index.html && python3 web/prepare_web.py && node tests/browser.mjs` | The exported Web build on a phone-sized touch screen: settings, Connections purchases, a practice heist with two-finger touch, the lobby terminal, pause, a new case file with the prologue and stage card, the hideout, a heist choice, resume after reload. |
+| `godot --path . res://tools/hud_preview.tscn` | Every HUD element in every state (chips gaining and losing, reloads, combo tiers, all popups, the boss bar and its shatter, verdict stamps, 0-5 badges), cycling once a second. Add `-- out=<png> frames=N` to save a frame. |
+| `godot --path . --rendering-driver opengl3 res://tools/screenshot.tscn -- shot=heist hudshots=1` | Saves the HUD in a lit room, a dark room, the rain, at 1 HP, in a FRENZY and in a boss fight to `user://hud_shots/` (the same as F1 → HUD SHOTS). |
 | `godot --path . --rendering-driver opengl3 res://tools/screenshot.tscn -- shot=<preset> out=<png>` | Renders any screen (see `tools/screenshot.gd` for presets and options such as `pause=1`, `debug=1`, `hint=<id>`, `terminal=1`, `shot=ending id=<ending> part=title`, `shot=heist boss=landlord teleport=boss then=debug_kill_boss card=1`, `heat=34`, `kills=3`, `gore=0/1/2`, `blood=0/1`, `shot=death cause=police`, `shot=home then=_on_gallery`, `tab=EFFECTS`). |
 
 ## Manual route (10–15 minutes)
@@ -137,3 +139,32 @@ Run from the editor or a debug export (F1 = debug menu).
 11. **CASE CLOSED.** Home → CASE CLOSED: reached endings show their image and
     count, the rest are silhouettes with hints; the first time you reach an
     ending the job report's Clout line shows the bonus.
+
+## HUD checklist (Brief 3: Noir Props)
+
+1. **No frames.** In a heist, nothing on the HUD is a closed rectangle: paper
+   with torn edges, chips, cartridges, banknotes, skewed slabs, circles, and the
+   straight ticker strip across the top.
+2. **Readable everywhere.** F1 → HUD SHOTS, then look at `user://hud_shots/`:
+   every number and word readable in the lit room, the dark room, the rain, at
+   1 HP, in a FRENZY and in a boss fight; the centre of the screen clear.
+3. **Props react.** Take a hit (a chip flips off), heal (one drops on), pick
+   up cash (bills riffle, the number rolls), spend at the hideout (a bill
+   slides out), move the loot multiplier (the tag swings), fire (rounds eject),
+   reload (they slide back in), swap (the gun flips like a card), gain a relic
+   (a matchbook drops in; hover it for its name).
+4. **Paper and machines.** The objective strikes through in red pencil and a
+   new note slides over it; a Smash & Grab clock ticks in red; the blueprint
+   fills in as rooms are found; the ticker machine's tape moves with the
+   venue; telegrams paste in; MAP and PAUSE keys lift on hover and click.
+5. **Pulp.** Stars 0 → 5 (F1 → WANTED) flash as badges; F1 → COMBO → FRENZY
+   slams the slab in, PANIC SELL tears it; kill two, three, four at once for the
+   banners; crits show impact stars; F1 → FORCE KNEEL shatters the boss bar;
+   the VERDICT card's stamps slam onto the case file.
+6. **Settings** (Settings → HUD): Minimal leaves only outlined text and
+   icons; HUD scale 75 % / 150 % keeps every cluster in its corner; HUD opacity
+   50 % fades it; Reduce motion stops wobbles, riffles, flutters and slides;
+   Reduce flashing holds badges, police lights and slams steady. Reopen the
+   game: all four persist.
+7. **Phone.** With touch controls the vitals sit under the objective, the gun
+   at the bottom centre, nothing under the thumbs.

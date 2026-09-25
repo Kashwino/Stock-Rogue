@@ -64,24 +64,26 @@ func _draw() -> void:
 			pulse = 0.7
 		draw_arc(Vector2.ZERO, 22.0, 0.0, TAU, 28, Palette.with_alpha(Palette.SODIUM, 0.45 + 0.45 * pulse), 2.5, true)
 	if prompt != "":
-		var pf := VisualTheme.font("heading_bold")
-		var pw := pf.get_string_size(prompt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
-		var pbox := Rect2(-pw * 0.5 - 6.0, 26.0, pw + 12.0, 20.0)
-		draw_rect(pbox, Color(0.04, 0.04, 0.05, 0.85))
-		draw_rect(pbox, Palette.GOLD, false, 1.5)
-		draw_string(pf, Vector2(-pw * 0.5, 41.0), prompt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Palette.GOLD)
+		# "F · TAKEDOWN": a typewriter key cap and a skewed label (Brief 3).
+		var parts := prompt.split(" · ", true, 1)
+		var key := parts[0] if parts.size() > 1 else ""
+		var label := parts[1] if parts.size() > 1 else prompt
+		var pf := VisualTheme.font("pulp")
+		var total := HudKit.text_width(pf, label, 14) + 18.0 + 26.0
+		HudKit.draw_key_prompt(self, Vector2(-total * 0.5 + 12, 38.0), key, label, Palette.GOLD)
 	var y := -lift
 	if bubble > 0.0:
 		draw_circle(Vector2.ZERO, 30.0, Palette.with_alpha(Palette.NEON_CYAN, 0.07 + 0.08 * bubble))
 		draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 32, Palette.with_alpha(Palette.NEON_CYAN, 0.35 + 0.5 * bubble), 2.0, true)
 	if tag != "":
-		var font := VisualTheme.font("mono")
+		# A name tag on a small skewed slab (Brief 3).
+		var font := VisualTheme.font("pulp")
 		var size := 13
 		var w := font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-		var box := Rect2(-w * 0.5 - 6.0, y - 15.0, w + 12.0, 18.0)
-		draw_rect(box, Color(0.04, 0.04, 0.05, 0.82))
-		draw_rect(box, tag_color, false, 1.5)
-		draw_string(font, Vector2(-w * 0.5, y - 2.0), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, size, tag_color)
+		var box := Rect2(-w * 0.5 - 8.0, y - 15.0, w + 16.0, 18.0)
+		draw_colored_polygon(HudKit.slant(box), Color(0.04, 0.04, 0.05, 0.85))
+		draw_line(box.position + Vector2(-box.size.y * HudKit.SKEW, 0), Vector2(box.end.x - box.size.y * HudKit.SKEW, box.position.y), tag_color, 2.0)
+		HudKit.text(self, font, Vector2(-w * 0.5, y - 2.0), tag, size, tag_color)
 		y -= 22.0
 	if radio_icon or radio > 0.0:
 		var col := Palette.SODIUM if radio > 0.0 else Palette.with_alpha(Palette.PAPER, 0.7)
@@ -92,9 +94,9 @@ func _draw() -> void:
 		draw_line(Vector2(-22, y - 6), Vector2(-17, y - 6), Color.BLACK, 1.0)
 		if radio > 0.0:
 			var bar := Rect2(-10, y - 11, 38, 8)
-			draw_rect(bar, Color(0, 0, 0, 0.75))
-			draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(radio, 0.0, 1.0), bar.size.y)), Palette.DANGER if radio > 0.66 else Palette.SODIUM)
-			draw_rect(bar, Palette.PAPER, false, 1.0)
+			draw_colored_polygon(HudKit.slant(bar), Color(0, 0, 0, 0.75))
+			draw_colored_polygon(HudKit.slant(Rect2(bar.position, Vector2(bar.size.x * clampf(radio, 0.0, 1.0), bar.size.y))), Palette.DANGER if radio > 0.66 else Palette.SODIUM)
+			draw_polyline(HudKit.closed(HudKit.slant(bar)), Palette.HUD_INK, 1.2, true)
 		y -= 24.0
 	if alarm:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.012)
