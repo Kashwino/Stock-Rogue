@@ -420,6 +420,23 @@ def kill_bank():
             add(buf, start, part, 0.28)
         add(buf, 0, mul(tone(note_hz(33), secs(0.5), "sine"), env(secs(0.5), 0.002, 0.2, release=0.1)), 0.7 if count >= 4 else 0.4)
         s["multi_%d" % count] = echo(drive(buf, 1.4), 0.12, 0.25)
+    # THE RALLY: a rising ticker blip for a tier-up, a bell-and-drawer for a
+    # cash-out, a falling crash for a panic sell.
+    n = secs(0.5)
+    up = [0.0] * n
+    for k, m in enumerate([69, 73, 76, 81]):
+        start = secs(0.045 * k)
+        add(up, start, mul(tone(note_hz(m), n - start, "square"), env(n - start, 0.002, 0.12, release=0.06)), 0.22)
+    s["combo_up"] = echo(lowpass(up, 4200), 0.07, 0.25)
+    n = secs(0.8)
+    chime = mix((mul(tone(1568, n), env(n, 0.001, 0.25, release=0.1)), 0.4),
+                (mul(tone(2093, n), env(n, 0.04, 0.25, release=0.1)), 0.35),
+                (mul(tone(2637, n), env(n, 0.08, 0.3, release=0.1)), 0.3))
+    s["combo_cash"] = mix((chime, 1.0), (mul(lowpass(noise(n), 900), env(n, 0.002, 0.06, release=0.04)), 0.5))
+    n = secs(1.0)
+    fall = mul(tone(note_hz(64), n, "saw", sweep_to=note_hz(40)), env(n, 0.002, 0.5, release=0.2))
+    s["combo_crash"] = drive(mix((lowpass(fall, 1600), 0.7),
+                                 (mul(lowpass(noise(n, "brown"), 500), env(n, 0.001, 0.25, release=0.1)), 0.8)), 1.8)
     return s
 
 

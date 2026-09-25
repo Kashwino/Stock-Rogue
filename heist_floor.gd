@@ -72,6 +72,8 @@ var crosshair: Crosshair
 var kills: KillFeedback
 ## Blood, decals, gibs and footprints (gore.gd; Settings "gore").
 var gore: Gore
+## THE RALLY: the combo (combo.gd).
+var combo: Combo
 var security_disabled := 0
 var last_heat_source := "No reports. Stay out of sight."
 var quiet_seconds := 0.0
@@ -255,6 +257,12 @@ func _build_floor() -> void:
 	add_child(gore)
 	gore.setup(self)
 	kills.killed.connect(gore.on_kill)
+	combo = Combo.new()
+	combo.host = self
+	add_child(combo)
+	kills.killed.connect(combo.on_kill)
+	if hud and hud.has_method("bind_combo"):
+		hud.bind_combo(combo)
 	_assign_guard_roles()
 	_spawn_civilians()
 	director.refresh()
@@ -336,6 +344,8 @@ func _setup_market_and_hud() -> void:
 		add_child(hud)
 		if hud.has_method("bind_hud"):
 			hud.bind_hud(player, live, RunState.loadout)
+		if combo and hud.has_method("bind_combo"):
+			hud.bind_combo(combo)
 
 func _ensure_chest_ui() -> void:
 	if get_tree().get_nodes_in_group("chest_ui").size() > 0:
@@ -626,7 +636,7 @@ func _on_enemy_died(e) -> void:
 	RunFlow.total_kills += 1
 	kills.on_kill(e.kill_info)
 	if live:
-		live.report_kill()
+		live.report_kill(combo.market_multiplier() if e.kill_info and e.kill_info.by_player else 1.0)
 
 func _on_room_cleared(room) -> void:
 	if room.get("spawn_count") <= 0:
@@ -886,8 +896,13 @@ func _extract() -> void:
 		if _left_by_fire_exit:
 			Meta.stats["fire_exit_escapes"] = int(Meta.stats.get("fire_exit_escapes", 0)) + 1
 		Meta.save_meta()
+	# A live combo cashes out as you leave.
+	combo.settle()
+	RunState.best_combo = maxi(RunState.best_combo, combo.best_points)
 	var elapsed: float = active_elapsed
 	var stats := {
+		"combo_best": combo.best_points,
+		"combo_points": combo.cashed_points,
 		"hits_taken": player.hits_taken,
 		"shots_fired": player.shots_fired,
 		"shots_hit": player.shots_hit,
@@ -905,6 +920,8 @@ func _extract() -> void:
 	result["fire_exit"] = _left_by_fire_exit
 	result["boss_id"] = String(boss_id)
 	result["loot"] = loot_banked
+	result["combo"] = {"best": combo.best_points, "best_tier": combo.best_tier, "gold": combo.cashed_gold,
+		"points": combo.cashed_points, "cashed": combo.combos_cashed, "panics": combo.panics}
 	result["meta_saved"] = Meta.last_save_ok
 
 	# Grade moves the venue stock. A CONTRACT pumps it (less for every repeat
@@ -982,6 +999,8 @@ func _on_reload_finished() -> void:
 
 func on_player_hurt() -> void:
 	hooks.hit_taken.emit(1)
+	if combo:
+		combo.on_player_hurt()
 	if post_fx:
 		post_fx.hit(1.0)
 
@@ -2027,6 +2046,11 @@ func _dress_building() -> void:
 		placer.theme = env
 		placer.room_type = art.room_type
 		placer.furnish(gaps, keepouts, obstacles)
+		# Gas cans, fuel drums, fuse boxes: 0-3 a room (never in a boss arena).
+		if not room.has_meta("is_boss") and not boss_heist:
+			var roll := placer.rng.randf()
+			var n := 0 if roll < 0.35 else (1 if roll < 0.7 else (2 if roll < 0.9 else 3))
+			placer.place_explosives(n, _stage)
 
 ## Doorways of a room that actually lead somewhere: into a neighbour, or out
 ## through the main door / a fire exit. Local coordinates.

@@ -44,6 +44,7 @@ var unprovoked := false
 var corpse: Node2D = null
 var prop := false                 # killed by an explosive prop (Phase 5)
 var stealth := false              # silent stealth takedown (Phase 4)
+var last_round := false           # the killing round was the last in the mag
 
 static var _shot_counter := 0
 
@@ -69,6 +70,7 @@ static func classify(victim_node: Node, hit: Dictionary, over: int) -> KillInfo:
 	k.unprovoked = bool(hit.get("unprovoked", false))
 	k.prop = bool(hit.get("prop", false))
 	k.stealth = bool(hit.get("stealth", false))
+	k.last_round = bool(hit.get("last_round", false))
 	k.excess = maxi(over, 0)
 	var pellets := int(hit.get("pellets", 1))
 	var point_blank := bool(hit.get("point_blank", false))

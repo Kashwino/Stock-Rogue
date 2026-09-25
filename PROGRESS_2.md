@@ -40,13 +40,13 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Ghost Run allows stealth takedowns; Meta takedowns stat
 
 ## Phase 5 — Combo "THE RALLY"
-- [ ] Combo core: points, window, tiers, cash-out, PANIC SELL
-- [ ] Market multiplier on kills while live
-- [ ] HUD combo panel + cash-out / panic popups
-- [ ] Grade weight, results rows, Meta best combo + Clout nudge
-- [ ] 5 combo relics; character hooks
-- [ ] Explosive props (gas cans, fuel drums, fuse boxes) with chains
-- [ ] Combo gold cap, verified in balance_sim
+- [x] Combo core: points, window, tiers, cash-out, PANIC SELL
+- [x] Market multiplier on kills while live
+- [x] HUD combo panel + cash-out / panic popups
+- [x] Grade weight, results rows, Meta best combo + Clout nudge
+- [x] 5 combo relics; character hooks
+- [x] Explosive props (gas cans, fuel drums, fuse boxes) with chains
+- [x] Combo gold cap, verified in balance_sim
 
 ## Phase 6 — Wanted & adaptive music
 - [ ] Wanted stars 0–5 on the HUD; thresholds; marked ≥ 3★; laying low

@@ -79,6 +79,7 @@ func _run() -> void:
 	await _test_kill_sounds()
 	await _test_gore()
 	await _test_takedowns()
+	await _test_combo()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -190,6 +191,7 @@ func _run() -> void:
 	check(ItemPool.boss_weapon(&"auditor") not in ItemPool.rewardable_weapons(), "boss uniques never enter reward pools")
 	await get_tree().create_timer(0.2).timeout
 	check(MarketOps.execute("short", &"bank_job")["ok"], "open final extraction contract")
+	floor_scene.combo.settle()       # earlier test kills: bank that combo first
 	asset.current_price = float(RunState.short_position["entry"]) * 0.9
 	var extraction_gold := RunEconomy.gold
 	floor_scene._extract()
@@ -1107,6 +1109,142 @@ func _test_takedowns() -> void:
 	check(int(RunState.loadout._active_ammo()["mag"]) == mag_before + 2, "an execution refunds two rounds")
 	check(floor_scene.loud_kills == loud_before + 1, "an execution is loud")
 	player.global_position = saved
+	TimeController.clear()
+
+func _kinfo(extra: Dictionary) -> KillInfo:
+	var hit := {"source": &"bullet", "by_player": true, "weapon": &"pistol"}
+	hit.merge(extra, true)
+	return KillInfo.classify(null, hit, int(extra.get("over", 0)))
+
+func _test_combo() -> void:
+	var combo := floor_scene.combo
+	combo.settle()
+	var player := floor_scene.player
+	player.health = player.max_health
+	# Tiers and multipliers.
+	combo.add_points(4)
+	check(combo.live and combo.tier == 0 and combo.tier_name() == "TICK", "the first kill starts a combo at TICK")
+	check(floor_scene.hud.combo_panel.visible, "the combo panel shows while a combo is live")
+	combo.add_points(1)
+	check(combo.tier == 1 and combo.tier_name() == "RALLY" and is_equal_approx(combo.multiplier(), 1.2), "5 points: RALLY x1.2")
+	check(is_equal_approx(combo.market_multiplier(), 1.2), "the market rallies with the combo")
+	combo.add_points(45)
+	check(combo.tier == 5 and combo.tier_name() == "BLACK SWAN" and is_equal_approx(combo.multiplier(), 3.0), "50 points: BLACK SWAN x3")
+	combo._end()
+	# Points per kill.
+	combo.add_points(0)
+	var p0 := combo.points
+	combo.on_kill(_kinfo({"over": 3, "crit": true, "unprovoked": true}))
+	check(combo.points - p0 == 4, "kill + overkill + crit + unaware = 4 points")
+	p0 = combo.points
+	combo.on_kill(_kinfo({"source": &"takedown", "stealth": true}))
+	check(combo.points - p0 >= 2 + 1, "a stealth takedown is worth +2 (and the method is new: variety)")
+	p0 = combo.points
+	combo.on_kill(_kinfo({"source": &"execution"}))
+	check(combo.points - p0 >= 1 + 3, "a stagger execution is worth +3")
+	p0 = combo.points
+	combo.on_kill(_kinfo({"source": &"blast", "prop": true}))
+	check(combo.points - p0 >= 1 + 2, "an explosive-prop kill is worth +2")
+	p0 = combo.points
+	combo.on_kill(_kinfo({"last_round": true, "weapon": &"shotgun"}))
+	check(combo.points - p0 >= 2, "the last round in the mag is +1")
+	player.health = 1
+	p0 = combo.points
+	combo.on_kill(_kinfo({"weapon": &"shotgun"}))
+	check(combo.points - p0 >= 3, "a kill at 1 HP is a Margin Call: +2")
+	player.health = player.max_health
+	var info := _kinfo({})
+	info.multi = 3
+	p0 = combo.points
+	combo.on_kill(info)
+	check(combo.points - p0 >= 2, "each extra multi-kill victim is +1")
+	# Cash out.
+	var gold := RunEconomy.gold
+	var expect := mini(combo.pending_gold(), combo.cap() - combo.cashed_gold)
+	var cashed_before := combo.cashed_gold
+	combo.window_left = 0.01
+	await get_tree().create_timer(0.1).timeout
+	check(not combo.live and RunEconomy.gold >= gold + expect and combo.cashed_gold == cashed_before + expect, "letting the window run out cashes the combo out")
+	check(floor_scene.hud._combo_popup.text.begins_with("COMBO CASHED"), "the cash-out popup names the take")
+	# Panic sell.
+	combo.add_points(20)
+	var pending := combo.pending_gold()
+	gold = RunEconomy.gold
+	floor_scene.on_player_hurt()
+	check(not combo.live and RunEconomy.gold - gold <= int(round(pending * 0.25)) + 1, "taking damage is a PANIC SELL: 75% lost")
+	check(floor_scene.hud._combo_popup.text.begins_with("PANIC SELL"), "the panic-sell slam shows")
+	# Relics and character hooks.
+	RunState.add_relic(&"dead_cat_bounce")
+	combo.dead_cat_used = false
+	combo.add_points(3)
+	floor_scene.on_player_hurt()
+	check(combo.live and combo.dead_cat_used, "Dead Cat Bounce: the first hit doesn't break it")
+	floor_scene.on_player_hurt()
+	check(not combo.live, "only once per heist")
+	RunState.add_relic(&"compound_interest")
+	check(combo.threshold(1) == 4 and combo.threshold(5) == 40, "Compound Interest: tiers come 20% sooner")
+	RunState.add_relic(&"momentum_trader")
+	check(is_equal_approx(combo.window_length(), Combo.BASE_WINDOW + 1.0), "Momentum Trader: +1 s window")
+	RunState.add_relic(&"blood_money")
+	var loot_before := get_tree().get_nodes_in_group("loot_pickups").size()
+	combo.add_points(5)
+	await get_tree().process_frame
+	check(get_tree().get_nodes_in_group("loot_pickups").size() > loot_before, "Blood Money: a tier-up drops cash")
+	combo._end()
+	for r in [&"dead_cat_bounce", &"compound_interest", &"momentum_trader", &"blood_money"]:
+		RunState.relics.erase(r)
+	check(Relics.DATA.has(&"short_fuse") and Relics.DATA.size() == 25, "five combo relics join the catalog")
+	var legend: CharacterProfile = load("res://crew_legend.tres")
+	var broker: CharacterProfile = load("res://crew_broker.tres")
+	check(legend.combo_tier_mult == 1.5 and broker.combo_cash_mult == 1.25 and load("res://crew_wolf.tres").combo_window_bonus == 0.5 \
+		and load("res://crew_ghost.tres").takedown_combo_bonus == 1, "the specialists' combo hooks")
+	# The gold cap.
+	combo.cashed_gold = combo.cap() - 3
+	combo.add_points(60)
+	gold = RunEconomy.gold
+	combo.cash_out()
+	check(RunEconomy.gold - gold <= 3 * 2 and combo.cashed_gold <= combo.cap(), "combo gold per heist is capped")
+	# Explosive props.
+	var room: Node2D = null
+	for r: Node2D in floor_scene.generator.rooms:
+		if not r.has_meta("is_boss"):
+			room = r
+			break
+	var placer := PropPlacer.new()
+	placer.room = room
+	placer.theme = floor_scene.env
+	placer.room_type = String(room.get_meta("room_type", "office"))
+	placer.furnish(floor_scene._open_gaps_local(room), [], [])
+	var props := placer.place_explosives(3, 0)
+	check(props.size() >= 1 and props[0].is_in_group("explosive") and props[0].collision_layer == Layers.WALLS, "explosive props stand in rooms on layer 1")
+	var pair := _clear_pair(80.0)
+	var drum := ExplosiveProp.new()
+	drum.kind = "fuel_drum"
+	drum.position = Vector2(pair[0]) - floor_scene.generator.start_room.global_position
+	floor_scene.generator.start_room.add_child(drum)
+	var can := ExplosiveProp.new()
+	can.kind = "gas_can"
+	can.position = drum.position + Vector2(60, 0)
+	floor_scene.generator.start_room.add_child(can)
+	var owner: Enemy = null
+	for e: Enemy in get_tree().get_nodes_in_group("enemies"):
+		if not (e is Boss) and e.get_parent() is BuildingRoom:
+			owner = e
+			break
+	var victim := floor_scene.spawn_companion(owner, Enemy.Kind.GRUNT, Vector2.ZERO)
+	victim.global_position = can.global_position + Vector2(0, 50)
+	var infos: Array = []
+	victim.died.connect(func(e): infos.append(e.kill_info))
+	var was_invulnerable: bool = player._invulnerable
+	player._invulnerable = true
+	drum.shot(1, Vector2.RIGHT, true)
+	check(is_instance_valid(drum) and not drum._blown, "a fuel drum takes two hits")
+	drum.shot(1, Vector2.RIGHT, true)
+	await get_tree().create_timer(0.4).timeout
+	check(not is_instance_valid(can) or can._blown, "one blast sets off the next: chain reaction")
+	check(infos.size() == 1 and infos[0].kill_class == KillInfo.EXPLOSIVE and infos[0].prop and infos[0].by_player, "a prop kill is an EXPLOSIVE prop kill")
+	player._invulnerable = was_invulnerable
+	combo.settle()
 	TimeController.clear()
 
 func _test_debug_menu() -> void:

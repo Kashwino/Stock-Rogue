@@ -42,6 +42,8 @@ var parachute_used := false
 var patch_used := false
 ## Stages whose intro card has been shown on the case wall this run.
 var stage_intros: Array = []
+## Best combo (points) this run: nudges the run's Clout.
+var best_combo := 0
 
 func has_relic(id: StringName) -> bool:
 	return id in relics
@@ -84,6 +86,7 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	job_gear.clear()
 	relics.clear()
 	stage_intros.clear()
+	best_combo = 0
 	parachute_used = false
 	patch_used = false
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
@@ -261,6 +264,7 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"parachute_used": parachute_used,
 		"patch_used": patch_used,
 		"stage_intros": stage_intros.duplicate(),
+		"best_combo": best_combo,
 	}
 
 func _serialize_market() -> Dictionary:
@@ -308,6 +312,7 @@ func deserialize(data: Dictionary) -> void:
 		if Relics.DATA.has(StringName(r)):
 			relics.append(StringName(r))
 	parachute_used = bool(data.get("parachute_used", false))
+	best_combo = int(data.get("best_combo", 0))
 	stage_intros.clear()
 	for st in data.get("stage_intros", []):
 		stage_intros.append(int(st))

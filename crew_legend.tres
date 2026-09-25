@@ -10,3 +10,4 @@ volatility_at_low = 3.0
 no_healing = true
 gain_mult = 2.0
 start_weapon_min_rarity = 2
+combo_tier_mult = 1.5

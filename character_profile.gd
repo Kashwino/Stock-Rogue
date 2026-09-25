@@ -55,6 +55,12 @@ class_name CharacterProfile
 ## Gold and stock gains doubled (the Legend).
 @export var gain_mult := 1.0
 ## Starting weapon: a fixed id, or a random one of at least this rarity.
+## THE RALLY: extra combo window (s), extra points per stealth takedown,
+## cash-out gold and stock multiplier, tier multiplier scale.
+@export var combo_window_bonus := 0.0
+@export var takedown_combo_bonus := 0
+@export var combo_cash_mult := 1.0
+@export var combo_tier_mult := 1.0
 @export var start_weapon: StringName = &""
 @export var start_weapon_min_rarity := -1
 

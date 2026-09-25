@@ -40,7 +40,7 @@ const STAGE_INTROS := {
 
 ## Winning endings. Index at or above NEW_CHAIRMAN_INDEX at the final
 ## extraction takes the seat; otherwise you retire.
-const NEW_CHAIRMAN_INDEX := 800.0
+const NEW_CHAIRMAN_INDEX := 840.0
 const EPILOGUE_RETIRED := [
 	"The Chairman went down on his own trading floor, under a ticker that finally stopped.",
 	"By morning the Board had a new rumor: somebody walked out with the whole book and never listed it.",

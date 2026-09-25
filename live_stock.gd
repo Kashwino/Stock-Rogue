@@ -132,8 +132,9 @@ func report_hit_landed() -> void:
 	market_event.emit(&"hit", base)
 
 ## Player killed an enemy.
-func report_kill() -> void:
-	var base := _profile.gain_per_kill if _profile else 0.05
+## `multiplier`: the live combo's tier multiplier — the market rallies with you.
+func report_kill(multiplier: float = 1.0) -> void:
+	var base := (_profile.gain_per_kill if _profile else 0.05) * multiplier
 	if inverted():
 		base = -base
 	_apply(base)

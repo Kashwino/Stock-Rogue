@@ -26,6 +26,9 @@ var stock_chart: StockChart
 var trader_feed: TraderFeed
 var boss_bar: BossBar
 var multi_banner: HudWidgets.MultiBanner
+var combo_panel: HudWidgets.ComboPanel
+var _combo_popup: Label
+var _popup_tween: Tween
 
 var _loadout = null
 var _live = null
@@ -114,6 +117,18 @@ func _ready() -> void:
 
 	multi_banner = HudWidgets.MultiBanner.new()
 	root.add_child(multi_banner)
+	combo_panel = HudWidgets.ComboPanel.new()
+	root.add_child(combo_panel)
+	_combo_popup = VisualTheme.label("", "", 24, Palette.GOLD)
+	_combo_popup.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+	_combo_popup.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_combo_popup.add_theme_constant_override("outline_size", 7)
+	_combo_popup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combo_popup.position = Vector2(240, 508)
+	_combo_popup.size = Vector2(800, 40)
+	_combo_popup.pivot_offset = Vector2(400, 20)
+	_combo_popup.modulate.a = 0.0
+	root.add_child(_combo_popup)
 
 	weapon_panel = HudWidgets.WeaponPanel.new()
 	weapon_panel.position = Vector2(430, 638)
@@ -123,6 +138,33 @@ func _ready() -> void:
 	if has_node("/root/RunEconomy"):
 		_update_gold(RunEconomy.gold)
 		RunEconomy.gold_changed.connect(_update_gold)
+
+## Wire the combo panel and its cash-out / panic-sell popups.
+func bind_combo(combo: Combo) -> void:
+	combo_panel.bind_combo(combo)
+	combo.cashed.connect(_on_combo_cashed)
+	combo.panicked.connect(_on_combo_panicked)
+
+func _on_combo_cashed(points: int, tier: int, gold: int, pct: float) -> void:
+	combo_popup("COMBO CASHED — %d pts · %s · +$%d · %+.1f%%" % [points, Combo.TIERS[tier], gold, pct * 100.0], Combo.TIER_COLORS[tier], false)
+
+func _on_combo_panicked(points: int, _tier: int, gold: int) -> void:
+	combo_popup("PANIC SELL — %d pts dumped · +$%d" % [points, gold], Palette.DANGER, true)
+
+func combo_popup(text: String, color: Color, slam: bool) -> void:
+	_combo_popup.text = text
+	_combo_popup.add_theme_color_override("font_color", color)
+	if _popup_tween:
+		_popup_tween.kill()
+	_popup_tween = create_tween()
+	_combo_popup.modulate.a = 1.0
+	if slam and not Settings.values.get("reduce_flashing", false):
+		_combo_popup.scale = Vector2(1.6, 1.6)
+		_popup_tween.tween_property(_combo_popup, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	else:
+		_combo_popup.scale = Vector2.ONE
+	_popup_tween.tween_interval(1.8)
+	_popup_tween.tween_property(_combo_popup, "modulate:a", 0.0, 0.5)
 
 func _panel(rect: Rect2) -> Panel:
 	var p := Panel.new()

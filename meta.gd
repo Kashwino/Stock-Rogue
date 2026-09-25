@@ -55,7 +55,7 @@ var total_profit: float = 0.0                    # lifetime cash earned
 ## Career stats across all three case files. Specialist unlocks read these.
 const STAT_DEFAULTS := {
 	"fire_exit_escapes": 0, "bosses_killed": 0, "best_index": 0.0, "runs_won": 0,
-	"heists_completed": 0, "total_gold": 0, "deaths": 0, "takedowns": 0,
+	"heists_completed": 0, "total_gold": 0, "deaths": 0, "takedowns": 0, "best_combo": 0,
 }
 var stats: Dictionary = STAT_DEFAULTS.duplicate()
 ## Stage bosses put down, by id (lieutenants count only in bosses_killed).
@@ -197,10 +197,12 @@ func equip_starting_perk(id: StringName) -> bool:
 
 ## Clout for a finished run: stages cleared, stage bosses, the best index,
 ## and a bonus for retiring. A receipt stops a run paying twice.
-func award_run(run_id: String, stages_cleared: int, bosses: int, index: float, won: bool) -> int:
+## Clout for a finished run: stages x3, stage bosses x2, index / 60, +8 for a
+## win, and up to +3 for the run's best combo (one per 20 points).
+func award_run(run_id: String, stages_cleared: int, bosses: int, index: float, won: bool, best_combo: int = 0) -> int:
 	if run_id == "" or extraction_receipts.has(run_id):
 		return 0
-	var earned := stages_cleared * 3 + bosses * 2 + int(maxf(index, 0.0) / 60.0) + (8 if won else 0)
+	var earned := stages_cleared * 3 + bosses * 2 + int(maxf(index, 0.0) / 60.0) + (8 if won else 0) + mini(3, maxi(best_combo, 0) / 20)
 	earned = maxi(earned, 1)
 	extraction_receipts[run_id] = earned
 	clout += earned

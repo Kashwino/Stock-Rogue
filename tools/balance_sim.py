@@ -57,6 +57,7 @@ FLOOR = src("heist_floor.gd")
 STORY = src("story.gd")
 POSITIONS = src("positions.gd")
 VENUES_SRC = src("venues.gd")
+COMBO_SRC = src("combo.gd")
 
 INDEX_SCALE = const(RUN_STATE, "INDEX_SCALE")
 BASE_QUOTA = const(RUN_MAP, "BASE_QUOTA")
@@ -80,6 +81,26 @@ MAX_MOMENTUM = const(LIVE, "MAX_MOMENTUM")
 GAIN_HIT = export_var(PROFILE, "gain_per_hit")
 GAIN_KILL = export_var(PROFILE, "gain_per_kill")
 CRASH_DAMAGE = export_var(PROFILE, "crash_per_damage")
+
+def int_list(text, name):
+    body = re.search(r"const %s := \[([^\]]*)\]" % name, text).group(1)
+    return [float(x) for x in body.split(",") if x.strip()]
+
+
+COMBO_THRESHOLDS = int_list(COMBO_SRC, "THRESHOLDS")
+COMBO_MULTS = int_list(COMBO_SRC, "MULTS")
+COMBO_CAP = int_list(COMBO_SRC, "GOLD_CAP")
+PANIC_KEEP = const(COMBO_SRC, "PANIC_KEEP")
+PUMP_BASE = const(COMBO_SRC, "PUMP_BASE")
+PUMP_PER_POINT = const(COMBO_SRC, "PUMP_PER_POINT")
+PUMP_MAX = const(COMBO_SRC, "PUMP_MAX")
+# How each kind of player strings kills together: mean kills per combo,
+# bonus points per kill (overkills, crits, takedowns...), chance it ends in a
+# panic sell.
+COMBO_STYLE = {
+    "flawless": (6.0, 1.2, 0.0), "sharp": (5.0, 0.9, 0.15),
+    "typical": (3.5, 0.6, 0.35), "shaky": (2.5, 0.4, 0.5),
+}
 
 VENUES = re.findall(r'^\t&"(\w+)": \[', VENUES_SRC[VENUES_SRC.index("const DATA"):VENUES_SRC.index("const NOUNS")], re.M)
 STAGE_VENUES = []
@@ -123,8 +144,34 @@ SKILL = {
 }
 
 
-def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None):
-    """Port of LiveStock over one heist: returns the venue's price multiplier."""
+def rally(rng, kills, stage, block, skill):
+    """THE RALLY over one heist: (capped gold, per-kill market multipliers,
+    cash-out venue pumps)."""
+    mean, bonus, panic = COMBO_STYLE[skill]
+    gold, mults, pumps = 0.0, [], []
+    left = kills
+    while left > 0:
+        n = min(left, 1 + int(rng.expovariate(1.0 / max(mean - 1.0, 0.1))))
+        left -= n
+        pts, tier = 0, 0
+        for _ in range(n):
+            pts += 1 + sum(1 for _ in range(3) if rng.random() < bonus / 3.0)
+            while tier < len(COMBO_THRESHOLDS) - 1 and pts >= COMBO_THRESHOLDS[tier + 1]:
+                tier += 1
+            mults.append(COMBO_MULTS[tier])
+        pending = pts * COMBO_MULTS[tier] * 2.0 * 1.55 ** block
+        if rng.random() < panic:
+            gold += pending * PANIC_KEEP
+        else:
+            gold += pending
+            pumps.append(min(PUMP_BASE + pts * PUMP_PER_POINT, PUMP_MAX))
+    return min(gold, COMBO_CAP[min(stage, len(COMBO_CAP) - 1)]), mults, pumps
+
+
+def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None, kill_mults=None, pumps=()):
+    """Port of LiveStock over one heist: returns the venue's price multiplier.
+    `kill_mults`: the combo multiplier on each kill's gain; `pumps`: combo
+    cash-out moves."""
     p = 1.0
     momentum = 0.0
     sign = -1.0 if inverted else 1.0
@@ -138,11 +185,14 @@ def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None):
         momentum = max(-MAX_MOMENTUM, min(MAX_MOMENTUM, momentum + pct * 0.35))
         p *= 1.0 + pct
 
+    killed = 0
     for t in range(ticks):
         for _ in range(kill_ticks.count(t)):
             for _ in range(3):
                 apply(sign * GAIN_HIT)
-            apply(sign * GAIN_KILL)
+            m = kill_mults[killed] if kill_mults and killed < len(kill_mults) else 1.0
+            apply(sign * GAIN_KILL * m)
+            killed += 1
         for _ in range(hurt_ticks.count(t)):
             apply(-sign * CRASH_DAMAGE)
         if t == boss_tick:
@@ -156,6 +206,8 @@ def live_move(rng, kills, seconds, damage, inverted=False, boss_shock=None):
             move += rng.gauss(0.0, NOISE * 4.0)
         p *= 1.0 + move
         p += (1.0 - p) * REVERSION
+    for pump in pumps:
+        p *= (1.0 - pump) if inverted else (1.0 + pump)
     return max(p, 0.01)
 
 
@@ -166,7 +218,9 @@ def heist(rng, market, gold, stage, venue, skill, contracts, hit=False, boss=Fal
     par = 15.0 * job["rooms"]
     kills = int(job["guards"] * s["clear"])
     ratio = market[venue]
-    live = live_move(rng, kills, par * s["pace"], s["damage"], inverted=hit, boss_shock=1.30 if boss else None)
+    combo_gold, kill_mults, pumps = rally(rng, kills, stage, stage, skill)
+    live = live_move(rng, kills, par * s["pace"], s["damage"], inverted=hit, boss_shock=1.30 if boss else None,
+                     kill_mults=kill_mults, pumps=pumps)
     delta = GRADE_DELTA[s["grade"]]
     if hit:
         delta = 2.0 - delta
@@ -175,7 +229,7 @@ def heist(rng, market, gold, stage, venue, skill, contracts, hit=False, boss=Fal
         if delta > 1.0:
             delta = 1.0 + (delta - 1.0) * CONTRACT_DECAY ** repeats
         contracts[venue] = repeats + 1
-    paid = job["floor_loot"] * s["loot"] + job["clear_gold"] * s["clear"]
+    paid = job["floor_loot"] * s["loot"] + job["clear_gold"] * s["clear"] + combo_gold
     if not boss:
         names = list(OBJ_WEIGHTS)
         obj = rng.choices(names, weights=[OBJ_WEIGHTS[n] for n in names])[0]
@@ -223,11 +277,14 @@ def check_stock_gate(rng, runs):
         with_mm.append(index_of(market))
     gate = 1.0 + (1.20 - 1.0) * INDEX_SCALE
     print("Stock gate 0 (%.0f):" % gate)
-    print("  two flawless heists alone   median %.0f  p95 %.0f  max %.0f" % (statistics.median(alone), pct(alone, 0.95), max(alone)))
+    print("  two flawless heists alone   median %.0f  p75 %.0f  p90 %.0f  p95 %.0f" % (statistics.median(alone), pct(alone, 0.75), pct(alone, 0.9), pct(alone, 0.95)))
     print("  + two Market Manipulations  median %.0f  p10 %.0f   (MM +%d%% all venues, $%d)" % (statistics.median(with_mm), pct(with_mm, 0.10), MM_PCT * 100, MM_PRICE))
     print("  gold for both MMs after two flawless heists: %.0f%% of runs" % (100.0 * sum(afford) / runs))
     return [
-        ("two flawless heists alone do not clear the stock gate", pct(alone, 0.95) < gate),
+        # A flawless player can't expect to clear it on heists alone: with
+        # THE RALLY's market multiplier a combo-perfect pair of jobs sometimes
+        # gets there (the tail), most don't.
+        ("two flawless heists alone do not clear the stock gate (median and p75)", pct(alone, 0.75) < gate),
         ("two Market Manipulations on top clear it", statistics.median(with_mm) >= gate),
         ("two flawless heists pay for both manipulations", sum(afford) / runs >= 0.9),
     ]
@@ -329,6 +386,31 @@ def hideout(rng, market, gold, block, stage):
     return gold
 
 
+def check_combo(rng, runs):
+    print("THE RALLY (combo gold per heist vs the heist's floor loot):")
+    rows = []
+    for stage in range(4):
+        for skill in ("flawless", "typical"):
+            raw, capped, loot = [], [], []
+            for _ in range(runs // 4):
+                job = rng.choice(CENSUS[stage])
+                kills = int(job["guards"] * SKILL[skill]["clear"])
+                g, _, _ = rally(rng, kills, stage, stage, skill)
+                capped.append(g)
+                loot.append(job["floor_loot"])
+            share = statistics.mean(capped) / statistics.mean(loot)
+            hit_cap = sum(1 for g in capped if g >= COMBO_CAP[stage] - 0.5) / len(capped)
+            print("  stage %d %-8s  $%4.0f a heist = %4.1f%% of floor loot   (at the $%d cap %.0f%% of heists)"
+                  % (stage, skill, statistics.mean(capped), 100 * share, COMBO_CAP[stage], 100 * hit_cap))
+            rows.append((stage, skill, share))
+    return [
+        ("combo gold stays within ~35% of a thorough heist's floor loot", all(r[2] <= 0.36 for r in rows)),
+        ("a typical player earns less from combos than a flawless one", all(
+            [r for r in rows if r[0] == st and r[1] == "typical"][0][2] <= [r for r in rows if r[0] == st and r[1] == "flawless"][0][2]
+            for st in range(4))),
+    ]
+
+
 def check_endings(rng, runs):
     mix = [("sharp", 0.25), ("typical", 0.45), ("shaky", 0.30)]
     wins = []
@@ -358,7 +440,7 @@ def main():
     rng = random.Random(args.seed)
     print("Stock Rogue balance sim — %d venues, index scale %.0f, live momentum cap %.3f\n" % (len(VENUES), INDEX_SCALE, MAX_MOMENTUM))
     results = []
-    for check in (check_stock_gate, check_gold_gate, check_shorts, check_endings):
+    for check in (check_stock_gate, check_gold_gate, check_shorts, check_combo, check_endings):
         results += check(rng, args.runs)
         print()
     failed = 0

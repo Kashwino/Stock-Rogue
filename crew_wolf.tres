@@ -9,3 +9,4 @@ volatility_at_full = 0.8
 volatility_at_low = 2.0
 damage_mult = 1.25
 noisy_when_hit = true
+combo_window_bonus = 0.5

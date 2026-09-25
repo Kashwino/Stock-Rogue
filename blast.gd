@@ -19,8 +19,9 @@ var _life := 0.0
 var _mark: Telegraph
 
 ## Arm a charge at `at` that goes off after `delay` seconds.
-static func fuse(host: Node, at: Vector2, delay: float, blast_radius: float = 90.0, to_player: int = 2, to_enemies: int = 3, by_player := false) -> Blast:
+static func fuse(host: Node, at: Vector2, delay: float, blast_radius: float = 90.0, to_player: int = 2, to_enemies: int = 3, by_player := false, prop := false) -> Blast:
 	var b := Blast.new()
+	b.from_prop = prop
 	b.radius = blast_radius
 	b.player_damage = to_player
 	b.enemy_damage = to_enemies
@@ -67,6 +68,10 @@ func _explode() -> void:
 	var shot := KillInfo.next_shot_id()
 	var tree := get_tree()
 	var space := get_world_2d().direct_space_state
+	# Other explosive props in the radius go up a beat later: chain reactions.
+	for other in tree.get_nodes_in_group("explosive"):
+		if other is Node2D and other.global_position.distance_to(global_position) <= radius + 16.0:
+			other.blast_hit(player_caused)
 	for group in ["player", "enemies", "civilians", "security"]:
 		for target in tree.get_nodes_in_group(group):
 			if not (target is Node2D) or not target.has_method("take_damage"):

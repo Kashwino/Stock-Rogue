@@ -71,6 +71,9 @@ func _physics_process(delta: float) -> void:
 	var hit := space.intersect_ray(query)
 	if hit and not (hit["collider"] is CharacterBody2D):
 		global_position = hit["position"]
+		# Guards can set off a gas can too.
+		if hit["collider"].is_in_group("explosive") and hit["collider"].has_method("shot"):
+			hit["collider"].shot(damage, _dir, false)
 		var host := get_tree().current_scene
 		if host is HeistFloor:
 			host.fx.spark(hit["position"], hit["normal"], Palette.ENEMY_BULLET)

@@ -11,3 +11,4 @@ swing_mult = 1.5
 position_slots = 3
 position_leverage = 3.0
 fence_discount = 0.25
+combo_cash_mult = 1.25

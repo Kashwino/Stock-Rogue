@@ -44,7 +44,7 @@ const GAIN := {
 	"flesh": -4.0, "bone_crunch": -3.0, "splatter": -5.0, "gib_burst": -2.0, "fall_concrete": -7.0,
 	"fall_carpet": -6.0, "fall_marble": -8.0, "fall_metal": -8.0, "clatter": -9.0, "kill_tick": -9.0,
 	"crit_ding": -10.0, "burn_sizzle": -5.0, "takedown_knife": -3.0, "takedown_crack": -2.0,
-	"multi_2": -5.0, "multi_3": -4.0, "multi_4": -3.0,
+	"multi_2": -5.0, "multi_3": -4.0, "multi_4": -3.0, "combo_up": -8.0, "combo_cash": -4.0, "combo_crash": -3.0,
 }
 const POSITIONAL_POOL := 24
 const FLAT_POOL := 10

@@ -34,7 +34,7 @@ current route step:
   `heist_floor.tscn` → extraction → results card → `RunFlow.on_heist_finished`;
 - `QUOTA_GATE` → the collector checks gold on hand + empire index (fail = run over);
 - `ADVANCE` → next stage. Stages: Town, City, World, Doomsday. After the Chairman
-  → `EndingSequence` (RETIRED, or THE NEW CHAIRMAN at index 800+; epilogue,
+  → `EndingSequence` (RETIRED, or THE NEW CHAIRMAN at index 840+; epilogue,
   title, credits). Death anywhere → `death_screen.tscn` (BUSTED front page,
   spawned on the root). The crew card plays the `Prologue`; the case wall opens
   each stage with a `StageIntro` card.

@@ -548,6 +548,47 @@
   blows it.
 - Career stats count takedowns (both kinds).
 
+## Brief 2 · Phase 5 — THE RALLY (combo)
+
+- **Combo** (`combo.gd`): the first kill starts it, each kill adds points and
+  refreshes a 2.5 s window. Points: kill 1 · each extra multi-kill victim +1
+  · overkill +1 · crit +1 · stealth takedown +2 · stagger execution +3 ·
+  explosive-prop kill +2 · last round in the mag +1 · during or 0.5 s after a
+  dodge +1 · at 1 HP +2 (Margin Call) · unaware victim +1 · variety (a weapon
+  or method unlike the last two kills) +1.
+- **Tiers**: TICK x1 → RALLY x1.2 (5) → BULL RUN x1.5 (12) → SURGE x2 (22) →
+  FRENZY x2.5 (35) → BLACK SWAN x3 (50), each with its sting, a slam and a
+  colour on the combo panel.
+- **The market rallies with you**: while a combo is live each kill's stock
+  gain is multiplied by the tier.
+- **Cash out** when the window runs out: points × multiplier × a base that
+  grows with the quota block, plus a small venue move ("COMBO CASHED — 27 pts
+  · BULL RUN · +$84 · +0.8%"). **PANIC SELL** on taking damage: 75% of that
+  gold is gone, with a red slam and a crash. A live combo cashes out as you
+  extract.
+- **HUD**: a right-edge combo panel — count, tier, multiplier and take, the
+  draining window, the last few bonuses — hidden when no combo is live.
+- **Grade & meta**: the best combo and the points cashed nudge the heist
+  grade a little and appear on the job report; the run's best combo is
+  saved, tracked in the career, and adds up to +3 Clout.
+- **Relics**: Momentum Trader (+1 s window), Dead Cat Bounce (the first hit
+  during a combo doesn't break it, once per heist), Compound Interest (tiers
+  20% sooner), Blood Money (every tier-up drops a little cash), Short Fuse
+  (explosive props +50% damage, explosive kills +1 point). 25 relics now.
+- **Specialists**: the Wolf's window is 0.5 s longer, the Ghost's stealth
+  takedowns are worth a point more, the Broker's cash-outs pay 1.25x (gold
+  and stock), the Legend's tier multipliers are 1.5x.
+- **Explosive props** (`explosive_prop.gd`): gas cans, fuel drums and fuse
+  boxes, 0–3 per room by stage (never in boss arenas, never in a doorway
+  corridor, next to a spawn point or a loot slot, never cutting a room off).
+  They stop bullets on layer 1, go up when shot (guards' rounds too), hurt
+  everyone in range, set each other off, gib, scorch and are heard across
+  the floor.
+- **Balance**: combo gold per heist is capped per stage ($140 / $205 / $355 /
+  $560 — about 35% of a thorough heist's floor loot); `tools/balance_sim.py`
+  now simulates the combo (gold, the market multiplier and cash-out moves)
+  and checks the cap.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -678,3 +719,14 @@
   fail it; gunfire (and explosion) kills still do.
 - **(Brief 2) Executions refund rounds** up to a full magazine; they don't
   spend one.
+- **(Brief 2) The combo's cash-out venue move is small** (0.3% + 0.02% a
+  point, at most 1%): with the market multiplier on kills, bigger moves let
+  two combo-perfect heists clear the first stock gate on their own.
+- **(Brief 2) Stock-gate invariant with combos**: the sim's median and p75
+  for two flawless heists stay below 120; the tail (p90 ~136) can reach it
+  with near-perfect combo play, since THE RALLY's market multiplier rewards
+  exactly that.
+- **(Brief 2) THE NEW CHAIRMAN threshold** is now index 840: combos raise
+  winners' final index, and 840 keeps it at about a quarter of wins.
+- **(Brief 2) Explosive props sit on layer 1 (WALLS)** as the brief asks; they
+  are Props, so the wall art never paints them as walls.

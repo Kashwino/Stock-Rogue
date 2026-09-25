@@ -299,6 +299,7 @@ func _spawn_bullet(weapon: WeaponItem = null, last_round := false) -> void:
 			b.shot_id = shot
 			b.origin = global_position
 			b.crit_shot = crit_shot
+			b.last_round = last_round
 		var dir := aim
 		if spread > 0.0:
 			dir = aim.rotated(randf_range(-spread, spread))
@@ -434,6 +435,12 @@ func _strike_melee() -> void:
 	if host is HeistFloor:
 		host.on_takedown(_melee_mode)
 
+var _last_dodge_msec := -100000
+
+## Mid-roll, or rolled within the last `seconds` (combo bonus).
+func dodged_recently(seconds: float) -> bool:
+	return _dodging or Time.get_ticks_msec() - _last_dodge_msec <= int((dodge_time + seconds) * 1000.0)
+
 func is_busy_meleeing() -> bool:
 	return _melee_left > 0.0
 
@@ -447,6 +454,7 @@ func _try_dodge() -> void:
 		_dodging = true
 		_invulnerable = true
 		_dodge_timer = dodge_time
+		_last_dodge_msec = Time.get_ticks_msec()
 		_dodge_dir = dir
 		_ghost_clock = 0.0
 		_dust_puff()

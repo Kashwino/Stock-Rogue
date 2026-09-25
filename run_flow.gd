@@ -174,7 +174,8 @@ func end_run(victory: bool, cause: String = "") -> void:
 		var cleared: int = RunState.run_map.current_stage if RunState.run_map else 0
 		if victory:
 			cleared = 4
-		summary["clout"] = Meta.award_run(RunState.run_id, cleared, RunState.bosses_down.size(), float(summary["index"]), victory)
+		Meta.record_best("best_combo", RunState.best_combo)
+		summary["clout"] = Meta.award_run(RunState.run_id, cleared, RunState.bosses_down.size(), float(summary["index"]), victory, RunState.best_combo)
 		summary["new_specialists"] = Meta.check_unlocks()
 	practice = false
 	RunState.end_run(victory)

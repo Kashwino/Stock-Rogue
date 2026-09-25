@@ -50,6 +50,8 @@ static func grade_heist(stats: Dictionary) -> Dictionary:
 		+ acc * 0.20
 		+ time_score * 0.15
 		+ kill_score * 0.20)
+	# THE RALLY: a big best combo and a lot of cashed points nudge the grade.
+	score += clampf(float(stats.get("combo_best", 0)) / 50.0 * 0.04 + float(stats.get("combo_points", 0)) / 200.0 * 0.03, 0.0, 0.07)
 	# Every civilian the crew kills costs a full grade step.
 	var civilians: int = stats.get("civilians", 0)
 	score = maxf(score - civilians * 0.12, 0.0)

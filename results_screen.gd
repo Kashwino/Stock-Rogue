@@ -104,6 +104,10 @@ func show_result(result: Dictionary, venue_name: String = "") -> void:
 	_add_row("Accuracy", "%d%%" % int(b.get("accuracy", 0.0) * 100))
 	_add_row("Time on site", _fmt_time(stats.get("time_seconds", 0.0)))
 	_add_row("Guards down", "%d / %d" % [stats.get("kills", 0), stats.get("enemies_total", 0)])
+	var rally: Dictionary = result.get("combo", {})
+	if int(rally.get("best", 0)) > 0:
+		_add_row("Best rally", "%d pts · %s" % [int(rally["best"]), Combo.TIERS[clampi(int(rally.get("best_tier", 0)), 0, Combo.TIERS.size() - 1)]])
+		_add_row("Rally cashed", "$%d from %d pts%s" % [int(rally.get("gold", 0)), int(rally.get("points", 0)), (" · %d panic sold" % int(rally["panics"])) if int(rally.get("panics", 0)) > 0 else ""])
 	if result.has("loot"):
 		_add_row("Loot banked", "$%d" % int(result["loot"]))
 	if not result.get("meta_saved", true):

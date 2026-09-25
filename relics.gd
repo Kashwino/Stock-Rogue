@@ -1,6 +1,6 @@
 extends RefCounted
 class_name Relics
-## The relic catalog (20). Sold at the Black Market, found in upgrade chests,
+## The relic catalog (25: 20 + the five combo relics). Sold at the Black Market, found in upgrade chests,
 ## dropped by bosses. See RelicItem and RelicHooks.
 
 ## id: [name, description, rarity, stacks, mark]
@@ -25,6 +25,12 @@ const DATA := {
 	&"second_wind": ["Second Wind", "The first room you clear each job heals 1.", Rarity.Tier.RESTRICTED, false, "SW"],
 	&"tracer_rounds": ["Tracer Rounds", "Your rounds pierce one extra guard.", Rarity.Tier.CLASSIFIED, false, "TR"],
 	&"paper_trail": ["Paper Trail", "An A grade or better lifts every venue 2%.", Rarity.Tier.TOP_SECRET, false, "PT"],
+	# THE RALLY (combo) relics.
+	&"momentum_trader": ["Momentum Trader", "Your combo window lasts 1 s longer.", Rarity.Tier.RESTRICTED, false, "MT"],
+	&"dead_cat_bounce": ["Dead Cat Bounce", "The first hit you take during a combo doesn't break it (once per heist).", Rarity.Tier.CLASSIFIED, false, "DC"],
+	&"compound_interest": ["Compound Interest", "Combo tiers come 20% sooner.", Rarity.Tier.COVERT, false, "CI"],
+	&"blood_money": ["Blood Money", "Every combo tier-up drops a little cash.", Rarity.Tier.RESTRICTED, false, "BM"],
+	&"short_fuse": ["Short Fuse", "Explosive props hit 50% harder; explosive kills are worth +1 combo point.", Rarity.Tier.CLASSIFIED, false, "SF"],
 }
 const PRICES := [180, 260, 360, 480, 650]
 

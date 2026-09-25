@@ -183,6 +183,37 @@ func _try_place(kind: String) -> void:
 			return
 		_unmark(cells)
 
+## After furnishing: 0-3 explosive props by stage theme, never in a doorway
+## corridor, never near a spawn marker or a loot/chest keep-out (those cells
+## are already keep-outs), and never breaking reachability.
+func place_explosives(count: int, stage: int) -> Array:
+	var placed: Array = []
+	var kinds: Array = ExplosiveProp.STAGE_KINDS[clampi(stage, 0, ExplosiveProp.STAGE_KINDS.size() - 1)]
+	for i in count:
+		var kind: String = kinds[rng.randi() % kinds.size()]
+		var d: Array = ExplosiveProp.DATA[kind]
+		var size: Vector2 = d[4]
+		for attempt in 30:
+			var pos := Vector2(rng.randf_range(WALL_BAND + 14.0 + size.x * 0.5, room.room_size.x - WALL_BAND - 14.0 - size.x * 0.5),
+				rng.randf_range(WALL_BAND + 14.0 + size.y * 0.5, room.room_size.y - WALL_BAND - 14.0 - size.y * 0.5))
+			var rect := Rect2(pos - size * 0.5, size)
+			if not _free(rect.grow(24)):
+				continue
+			var cells := _mark(rect, 1)
+			if not _connected():
+				_unmark(cells)
+				continue
+			var prop := ExplosiveProp.new()
+			prop.kind = kind
+			prop.size = size
+			prop.theme = theme
+			prop.position = pos
+			room.add_child(prop)
+			room.blocked_rects.append(rect.grow(12))
+			placed.append(prop)
+			break
+	return placed
+
 func _center(x: int, y: int) -> Vector2:
 	return Vector2((x + 0.5) * CELL, (y + 0.5) * CELL)
 

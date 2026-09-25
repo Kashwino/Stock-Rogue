@@ -382,3 +382,93 @@ class MultiBanner extends Control:
 			_tween.tween_property(self, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		_tween.tween_interval(1.1)
 		_tween.tween_property(self, "modulate:a", 0.0, 0.35)
+
+
+## THE RALLY on the right edge: points, tier, multiplier, the draining
+## window and the last few bonuses. Hidden while no combo is live; slams on a
+## tier-up (a plain colour change with Reduce flashing).
+class ComboPanel extends Control:
+	var combo: Combo
+	var _count: Label
+	var _tier: Label
+	var _mult: Label
+	var _log: Label
+	var _color := Color.WHITE
+	var _shown := false
+	var _tween: Tween
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		position = Vector2(1040, 506)
+		size = Vector2(226, 128)
+		pivot_offset = Vector2(size.x, 0)
+		var s := float(Settings.values.get("combo_hud_scale", 1.0))
+		scale = Vector2(s, s)
+		_count = VisualTheme.label("0", "", 40, Palette.PAPER)
+		_count.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+		_count.position = Vector2(12, 2)
+		add_child(_count)
+		_tier = VisualTheme.label("", "", 20, Palette.GOLD)
+		_tier.add_theme_font_override("font", VisualTheme.font("heading_bold"))
+		_tier.position = Vector2(84, 8)
+		add_child(_tier)
+		_mult = VisualTheme.label("", "", 16, Palette.PAPER)
+		_mult.add_theme_font_override("font", VisualTheme.font("mono"))
+		_mult.position = Vector2(86, 32)
+		add_child(_mult)
+		_log = VisualTheme.label("", "", 13, Palette.PAPER_DIM)
+		_log.add_theme_font_override("font", VisualTheme.font("mono"))
+		_log.position = Vector2(12, 64)
+		add_child(_log)
+		modulate.a = 0.0
+		hide()
+
+	func bind_combo(c: Combo) -> void:
+		combo = c
+		combo.changed.connect(_refresh)
+		combo.tier_up.connect(_on_tier_up)
+
+	func _refresh() -> void:
+		if combo == null:
+			return
+		if combo.live and not _shown:
+			_shown = true
+			show()
+			var tw := create_tween()
+			tw.tween_property(self, "modulate:a", 1.0, 0.12)
+		elif not combo.live and _shown:
+			_shown = false
+			var tw := create_tween()
+			tw.tween_property(self, "modulate:a", 0.0, 0.3)
+			tw.tween_callback(hide)
+		if not combo.live:
+			return
+		_color = combo.tier_color()
+		_count.text = str(combo.points)
+		_tier.text = combo.tier_name()
+		_tier.add_theme_color_override("font_color", _color)
+		_mult.text = "x%.1f  $%d" % [combo.multiplier(), combo.pending_gold()]
+		var lines: Array = combo.log_lines.slice(maxi(0, combo.log_lines.size() - 3))
+		lines.reverse()
+		_log.text = "\n".join(lines)
+		queue_redraw()
+
+	func _on_tier_up(_t: int) -> void:
+		if Settings.values.get("reduce_flashing", false):
+			return
+		if _tween:
+			_tween.kill()
+		scale = Vector2.ONE * float(Settings.values.get("combo_hud_scale", 1.0)) * 1.25
+		_tween = create_tween()
+		_tween.tween_property(self, "scale", Vector2.ONE * float(Settings.values.get("combo_hud_scale", 1.0)), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+	func _draw() -> void:
+		if combo == null or not combo.live:
+			return
+		var r := Rect2(Vector2.ZERO, size)
+		draw_rect(r, Color(0.04, 0.04, 0.05, 0.86))
+		draw_rect(r, _color, false, 2.0)
+		draw_rect(Rect2(0, 0, 5, size.y), _color)
+		var k := clampf(combo.window_left / maxf(combo.window, 0.01), 0.0, 1.0)
+		draw_rect(Rect2(12, 54, size.x - 24, 5), Color(1, 1, 1, 0.12))
+		draw_rect(Rect2(12, 54, (size.x - 24) * k, 5), _color)

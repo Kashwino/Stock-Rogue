@@ -11,3 +11,4 @@ silent = true
 gunshot_noise = 0.6
 camera_spot_rate = 0.5
 start_weapon = &"silenced9mm"
+takedown_combo_bonus = 1

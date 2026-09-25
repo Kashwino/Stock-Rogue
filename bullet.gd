@@ -16,6 +16,7 @@ var stagger := false
 var shot_id := 0
 var origin := Vector2.ZERO
 var crit_shot := false
+var last_round := false
 var _dir := Vector2.RIGHT
 var _shooter: Node = null
 var _spent := false
@@ -50,6 +51,7 @@ func revive() -> void:
 	stagger = false
 	shot_id = 0
 	crit_shot = false
+	last_round = false
 	_hit_ids.clear()
 	_excluded.clear()
 	show()
@@ -96,6 +98,10 @@ func _physics_process(delta: float) -> void:
 			var host := get_tree().current_scene
 			if host is HeistFloor:
 				host.fx.spark(hit["position"], -_dir, Palette.NEON_CYAN)
+			_finish()
+		elif body.is_in_group("explosive") and body.has_method("shot"):
+			_impact(hit["position"], hit["normal"])
+			body.shot(damage, _dir, _shooter is Player)
 			_finish()
 		elif body.is_in_group("enemies") or body.is_in_group("security") or body.is_in_group("civilians"):
 			_try_hit(body)
@@ -154,7 +160,7 @@ func _try_hit(target: Node) -> void:
 			"weapon": weapon.id if weapon else &"", "shot": shot_id,
 			"pellets": weapon.pellets if weapon else 1,
 			"point_blank": origin != Vector2.ZERO and origin.distance_to(global_position) <= KillInfo.POINT_BLANK,
-			"crit": crit_shot or assassin,
+			"crit": crit_shot or assassin, "last_round": last_round,
 		})
 	if target.is_in_group("civilians") and target.has_method("take_blast"):
 		target.take_blast(dmg, _shooter is Player)
