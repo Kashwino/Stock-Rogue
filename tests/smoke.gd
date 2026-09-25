@@ -82,6 +82,7 @@ func _run() -> void:
 	await _test_combo()
 	await _test_wanted()
 	_test_music()
+	await _test_verdicts()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -185,9 +186,28 @@ func _run() -> void:
 	boss.invulnerable = false
 	boss._transition = 0.0
 	boss.take_damage(9999)
-	check(floor_scene.marked, "boss death marks heist and triggers reward")
+	check(boss.kneeling and not boss._dead and floor_scene.marked, "at 0 HP the boss kneels and the heist is marked")
+	check(floor_scene._shutters.size() > 0 and TimeController.has(&"kneel"), "the arena stays sealed and time swells while he kneels")
+	var standing := floor_scene.director.enemies.filter(func(e): return is_instance_valid(e) and e != boss and not e._dead)
+	check(standing.all(func(e): return e.surrendered), "his guards drop their guns and stand down")
+	boss.take_damage(50)
+	check(boss.kneeling and not boss._dead, "a kneeling boss can't be shot dead")
+	floor_scene.open_verdict(boss)
+	var card: VerdictCard = floor_scene._verdict_card
+	check(card != null and get_tree().paused and card._options == Verdicts.STAGE_OPTIONS, "the VERDICT card pauses the heist with four options")
+	check(card.process_mode == Node.PROCESS_MODE_ALWAYS and not card._cards[3].disabled, "the card runs while paused; the deal is on the table")
+	card.choose(Verdicts.EXECUTE)
+	check(not get_tree().paused and boss.verdict == Verdicts.EXECUTE and RunState.verdicts.get("auditor", "") == "execute" and RunState.fear == 1, "EXECUTE is recorded with +1 Fear")
+	check(floor_scene.player.is_busy_meleeing(), "EXECUTE runs the finisher")
+	var finished: Array = [null]
+	boss.died.connect(func(e): finished[0] = e.kill_info)
+	for i in 90:
+		await get_tree().physics_frame
+		if finished[0] != null:
+			break
+	check(finished[0] != null and finished[0].overkill, "the finisher kills him with an overkill")
 	await get_tree().process_frame
-	check(floor_scene._shutters.is_empty(), "the arena opens when the boss falls")
+	check(floor_scene._shutters.is_empty(), "the arena opens when the verdict is done")
 	var reward := floor_scene.find_children("*", "WorldChest", true, false).filter(func(c): return not c.fixed_items.is_empty())
 	check(reward.size() == 1 and reward[0].fixed_items[0].id == &"red_pen", "the Auditor drops his unique weapon")
 	check(ItemPool.boss_weapon(&"auditor") not in ItemPool.rewardable_weapons(), "boss uniques never enter reward pools")
@@ -210,12 +230,29 @@ func _run() -> void:
 	await _test_lockdown()
 	await _test_projectiles()
 	await _test_bosses()
+	_reset_verdicts()
 	await _test_objectives()
 	await _test_build()
 	_test_specialists()
 	await _test_story()
 	RunState.deserialize(saved)
 	check(RunState.has_perk(&"fast_hands") and RunState.hedge_charges == 2, "perk and hedge deserialize")
+	_reset_verdicts()
+	# The run save carries verdicts; an old save gets clean defaults.
+	RunState.record_verdict(&"landlord", Verdicts.FLIP)
+	RunState.record_verdict(&"auditor", Verdicts.SHAKE)
+	check(not RunState.record_verdict(&"landlord", Verdicts.EXECUTE), "a boss gets one verdict")
+	var data := RunState.serialize(4817, 0, 0, 0)
+	RunState.verdicts.clear()
+	RunState.loyalty = 0
+	RunState.deserialize(data)
+	check(Verdicts.flipped(&"landlord") and Verdicts.shaken(&"auditor") and RunState.loyalty == 1 and RunState.greed == 1, "verdicts survive the run save")
+	var old_save := data.duplicate()
+	for key in ["verdicts", "fear", "loyalty", "greed", "suspicious_stage", "ledger", "chairman_verdict"]:
+		old_save.erase(key)
+	RunState.deserialize(old_save)
+	check(RunState.verdicts.is_empty() and RunState.suspicious_stage == -1 and RunState.chairman_verdict == "", "an old save loads with no verdicts")
+	_reset_verdicts()
 	# Construct the remaining production screens to catch missing node references.
 	RunState.start_run(load("res://main_character.tres"), 4817)
 	RunFlow.practice = true
@@ -250,7 +287,7 @@ func _run() -> void:
 			scene._close_panel()
 		scene.queue_free()
 		await get_tree().process_frame
-	RunState.end_run(false)
+	await _test_deal()
 	await get_tree().process_frame
 	await get_tree().create_timer(2.0).timeout
 	print("TEST SUITE COMPLETE")
@@ -802,6 +839,15 @@ func _test_bosses() -> void:
 		b._physics_process(0.02)
 		check(b.engaged and heist._shutters.size() > 0, String(id) + " engages and seals the arena")
 		heist._on_boss_intro_done()
+		if id == &"chairman":
+			# Verdicts so far: the Auditor executed, the Landlord flipped, the
+			# Ambassador shaken down.
+			check(heist.allies.size() == 1 and heist.allies[0].boss_id == &"landlord", "the flipped Landlord fights beside you in the finale")
+			check(b.margin.hazard_scale == Verdicts.MARGIN_HALVED, "the Diplomatic Pouch halves Margin Call")
+			check(heist._revenge_left == [&"auditor"], "the executed Auditor's crew wants revenge")
+			heist._revenge_clock = 0.0
+			heist._tick_revenge(0.1)
+			check(heist.revenge.size() == Verdicts.crew_kinds(&"auditor").size() and is_equal_approx(heist.revenge_damage_mult(), 1.1), "one revenge wave; +10% damage per execution while it's up")
 		for i in 120:
 			await get_tree().physics_frame
 		check(is_instance_valid(b) and not b._dead and b.intro_done, String(id) + " fights without errors")
@@ -816,13 +862,149 @@ func _test_bosses() -> void:
 			if g is Enemy and g != b:
 				g.queue_free()
 		b.take_damage(99999)
-		check(heist.marked and b._dead, String(id) + " death marks the heist")
+		check(heist.marked and b.kneeling, String(id) + " kneels and marks the heist")
+		match id:
+			&"landlord":
+				var gold := RunEconomy.gold
+				heist.apply_verdict(Verdicts.FLIP, b)
+				check(Verdicts.flipped(&"landlord") and RunState.loyalty == 1 and RunState.suspicious_stage == RunState.run_map.current_stage + 1, "FLIP: +1 Loyalty, the Board gets suspicious")
+				check(RunEconomy.gold == gold and b._leaving and not b._dead, "FLIP pays nothing and he walks out alive")
+			&"ambassador":
+				var gold := RunEconomy.gold
+				var hearts := RunState.max_health
+				heist.apply_verdict(Verdicts.SHAKE, b)
+				check(RunEconomy.gold > gold and RunState.has_relic(&"diplomatic_pouch") and RunState.greed == 1, "SHAKE DOWN: gold, her relic, +1 Greed")
+				check(RunState.max_health == hearts and b._leaving, "the Diplomatic Pouch is no Deed Box; she leaves")
+			&"chairman":
+				heist.apply_verdict(Verdicts.WALK, b)
+				check(RunState.chairman_verdict == "walk" and not b._dead and not b._leaving, "WALK AWAY leaves the Chairman on his knees")
 		heist.queue_free()
 		await get_tree().process_frame
 		await get_tree().process_frame
 
+## TAKE HIS DEAL ends the run with the boss's early ending: a partial win
+## that pays Clout but never counts as a won run.
+func _test_deal() -> void:
+	RunState.start_run(load("res://main_character.tres"), 4817)
+	RunFlow.practice = false
+	var holder := Node.new()
+	get_tree().root.add_child(holder)
+	get_tree().current_scene = holder
+	var early: int = int(Meta.stats.get("early_endings", 0))
+	var won: int = int(Meta.stats.get("runs_won", 0))
+	var gold := RunEconomy.gold
+	var payout := Verdicts.deal_payout()
+	var clout := Verdicts.deal_clout(&"landlord")
+	var clout_before := Meta.clout
+	RunFlow.take_deal(&"landlord")
+	await get_tree().process_frame
+	var seq: EndingSequence = null
+	for n in get_tree().root.get_children():
+		if n is EndingSequence:
+			seq = n
+	check(seq != null and seq.ending == &"landlords_chair" and seq.summary.get("early", false), "the Landlord's deal plays THE LANDLORD'S CHAIR")
+	var first: int = int(seq.summary.get("first_time", 0)) if seq else 0
+	check(int(seq.summary.get("gold", 0)) == gold + payout and Meta.clout == clout_before + clout + first, "the deal pays the buyout and the Clout it promised")
+	check(Meta.has_seen_ending(&"landlords_chair"), "the gallery remembers the ending")
+	check(int(Meta.stats["early_endings"]) == early + 1 and int(Meta.stats["runs_won"]) == won and not RunState.active, "an early ending is recorded, but not as a won run")
+	if seq:
+		seq.queue_free()
+	holder.queue_free()
+	await get_tree().process_frame
+
+## Verdict state back to a clean run for the tests that follow.
+func _reset_verdicts() -> void:
+	RunState.verdicts.clear()
+	RunState.chairman_verdict = ""
+	RunState.fear = 0
+	RunState.loyalty = 0
+	RunState.greed = 0
+	RunState.suspicious_stage = -1
+	RunState.ledger.clear()
+	RunState.ledger_broke = false
+	for id: StringName in [&"deed_box", &"black_ledger", &"diplomatic_pouch"]:
+		RunState.relics.erase(id)
+
+## Boss verdicts: the passives, relics and bookkeeping (the kneel and the card
+## are covered with the Auditor fight; the finale in _test_bosses).
+func _test_verdicts() -> void:
+	_reset_verdicts()
+	# FLIP passives.
+	RunState.verdicts = {"ambassador": "flip"}
+	check(RunState.wanted_cap() == 4, "Diplomatic Cover caps WANTED at four stars")
+	RunState.verdicts.clear()
+	check(RunState.wanted_cap() == 5, "five stars without it")
+	var asset: CriminalAsset = RunState.market.get_asset(&"bank_job")
+	var price := asset.current_price
+	floor_scene.live.report_damage_taken(1)
+	var plain := price - asset.current_price
+	asset.current_price = price
+	RunState.verdicts = {"auditor": "flip"}
+	floor_scene.live.report_damage_taken(1)
+	var cooked := price - asset.current_price
+	asset.current_price = price
+	check(cooked > 0.0 and cooked < plain * 0.8, "Cooked Books takes a quarter off the damage crash")
+	RunState.verdicts = {"landlord": "flip"}
+	check(Verdicts.rent() == Verdicts.RENT_BASE * (1 + RunState.run_map.quota_block), "Safehouse Rent scales with the quota block")
+	RunState.suspicious_stage = RunState.run_map.current_stage
+	check(RunState.board_suspicious(), "a flip makes the Board suspicious of the next stage")
+	RunState.suspicious_stage = -1
+	# SHAKE DOWN relics.
+	var lev := Positions.leverage()
+	RunState.add_relic(&"black_ledger")
+	check(is_equal_approx(Positions.leverage(), lev + 1.0) and not (&"black_ledger" in Relics.available().map(func(r): return r.id)), "the Black Ledger adds leverage and never enters the pools")
+	RunState.news.clear()
+	RunState.rumors.clear()
+	MarketNews.between_jobs(4817, 3)
+	check(not RunState.ledger.is_empty() and RunState.news.size() == 1, "the ledger reads the next story early")
+	var expected := MarketNews.line(RunState.ledger)
+	var ahead := RandomNumberGenerator.new()
+	ahead.seed = hash("4817:news:4")
+	check(MarketNews.line(MarketNews.draw(ahead)) == expected, "the ledger's story is the one that would break next")
+	var broke := MarketNews.break_ledger()
+	check(not broke.is_empty() and RunState.ledger.is_empty() and RunState.ledger_broke, "it breaks at the end of the next job")
+	MarketNews.between_jobs(4817, 4)
+	check(RunState.news.size() == 2 and not RunState.ledger.is_empty(), "no double story after the ledger broke it")
+	RunState.relics.erase(&"black_ledger")
+	RunState.ledger.clear()
+	RunState.add_relic(&"diplomatic_pouch")
+	var alerts := floor_scene.alerts
+	floor_scene._pouch_used = false
+	floor_scene.security_alert(floor_scene.generator.start_room, "Test alarm", 1.0)
+	check(floor_scene.alerts == alerts, "the Diplomatic Pouch swallows the first alarm")
+	floor_scene.security_alert(floor_scene.generator.start_room, "Test alarm", 0.0)
+	check(floor_scene.alerts == alerts + 1, "only the first")
+	RunState.relics.erase(&"diplomatic_pouch")
+	# A flipped boss as an ally: downed, never killed; back up after 20 s.
+	floor_scene._spawn_ally(&"auditor")
+	var ally: Ally = floor_scene.allies[0]
+	check(ally.is_in_group("ally") and ally.collision_layer == Layers.PLAYER and floor_scene.allies_up() == 1, "an ally stands with you on the player's layer")
+	ally.take_damage(99)
+	check(ally.is_dead() and is_equal_approx(ally.downed_left, Verdicts.ALLY_REVIVE) and floor_scene.allies_up() == 0, "an ally goes down for 20 s")
+	ally.downed_left = 0.01
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check(not ally.is_dead() and ally.health == ally.max_health, "and gets back up")
+	ally.queue_free()
+	floor_scene.allies.clear()
+	# TAKE HIS DEAL: the preview matches what the run pays.
+	RunState.verdicts.clear()
+	var clout := Verdicts.deal_clout(&"landlord")
+	check(clout == Meta.clout_for(RunState.run_map.current_stage + 1, RunState.bosses_down.size() + 1, RunState.empire_index(), false, RunState.best_combo) + Verdicts.DEAL_CLOUT_BONUS, "the deal's Clout preview")
+	check(Endings.is_early(Verdicts.deal_ending(&"ambassador")) and not Endings.is_final(&"diplomatic_exit"), "deals end early")
+	# The Chairman's verdict picks the final ending.
+	RunState.verdicts = {"landlord": "flip", "auditor": "flip", "ambassador": "flip"}
+	check(Endings.resolve("seat", 100.0, 0) == &"syndicate", "all three flipped: THE SYNDICATE")
+	RunState.verdicts = {"landlord": "execute", "auditor": "execute", "ambassador": "execute"}
+	check(Endings.resolve("seat", 100.0, 0) == &"purge", "all three executed: THE PURGE")
+	RunState.verdicts = {"landlord": "shake", "auditor": "shake", "ambassador": "shake"}
+	check(Endings.resolve("seat", 100.0, 0) == &"puppeteer", "all three shaken: THE PUPPETEER")
+	check(Endings.resolve("burn", 100.0, Endings.BLACK_MONDAY_PROFIT) == &"black_monday" and Endings.resolve("burn", 100.0, 10) == &"scorched_earth", "BURN THE BOARD: BLACK MONDAY with the shorts, else SCORCHED EARTH")
+	_reset_verdicts()
+
 ## The four specialists play as their cards say.
 func _test_specialists() -> void:
+
 	var ghost: CharacterProfile = load("res://crew_ghost.tres")
 	RunState.start_run(ghost, 77)
 	var weapons := (RunState.loadout.big + RunState.loadout.small).filter(func(w): return w != null).map(func(w): return w.id)
@@ -1391,7 +1573,9 @@ func _test_onboarding() -> void:
 	check(TouchInput.device() == "keys", "the keyboard takes prompts back")
 
 func _test_story() -> void:
-	check(Story.ending_id(Story.NEW_CHAIRMAN_INDEX - 1.0) == &"retired" and Story.ending_id(Story.NEW_CHAIRMAN_INDEX) == &"new_chairman", "the index decides RETIRED or THE NEW CHAIRMAN")
+	RunState.verdicts.clear()
+	check(Endings.resolve("seat", Story.NEW_CHAIRMAN_INDEX - 1.0, 0) == &"seat_at_table" and Endings.resolve("seat", Story.NEW_CHAIRMAN_INDEX, 0) == &"new_chairman", "the index decides A SEAT AT THE TABLE or THE NEW CHAIRMAN")
+	check(Endings.resolve("walk", 900.0, 0) == &"retired", "WALK AWAY retires")
 	for st in 4:
 		check(Story.STAGE_INTROS.has(st) and Story.STAGE_INTROS[st].size() == 3, "stage %d has an intro card" % st)
 	# Narration: tap finishes a line, the next tap moves on, skip ends it.
@@ -1423,10 +1607,10 @@ func _test_story() -> void:
 	var seq := EndingSequence.new()
 	seq.freeze_beneath = false
 	seq.summary = {"heists": 11, "index": 900.0, "gold": 900, "kills": 80, "who": "The Operator", "clout": 38, "new_specialists": [&"legend"]}
-	seq.ending = Story.ending_id(900.0)
+	seq.ending = &"new_chairman"
 	get_tree().root.add_child(seq)
 	await get_tree().process_frame
-	check(seq.ending == &"new_chairman" and seq._narration.lines == Story.EPILOGUE_CHAIRMAN, "a high index plays THE NEW CHAIRMAN epilogue")
+	check(seq.ending == &"new_chairman" and seq._narration.lines == Endings.epilogue(&"new_chairman"), "THE NEW CHAIRMAN plays its epilogue")
 	seq._on_button()
 	check(seq._stage == 1 and seq._title_block != null, "skipping the epilogue slams the title")
 	var titles := seq._title_block.find_children("*", "Label", true, false).map(func(l): return l.text)
@@ -1444,10 +1628,10 @@ func _test_story() -> void:
 	var retired := EndingSequence.new()
 	retired.freeze_beneath = false
 	retired.summary = {"index": 300.0}
-	retired.ending = Story.ending_id(300.0)
+	retired.ending = &"retired"
 	get_tree().root.add_child(retired)
 	await get_tree().process_frame
-	check(retired._narration.lines == Story.EPILOGUE_RETIRED, "an ordinary win plays RETIRED")
+	check(retired._narration.lines == Endings.epilogue(&"retired"), "WALK AWAY plays RETIRED")
 	retired.queue_free()
 	await get_tree().process_frame
 	# Vendors read the run.

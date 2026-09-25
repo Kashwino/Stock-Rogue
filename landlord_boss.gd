@@ -12,6 +12,12 @@ var _charge_dir := Vector2.RIGHT
 var _hit := false
 var _dir := Vector2.RIGHT
 
+## The look (also worn by the ally version in the finale).
+static func look() -> Dictionary:
+	return {"body": SpriteKit.Body.TANK, "head": SpriteKit.Head.FEDORA, "gun": SpriteKit.Gun.SHOTGUN,
+		"color": Color("5a3a2a"), "trim": Palette.GOLD, "hat": Color("3a2a20"), "band": Color("8a1f1f"),
+		"skin": SpriteKit.SKIN[1], "acc": ["cigar", "gold_band"], "scale": 1.5}
+
 func setup_boss() -> void:
 	boss_id = &"landlord"
 	display_name = "THE LANDLORD"
@@ -20,9 +26,7 @@ func setup_boss() -> void:
 	thresholds = [0.5, 0.2]
 	phase_lines = ["You're three months behind. Let's talk furniture.", "EVICTION NOTICE!"]
 	move_speed = 95.0
-	kit = SpriteKit.dress(sprite, {"body": SpriteKit.Body.TANK, "head": SpriteKit.Head.FEDORA, "gun": SpriteKit.Gun.SHOTGUN,
-		"color": Color("5a3a2a"), "trim": Palette.GOLD, "hat": Color("3a2a20"), "band": Color("8a1f1f"),
-		"skin": SpriteKit.SKIN[1], "acc": ["cigar", "gold_band"], "scale": 1.5})
+	kit = SpriteKit.dress(sprite, look())
 
 func begin_fight() -> void:
 	attack = &"recover"

@@ -50,6 +50,28 @@ func _ready() -> void:
 	_build_door()
 	_build_hud_hint()
 	_build_lighting()
+	_collect_rent()
+
+## Safehouse Rent (a flipped Landlord): gold at every hideout visit, once.
+func _collect_rent() -> void:
+	if not Verdicts.flipped(&"landlord") or RunState.run_map == null or RunFlow.practice:
+		return
+	var key := "%d:%d" % [RunState.run_map.current_stage, RunState.run_map.current_step]
+	if RunState.rent_paid_at == key:
+		return
+	RunState.rent_paid_at = key
+	var rent := Verdicts.rent()
+	RunEconomy.add_bonus(rent)
+	RunFlow.save()
+	Audio.play_ui("cash_register")
+	var note := VisualTheme.label("SAFEHOUSE RENT  +$%d  ·  the Landlord collects for you now" % rent, "", 20, Palette.GOLD)
+	note.position = Vector2(26, 112)
+	if is_instance_valid(_hint):
+		_hint.get_parent().add_child(note)
+		var tw := note.create_tween()
+		tw.tween_interval(4.0)
+		tw.tween_property(note, "modulate:a", 0.0, 1.0)
+		tw.tween_callback(note.queue_free)
 
 ## If these actions aren't in the project's Input Map, movement/interaction
 ## fail silently. Surface that clearly instead.

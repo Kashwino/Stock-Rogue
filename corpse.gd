@@ -106,6 +106,20 @@ func _drop_weapon() -> void:
 	get_parent().add_child(weapon)
 	weapon.global_position = global_position
 
+## A gun let go of by the living (a guard standing down, a boss on his
+## knees): it clatters away across the floor. Returns the node or null.
+static func drop_weapon(parent: Node, at: Vector2, gun: int, velocity_in: Vector2) -> Node2D:
+	if parent == null or not parent.is_inside_tree() or not Skitter.LENGTH.has(gun):
+		return null
+	var s := Skitter.new()
+	s.length = Skitter.LENGTH[gun]
+	s.velocity = velocity_in
+	s.spin = randf_range(-12.0, 12.0)
+	parent.add_child(s)
+	s.global_position = at
+	Audio.play("clatter", at, -6.0)
+	return s
+
 ## A white pop on the body: the kill registered.
 func confirm_flash() -> void:
 	_flash = 1.0

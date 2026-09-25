@@ -36,6 +36,13 @@ const SECTOR_STORIES := [
 
 ## Roll the next story, apply headlines now, queue rumors. Returns the story.
 static func roll(rng: RandomNumberGenerator) -> Dictionary:
+	var story := draw(rng)
+	apply(story)
+	return story
+
+## Draw a story without touching the market (the Black Ledger reads it one
+## heist early). Rumors carry whether they're real.
+static func draw(rng: RandomNumberGenerator) -> Dictionary:
 	if RunState.market == null or RunState.market.assets.is_empty():
 		return {}
 	var story := {}
@@ -49,29 +56,77 @@ static func roll(rng: RandomNumberGenerator) -> Dictionary:
 		var text: String = pool[rng.randi() % pool.size()]
 		var move := rng.randf_range(0.14, 0.22) * (1.0 if up else -1.0)
 		story = {"kind": "rumor", "venue": String(asset.id), "move": move,
-			"text": "RUMOR: " + text.replace("{N}", noun).replace("{T}", tick)}
-		RunState.rumors.append({"venue": String(asset.id), "move": move,
-			"real": rng.randf() < RUMOR_RELIABILITY, "text": story["text"]})
+			"text": "RUMOR: " + text.replace("{N}", noun).replace("{T}", tick),
+			"real": rng.randf() < RUMOR_RELIABILITY}
 	elif rng.randf() < 0.18:
 		var stage: int = RunState.run_map.current_stage if RunState.run_map else 0
 		stage = clampi(stage, 0, 3)
 		var pick: Array = SECTOR_STORIES[rng.randi() % SECTOR_STORIES.size()]
 		var sector: String = ["TOWN", "CITY", "WORLD", "EXCHANGE"][stage]
-		var ids: Array = RunMap.STAGE_VENUES.get(stage, [])
-		for id in ids:
-			_move(StringName(id), float(pick[1]))
-		story = {"kind": "sector", "venue": "", "move": float(pick[1]),
+		story = {"kind": "sector", "venue": "", "move": float(pick[1]), "stage": stage,
 			"text": String(pick[0]).replace("{S}", sector)}
 	else:
 		var up := rng.randf() < 0.5
 		var pool: Array = UP_STORIES if up else DOWN_STORIES
 		var pick: Array = pool[rng.randi() % pool.size()]
 		var move: float = float(pick[1]) * rng.randf_range(0.85, 1.2)
-		_move(asset.id, move)
 		story = {"kind": "headline", "venue": String(asset.id), "move": move,
 			"text": String(pick[0]).replace("{N}", noun).replace("{T}", tick)}
-	_keep(story)
 	return story
+
+## Break a drawn story: headlines and sector stories move prices now, a
+## rumor is queued for the end of the next job.
+static func apply(story: Dictionary) -> void:
+	if story.is_empty():
+		return
+	match String(story.get("kind", "")):
+		"rumor":
+			RunState.rumors.append({"venue": story["venue"], "move": float(story["move"]),
+				"real": bool(story.get("real", true)), "text": story["text"]})
+		"sector":
+			for id in RunMap.STAGE_VENUES.get(int(story.get("stage", 0)), []):
+				_move(StringName(id), float(story["move"]))
+		"headline":
+			_move(StringName(story["venue"]), float(story["move"]))
+	var kept := story.duplicate()
+	kept.erase("real")
+	_keep(kept)
+
+## The Black Ledger: the story it read early breaks now, at the end of the
+## job, before positions settle. Returns it (or {}).
+static func break_ledger() -> Dictionary:
+	if RunState.ledger.is_empty():
+		return {}
+	var story: Dictionary = RunState.ledger.duplicate(true)
+	RunState.ledger.clear()
+	RunState.ledger_broke = true
+	apply(story)
+	return story
+
+## Between jobs: the wire's next story. With the Black Ledger the story for
+## the job after next is read now and breaks at the end of the next job.
+static func between_jobs(run_seed: int, heists_done: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(run_seed) + ":news:" + str(heists_done))
+	if not RunState.has_relic(&"black_ledger"):
+		roll(rng)
+		return
+	if not RunState.ledger_broke:
+		roll(rng)
+	RunState.ledger_broke = false
+	var ahead := RandomNumberGenerator.new()
+	ahead.seed = hash(str(run_seed) + ":news:" + str(heists_done + 1))
+	RunState.ledger = draw(ahead)
+
+## What the Black Ledger says is coming ("" without it).
+static func ledger_line() -> String:
+	if RunState.ledger.is_empty():
+		return ""
+	var story: Dictionary = RunState.ledger
+	var text := line(story)
+	if story.get("kind", "") == "rumor":
+		text += "  — the ledger says it's %s" % ("real" if story.get("real", true) else "nothing")
+	return "BLACK LEDGER · NEXT JOB: " + text
 
 ## End of a job: queued rumors come true (or don't) before positions settle.
 ## Returns the stories that resolved.

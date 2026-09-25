@@ -38,24 +38,10 @@ const STAGE_INTROS := {
 	3: ["DOOMSDAY", "The Exchange tower. Every crew in the city is listed on its walls. Yours included.", "THE CHAIRMAN is waiting on the trading floor. He set every quota you ever paid."],
 }
 
-## Winning endings. Index at or above NEW_CHAIRMAN_INDEX at the final
-## extraction takes the seat; otherwise you retire.
+## TAKE THE SEAT with mixed verdicts: at or above this index at the final
+## extraction you're THE NEW CHAIRMAN; below it, A SEAT AT THE TABLE. The
+## endings themselves live in endings.gd.
 const NEW_CHAIRMAN_INDEX := 840.0
-const EPILOGUE_RETIRED := [
-	"The Chairman went down on his own trading floor, under a ticker that finally stopped.",
-	"By morning the Board had a new rumor: somebody walked out with the whole book and never listed it.",
-	"You sold your seat before anyone could offer you one. The case file was closed, stamped and filed.",
-	"Somewhere warmer, a nobody reads the market pages and doesn't recognise a single name.",
-]
-const EPILOGUE_CHAIRMAN := [
-	"The Chairman went down on his own trading floor. The ticker didn't stop. It just changed names.",
-	"By morning every crew in the city had a new quota, and a new signature at the bottom of the page.",
-	"The collectors came up to the tower with their hats in their hands.",
-	"You set the quotas now. You own the tower. You are the Board.",
-]
-
-static func ending_id(index: float) -> StringName:
-	return &"new_chairman" if index >= NEW_CHAIRMAN_INDEX else &"retired"
 
 const COLLECTOR_OPEN_OK := [
 	"Sit. Let's see if you're worth the paper.",

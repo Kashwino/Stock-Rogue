@@ -11,6 +11,8 @@ var enemy_damage := 3
 var player_caused := false
 ## Set by explosive props (Phase 5): kills count as prop kills.
 var from_prop := false
+## Show only: no damage, no chain reactions (BURN THE BOARD's fire).
+var harmless := false
 ## Seconds left on the fuse; the ring fills as it runs down.
 var fuse_time := 0.0
 var _fuse_total := 0.0
@@ -28,6 +30,16 @@ static func fuse(host: Node, at: Vector2, delay: float, blast_radius: float = 90
 	b.player_caused = by_player
 	b.fuse_time = delay
 	# Positioned before entering the tree: an instant blast goes off in _ready.
+	b.position = (host as Node2D).to_local(at) if host is Node2D else at
+	host.add_child(b)
+	return b
+
+## A blast for show (fire, flash, scorch, sound) that hurts nobody.
+static func flare(host: Node, at: Vector2, delay: float, blast_radius: float = 90.0) -> Blast:
+	var b := Blast.new()
+	b.harmless = true
+	b.radius = blast_radius
+	b.fuse_time = delay
 	b.position = (host as Node2D).to_local(at) if host is Node2D else at
 	host.add_child(b)
 	return b
@@ -69,10 +81,10 @@ func _explode() -> void:
 	var tree := get_tree()
 	var space := get_world_2d().direct_space_state
 	# Other explosive props in the radius go up a beat later: chain reactions.
-	for other in tree.get_nodes_in_group("explosive"):
+	for other in ([] if harmless else tree.get_nodes_in_group("explosive")):
 		if other is Node2D and other.global_position.distance_to(global_position) <= radius + 16.0:
 			other.blast_hit(player_caused)
-	for group in ["player", "enemies", "civilians", "security"]:
+	for group in ([] if harmless else ["player", "enemies", "civilians", "security"]):
 		for target in tree.get_nodes_in_group(group):
 			if not (target is Node2D) or not target.has_method("take_damage"):
 				continue

@@ -141,7 +141,13 @@ func _build_wire() -> void:
 	h.custom_minimum_size = Vector2(250, 0)
 	var quotes := Positions.quotes()
 	var y := 84.0
-	if quotes.is_empty():
+	var ledger := MarketNews.ledger_line()
+	if ledger != "":
+		# The Black Ledger: next job's story, in red ink.
+		_type(clip, ledger, Vector2(12, y - 8), 11, Palette.STAMP_RED, true, 250)
+		y += 30.0
+		quotes = quotes.slice(0, 1)
+	if quotes.is_empty() and ledger == "":
 		_type(clip, "No open positions. The Fence takes longs and shorts.", Vector2(12, y), 12, Color("5a5040"), false, 250)
 	else:
 		for q: Dictionary in quotes.slice(0, 2):

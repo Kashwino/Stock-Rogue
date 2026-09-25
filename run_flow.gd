@@ -15,6 +15,8 @@ const SELECT_SCENE := "res://character_select.tscn"
 var run_seed: int = 0
 
 # Run-long tallies for the end screen.
+## Where a death happened ("RENT OFFICE, TENEMENT ROW"), for the front page.
+var death_where := ""
 var heists_completed: int = 0
 var total_kills: int = 0
 var stage: int = 0
@@ -121,10 +123,9 @@ func on_heist_finished() -> void:
 		if next == null:
 			end_run(true)
 			return
-		# A story breaks on the wire between jobs.
-		var rng := RandomNumberGenerator.new()
-		rng.seed = hash(str(run_seed) + ":news:" + str(RunState.run_map.heists_done))
-		MarketNews.roll(rng)
+		# A story breaks on the wire between jobs (the Black Ledger reads the
+		# next one early).
+		MarketNews.between_jobs(run_seed, RunState.run_map.heists_done)
 	go_to_map()
 
 ## Quota gate outcome from the map's sit-down with the collector.
@@ -145,8 +146,21 @@ func advance_stage() -> void:
 			return
 	go_to_map()
 
+## TAKE HIS DEAL on a kneeling stage boss: the run ends right here with his
+## early ending — his buyout paid, the Clout reduced (see Verdicts).
+func take_deal(boss_id: StringName) -> void:
+	if practice or not RunState.active:
+		return
+	RunEconomy.add_bonus(Verdicts.deal_payout())
+	if boss_id not in RunState.bosses_down:
+		RunState.bosses_down.append(boss_id)
+	get_tree().paused = false
+	end_run(true, "", Verdicts.deal_ending(boss_id))
+
 # --- Run end ---
-func end_run(victory: bool, cause: String = "") -> void:
+## `ending`: an early ending (TAKE HIS DEAL); a win without one resolves the
+## final ending from the Chairman's verdict (Endings.resolve).
+func end_run(victory: bool, cause: String = "", ending: StringName = &"") -> void:
 	if not RunState.active:
 		return
 	ShortBook.settle(false)
@@ -154,6 +168,7 @@ func end_run(victory: bool, cause: String = "") -> void:
 	# Snapshot the run's stats BEFORE clearing state — RunState.end_run() wipes
 	# the market and loadout, so reading them afterwards gives nothing.
 	var summary := {
+		"where": death_where,
 		"heists": heists_completed,
 		"stage": "Town",
 		"gold": RunEconomy.gold,
@@ -167,30 +182,50 @@ func end_run(victory: bool, cause: String = "") -> void:
 		summary["stage"] = RunState.run_map.stage_name()
 	if RunState.market:
 		summary["index"] = RunState.empire_index()
+	if victory and ending == &"":
+		ending = Endings.resolve(RunState.chairman_verdict, float(summary["index"]), RunState.burn_short_profit)
+	var early := Endings.is_early(ending)
+	if victory:
+		summary["ending"] = String(ending)
+		summary["early"] = early
+	summary["verdicts"] = RunState.verdicts.duplicate()
+	summary["chairman_verdict"] = RunState.chairman_verdict
+	summary["reputation"] = [RunState.fear, RunState.loyalty, RunState.greed]
 	# The career: stats, Clout for the run, and any specialist it unlocked.
+	# An early ending (a deal) is a partial win: it isn't counted as a won
+	# run, so it never unlocks the Legend.
 	if not practice:
-		Meta.stats["runs_won" if victory else "deaths"] = int(Meta.stats.get("runs_won" if victory else "deaths", 0)) + 1
+		var stat := "deaths"
+		if victory:
+			stat = "early_endings" if early else "runs_won"
+		Meta.stats[stat] = int(Meta.stats.get(stat, 0)) + 1
 		Meta.record_best("best_index", float(summary["index"]))
 		var cleared: int = RunState.run_map.current_stage if RunState.run_map else 0
 		if victory:
-			cleared = 4
+			cleared = cleared + 1 if early else 4
 		Meta.record_best("best_combo", RunState.best_combo)
-		summary["clout"] = Meta.award_run(RunState.run_id, cleared, RunState.bosses_down.size(), float(summary["index"]), victory, RunState.best_combo)
+		summary["clout"] = Meta.award_run(RunState.run_id, cleared, RunState.bosses_down.size(), float(summary["index"]),
+			victory and not early, RunState.best_combo, Verdicts.DEAL_CLOUT_BONUS if early else 0)
+		if victory:
+			summary["first_time"] = Meta.record_ending(ending)
+			summary["clout"] = int(summary["clout"]) + int(summary["first_time"])
+		else:
+			Meta.record_ending(&"busted")
 		summary["new_specialists"] = Meta.check_unlocks()
 	practice = false
+	death_where = ""
 	RunState.end_run(victory)
 	RunSave.delete_run()               # roguelike: run save gone at death/win
 	_show_end_screen(victory, summary)
 
 ## Spawn the death/victory screen over whatever scene is currently loaded.
-## A win plays the ending (RETIRED or THE NEW CHAIRMAN); a death gets the
-## BUSTED front page.
+## A win (or a deal) plays its ending (endings.gd); a death gets the BUSTED
+## front page.
 func _show_end_screen(victory: bool, summary: Dictionary) -> void:
 	if victory:
 		for existing in get_tree().root.get_children():
 			if existing is DeathScreen or existing is EndingSequence:
 				existing.queue_free()
-		summary["ending"] = String(Story.ending_id(float(summary.get("index", 1.0))))
 		var seq := EndingSequence.play(self, summary)
 		seq.add_to_group("end_screen")
 		return

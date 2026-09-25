@@ -26,6 +26,12 @@ var _drone_clock := 4.0
 var _blink_to := Vector2.ZERO
 var _cycle := 0
 
+## The look (also worn by the ally version in the finale).
+static func look() -> Dictionary:
+	return {"body": SpriteKit.Body.SUIT, "head": SpriteKit.Head.SLICKED, "gun": SpriteKit.Gun.LEDGER,
+		"color": Color("2a2f3a"), "trim": Palette.GOLD, "skin": SpriteKit.SKIN[4], "hair": Color("8a8a8a"),
+		"acc": ["pinstripe", "tie", "glasses"], "scale": 1.45}
+
 func setup_boss() -> void:
 	boss_id = &"auditor"
 	display_name = "THE AUDITOR"
@@ -34,9 +40,7 @@ func setup_boss() -> void:
 	thresholds = [0.5]
 	phase_lines = ["Let's go over these numbers again. Slowly."]
 	move_speed = 110.0
-	kit = SpriteKit.dress(sprite, {"body": SpriteKit.Body.SUIT, "head": SpriteKit.Head.SLICKED, "gun": SpriteKit.Gun.LEDGER,
-		"color": Color("2a2f3a"), "trim": Palette.GOLD, "skin": SpriteKit.SKIN[4], "hair": Color("8a8a8a"),
-		"acc": ["pinstripe", "tie", "glasses"], "scale": 1.45})
+	kit = SpriteKit.dress(sprite, look())
 
 func begin_fight() -> void:
 	var host := heist()
@@ -46,7 +50,7 @@ func begin_fight() -> void:
 	clock = 0.8
 
 func _process(delta: float) -> void:
-	if not intro_done or _dead:
+	if not intro_done or is_down():
 		return
 	# The ledger opens on its own clock, whatever he is doing.
 	_audit_clock -= delta

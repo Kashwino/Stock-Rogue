@@ -24,6 +24,8 @@ static func leverage() -> float:
 	var lev: float = RunState.profile_value("position_leverage", BASE_LEVERAGE)
 	if RunState.has_relic(&"market_maker"):
 		lev += 0.5
+	if RunState.has_relic(&"black_ledger"):
+		lev += 1.0
 	return lev
 
 ## Stake sizes scale with the quota block so late positions still matter.
@@ -83,6 +85,14 @@ static func quotes() -> Array:
 		q["profit"] = int(q["value"]) - int(p.get("stake", 0))
 		out.append(q)
 	return out
+
+## Profit on every open SHORT right now (BLACK MONDAY reads it).
+static func short_profit() -> int:
+	var total := 0
+	for q: Dictionary in quotes():
+		if q.get("side", "long") == "short":
+			total += int(q["profit"])
+	return total
 
 ## Close everything at today's prices and pay out. Called at the end of a job.
 static func settle_all() -> Array:

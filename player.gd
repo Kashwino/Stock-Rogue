@@ -286,6 +286,9 @@ func _spawn_bullet(weapon: WeaponItem = null, last_round := false) -> void:
 		crit_shot = true
 	# The Wolf hits 25% harder; a fraction rounds up by chance.
 	var mult: float = RunState.profile_value("damage_mult", 1.0)
+	var floor_host := get_tree().current_scene
+	if floor_host is HeistFloor:
+		mult *= floor_host.revenge_damage_mult()
 	if mult != 1.0:
 		var scaled := dmg * mult
 		dmg = int(scaled) + (1 if randf() < fmod(scaled, 1.0) else 0)
@@ -414,6 +417,20 @@ func _strike_melee() -> void:
 			kit.kick(1.2)
 		v.note_hit({"source": &"takedown", "stealth": true, "by_player": true, "dir": dir, "force": 20.0})
 		v.take_damage(v.health)
+	elif _melee_mode == Takedown.FINISHER and v is Boss:
+		# The verdict: point-blank, three times, with whatever you're holding.
+		var held: WeaponItem = loadout.get_active() if loadout else null
+		for i in 3:
+			Audio.play(shot_sound(held), global_position, 0.0 if i == 0 else -4.0, 1.0 - 0.06 * i)
+		if host is HeistFloor:
+			host.fx.muzzle(muzzle.global_position, dir, true)
+			host.fx.recoil(dir, 14.0)
+			host.fx.add_trauma(0.8)
+		if kit:
+			kit.kick(1.5)
+		if has_node("/root/Noise"):
+			get_node("/root/Noise").emit_noise(global_position, &"gunshot", 1200.0)
+		v.finish_off({"source": &"execution", "by_player": true, "dir": dir, "force": 480.0, "weapon": held.id if held else &""})
 	else:
 		# Point-blank with whatever you're holding: loud unless suppressed.
 		var weapon: WeaponItem = loadout.get_active() if loadout else null

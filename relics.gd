@@ -32,12 +32,22 @@ const DATA := {
 	&"blood_money": ["Blood Money", "Every combo tier-up drops a little cash.", Rarity.Tier.RESTRICTED, false, "BM"],
 	&"short_fuse": ["Short Fuse", "Explosive props hit 50% harder; explosive kills are worth +1 combo point.", Rarity.Tier.CLASSIFIED, false, "SF"],
 }
+## Boss relics: only a SHAKE DOWN verdict hands these out; they never enter
+## the pools, the shop or chests.
+const BOSS_DATA := {
+	&"deed_box": ["Deed Box", "+1 max HP. (The Landlord's deeds: the Chairman starts 15% weaker.)", Rarity.Tier.TOP_SECRET, false, "DB"],
+	&"black_ledger": ["Black Ledger", "Read the wire one heist early; position leverage +1. (The Chairman's Liquidation can't touch your gold.)", Rarity.Tier.TOP_SECRET, false, "LG"],
+	&"diplomatic_pouch": ["Diplomatic Pouch", "The first alarm each heist is ignored. (The Chairman's Margin Call zones are halved.)", Rarity.Tier.TOP_SECRET, false, "DP"],
+}
 const PRICES := [180, 260, 360, 480, 650]
 
+static func exists(id: StringName) -> bool:
+	return DATA.has(id) or BOSS_DATA.has(id)
+
 static func make(id: StringName) -> RelicItem:
-	if not DATA.has(id):
+	if not exists(id):
 		return null
-	var d: Array = DATA[id]
+	var d: Array = DATA[id] if DATA.has(id) else BOSS_DATA[id]
 	var r := RelicItem.new()
 	r.id = id
 	r.display_name = d[0]

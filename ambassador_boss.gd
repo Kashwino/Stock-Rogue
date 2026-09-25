@@ -16,6 +16,12 @@ var _fans := 0
 var _dir := Vector2.RIGHT
 var _cycle := 0
 
+## The look (also worn by the ally version in the finale).
+static func look() -> Dictionary:
+	return {"body": SpriteKit.Body.GOWN, "head": SpriteKit.Head.HAIR, "gun": SpriteKit.Gun.REVOLVER,
+		"color": Color("6a1026"), "trim": Palette.GOLD, "hair": Color("1a1010"), "skin": SpriteKit.SKIN[2],
+		"gun_accent": Palette.GOLD, "acc": ["sash"], "scale": 1.35}
+
 func setup_boss() -> void:
 	boss_id = &"ambassador"
 	display_name = "THE AMBASSADOR"
@@ -24,9 +30,7 @@ func setup_boss() -> void:
 	thresholds = [0.5]
 	phase_lines = ["Diplomacy has failed. How tiresome."]
 	move_speed = 120.0
-	kit = SpriteKit.dress(sprite, {"body": SpriteKit.Body.GOWN, "head": SpriteKit.Head.HAIR, "gun": SpriteKit.Gun.REVOLVER,
-		"color": Color("6a1026"), "trim": Palette.GOLD, "hair": Color("1a1010"), "skin": SpriteKit.SKIN[2],
-		"gun_accent": Palette.GOLD, "acc": ["sash"], "scale": 1.35})
+	kit = SpriteKit.dress(sprite, look())
 
 func begin_fight() -> void:
 	_call_detail()
@@ -59,7 +63,7 @@ func _refresh_immunity() -> void:
 			_return_clock = 14.0
 
 func _process(delta: float) -> void:
-	if not intro_done or _dead:
+	if not intro_done or is_down():
 		return
 	_refresh_immunity()
 	if _return_clock > 0.0:
@@ -125,7 +129,7 @@ func on_phase(n: int) -> void:
 
 func _chandeliers() -> void:
 	var host := heist()
-	if host == null or _dead:
+	if host == null or is_down():
 		return
 	for i in 3:
 		Blast.fuse(host, arena_point(140.0), 1.3 + i * 0.25, 75.0, 1 + damage_bonus, 2)

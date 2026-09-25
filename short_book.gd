@@ -28,6 +28,11 @@ static func quote() -> Dictionary:
 	var payout: int = clampi(MARGIN + profit, 0, MARGIN * 3)
 	return {"payout": payout, "profit": payout - MARGIN, "entry": entry, "price": current}
 
+## Profit on the open terminal short (0 without one).
+static func open_profit() -> int:
+	var q := quote()
+	return int(q.get("profit", 0)) if not q.is_empty() else 0
+
 static func settle(escaped: bool) -> Dictionary:
 	var result := quote()
 	if result.is_empty():

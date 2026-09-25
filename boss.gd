@@ -10,7 +10,10 @@ class_name Boss
 ##   on_phase(n)           arena change when phase n begins
 ## Health thresholds start new phases: brief invulnerability, one line of
 ## dialogue, an arena change. Health and damage scale with the quota block.
-## Death: the heist runs the slow-mo, cash burst, stock shock and reward.
+## Defeat: at 0 HP a boss KNEELS instead of dying (verdicts.gd). The heist
+## seals the room, stands his guards down and waits for you to walk up and
+## hand down a verdict; only EXECUTE (or TAKE THE SEAT) kills him, and that
+## runs the slow-mo, cash burst and reward. Other verdicts see him leave.
 
 var boss_id: StringName = &""
 var display_name := "THE BOSS"
@@ -32,6 +35,12 @@ var damage_bonus := 0
 ## Why the boss cannot be hurt right now ("" = he can), shown on the bar.
 var immune_reason := ""
 var _transition := 0.0
+## On his knees at 0 HP, waiting for the verdict.
+var kneeling := false
+## The verdict handed down (&"" until then).
+var verdict: StringName = &""
+var _leaving := false
+const VERDICT_REACH := 110.0
 
 func _ready() -> void:
 	super._ready()
@@ -68,6 +77,9 @@ func set_guard_room(rect: Rect2) -> void:
 
 func _physics_process(delta: float) -> void:
 	if _dead:
+		return
+	if kneeling or _leaving:
+		_tick_kneel(delta)
 		return
 	if _player == null or not is_instance_valid(_player):
 		_acquire_player()
@@ -140,6 +152,9 @@ func _begin_transition() -> void:
 func take_damage(amount: int = 1) -> void:
 	if _dead:
 		return
+	if kneeling or _leaving:
+		hit_info = {}
+		return
 	if invulnerable or not intro_done or immune_reason != "":
 		hit_info = {}
 		var host := heist()
@@ -152,11 +167,100 @@ func take_damage(amount: int = 1) -> void:
 func _die() -> void:
 	if _dead:
 		return
-	telegraph_clear()
 	var host := heist()
+	# No verdict yet: he goes to his knees instead.
+	if verdict == &"" and host != null:
+		_kneel()
+		return
+	telegraph_clear()
 	if host:
 		host.on_boss_down(self)
 	super._die()
+
+# -------------------------------------------------------------- verdicts ----
+## Down but not out: on his knees, hands up, his gun on the floor.
+func _kneel() -> void:
+	if kneeling:
+		return
+	kneeling = true
+	health = 0
+	invulnerable = true
+	attack = &"idle"
+	velocity = Vector2.ZERO
+	telegraph_clear()
+	overhead.tag = "ON HIS KNEES"
+	overhead.tag_color = Palette.GOLD
+	if kit:
+		var spec := kit.spec.duplicate()
+		var gun: int = spec.get("gun", SpriteKit.Gun.PISTOL)
+		spec["cower"] = true
+		kit.apply(spec)
+		kit.scale *= 0.86
+		if gun != SpriteKit.Gun.NONE and get_parent():
+			Corpse.drop_weapon(get_parent(), global_position, gun, Vector2.from_angle(randf() * TAU) * 160.0)
+	var host := heist()
+	if host:
+		host.on_boss_kneel(self)
+
+func is_down() -> bool:
+	return _dead or kneeling or _leaving
+
+func _tick_kneel(delta: float) -> void:
+	velocity = velocity.lerp(Vector2.ZERO, 0.3)
+	move_and_slide()
+	if _leaving or not kneeling:
+		return
+	if _player == null or not is_instance_valid(_player):
+		_acquire_player()
+		return
+	var host := heist()
+	var near := global_position.distance_to(_player.global_position) <= VERDICT_REACH
+	var key := OnboardingHints.prompt("interact", TouchInput.device())
+	overhead.prompt = ("%s · VERDICT" % key) if near and verdict == &"" else ""
+	if sprite and not Settings.values.get("reduce_flashing", false):
+		sprite.rotation = lerp_angle(sprite.rotation, (_player.global_position - global_position).angle(), clampf(delta * 3.0, 0.0, 1.0))
+	if near and verdict == &"" and host and not get_tree().paused and Input.is_action_just_pressed("interact"):
+		host.open_verdict(self)
+
+## EXECUTE / TAKE THE SEAT: the finisher's rounds land.
+func finish_off(info: Dictionary) -> void:
+	if _dead:
+		return
+	if verdict == &"":
+		verdict = Verdicts.EXECUTE
+	kneeling = false
+	overhead.prompt = ""
+	overhead.tag = ""
+	note_hit(info)
+	_killing_hit = hit_info
+	hit_info = {}
+	_last_excess = 6
+	health = 0
+	_die()
+
+## FLIP / SHAKE DOWN / WALK AWAY: he gets up and goes (no body, no kill).
+func leave(line: String = "") -> void:
+	if _dead or _leaving:
+		return
+	_leaving = true
+	kneeling = false
+	overhead.prompt = ""
+	overhead.tag = ""
+	var host := heist()
+	if host and line != "":
+		host.boss_says(self, line)
+	for c in get_children():
+		if c is CollisionShape2D or c is CollisionPolygon2D:
+			c.set_deferred("disabled", true)
+	var tw := create_tween()
+	tw.tween_interval(1.6)
+	tw.tween_property(self, "modulate:a", 0.0, 0.8)
+	tw.tween_callback(queue_free)
+
+## WALK AWAY: the Chairman stays on his knees; he just stops being a prompt.
+func stay_down() -> void:
+	overhead.prompt = ""
+	overhead.tag = "LEFT ON HIS KNEES"
 
 ## Bosses shrug off knockback and never go to sleep mid-fight.
 func set_sleeping(value: bool) -> void:

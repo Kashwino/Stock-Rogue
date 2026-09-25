@@ -429,7 +429,7 @@ func _retarget(delta: float) -> void:
 		return
 	_retarget_clock = 0.4
 	var host := heist()
-	if host == null or (faction == &"guard" and host.rivals_alive() == 0):
+	if host == null or (faction == &"guard" and host.rivals_alive() == 0 and host.allies_up() == 0):
 		if not (_player is Player):
 			_acquire_player()
 		return
@@ -445,12 +445,20 @@ func _retarget(delta: float) -> void:
 		if d < best_d * 0.9:
 			best_d = d
 			best = other
+	# Flipped bosses fighting beside the player draw fire too.
+	if faction == &"guard":
+		for ally: Node2D in host.allies:
+			if is_instance_valid(ally) and not ally.is_dead():
+				var d := global_position.distance_to(ally.global_position)
+				if d < best_d * 0.9:
+					best_d = d
+					best = ally
 	if best:
 		_player = best
 
 ## Rounds that can hit fighters: used when the target is not the player.
 func _round_for_target() -> PackedScene:
-	if _player is Player or _player == null:
+	if _player is Player or _player == null or _player is Ally:
 		return enemy_bullet_scene
 	if _rival_round == null:
 		_rival_round = load("res://bullet.tscn")
@@ -507,6 +515,10 @@ func _physics_process(delta: float) -> void:
 		return
 	if freeze_left > 0.0 or stagger_left > 0.0:
 		_tick_frozen(delta)
+		return
+	if surrendered:
+		velocity = velocity.lerp(Vector2.ZERO, 0.25) + _separation() * move_speed * 0.5
+		move_and_slide()
 		return
 	if _player == null or not is_instance_valid(_player):
 		_acquire_player()
@@ -961,6 +973,33 @@ func _tick_frozen(delta: float) -> void:
 		overhead.staggered = false
 		if kit:
 			kit.modulate = Color.WHITE
+
+# ------------------------------------------------------------ standing down --
+## The boss is on his knees: guards drop their guns and put their hands up.
+## (Bosses, turrets and drones don't; they just power down or wait.)
+var surrendered := false
+
+func stand_down() -> void:
+	if _dead or surrendered or self is Boss:
+		return
+	surrendered = true
+	hunting = false
+	_alert = Alert.IDLE
+	radio_progress = 0.0
+	velocity = Vector2.ZERO
+	telegraph_clear()
+	overhead.prompt = ""
+	overhead.tag = "STANDS DOWN"
+	overhead.tag_color = Palette.PAPER_DIM
+	if kit and not (kind in [Kind.TURRET, Kind.DRONE, Kind.DOG]):
+		var spec := kit.spec.duplicate()
+		var gun: int = spec.get("gun", SpriteKit.Gun.PISTOL)
+		spec["cower"] = true
+		spec["gun"] = SpriteKit.Gun.NONE
+		spec["shield"] = false
+		kit.apply(spec)
+		if get_parent():
+			Corpse.drop_weapon(get_parent(), global_position, gun, Vector2.from_angle(randf() * TAU) * randf_range(60.0, 140.0))
 
 # ------------------------------------------------------------- evidence ----
 ## Seconds of looking before a body registers (the Ghost's slower cameras

@@ -44,6 +44,22 @@ var patch_used := false
 var stage_intros: Array = []
 ## Best combo (points) this run: nudges the run's Clout.
 var best_combo := 0
+## Boss verdicts ({boss id: "execute" | "flip" | "shake" | "deal"}), the
+## Chairman's ("seat" | "burn" | "walk") and the reputation they earn.
+var verdicts: Dictionary = {}
+var chairman_verdict := ""
+var fear := 0
+var loyalty := 0
+var greed := 0
+## A flip makes the Board suspicious: heists of this stage start at 1 star.
+var suspicious_stage := -1
+## Safehouse Rent is paid once per hideout visit ("stage:step").
+var rent_paid_at := ""
+## The Black Ledger: the next story on the wire, read one heist early.
+var ledger: Dictionary = {}
+var ledger_broke := false
+## BURN THE BOARD: what your open shorts were worth as it burned.
+var burn_short_profit := 0
 
 func has_relic(id: StringName) -> bool:
 	return id in relics
@@ -87,6 +103,16 @@ func start_run(profile: CharacterProfile, run_seed: int = 0) -> void:
 	relics.clear()
 	stage_intros.clear()
 	best_combo = 0
+	verdicts.clear()
+	chairman_verdict = ""
+	fear = 0
+	loyalty = 0
+	greed = 0
+	suspicious_stage = -1
+	rent_paid_at = ""
+	ledger.clear()
+	ledger_broke = false
+	burn_short_profit = 0
 	parachute_used = false
 	patch_used = false
 	run_id = "%s-%s-%s" % [Time.get_unix_time_from_system(), Time.get_ticks_usec(), randi()]
@@ -144,7 +170,31 @@ func _equip_starting_weapon(profile: CharacterProfile) -> void:
 ## The most WANTED stars a heist can reach (a flipped Ambassador's
 ## Diplomatic Cover caps it at 4).
 func wanted_cap() -> int:
-	return 5
+	return 4 if Verdicts.flipped(&"ambassador") else 5
+
+## A boss's verdict: recorded with its reputation (the Chairman's is
+## separate). Returns false if he already has one.
+func record_verdict(boss_id: StringName, verdict: StringName) -> bool:
+	if boss_id == &"chairman":
+		chairman_verdict = String(verdict)
+		return true
+	if verdicts.has(String(boss_id)):
+		return false
+	verdicts[String(boss_id)] = String(verdict)
+	match verdict:
+		Verdicts.EXECUTE:
+			fear += 1
+		Verdicts.FLIP:
+			loyalty += 1
+			if run_map:
+				suspicious_stage = run_map.current_stage + 1
+		Verdicts.SHAKE:
+			greed += 1
+	return true
+
+## This stage's heists start at 1 star (a flipped boss made the Board wary).
+func board_suspicious() -> bool:
+	return run_map != null and suspicious_stage >= 0 and run_map.current_stage == suspicious_stage
 
 func profile_value(key: String, fallback: Variant) -> Variant:
 	if character_profile and key in character_profile:
@@ -270,6 +320,15 @@ func serialize(map_seed: int, stage: int, step: int, room_index: int) -> Diction
 		"patch_used": patch_used,
 		"stage_intros": stage_intros.duplicate(),
 		"best_combo": best_combo,
+		"verdicts": verdicts.duplicate(),
+		"chairman_verdict": chairman_verdict,
+		"fear": fear,
+		"loyalty": loyalty,
+		"greed": greed,
+		"suspicious_stage": suspicious_stage,
+		"rent_paid_at": rent_paid_at,
+		"ledger": ledger.duplicate(true),
+		"ledger_broke": ledger_broke,
 	}
 
 func _serialize_market() -> Dictionary:
@@ -314,10 +373,24 @@ func deserialize(data: Dictionary) -> void:
 		job_gear.append(StringName(g))
 	relics.clear()
 	for r in data.get("relics", []):
-		if Relics.DATA.has(StringName(r)):
+		if Relics.exists(StringName(r)):
 			relics.append(StringName(r))
 	parachute_used = bool(data.get("parachute_used", false))
 	best_combo = int(data.get("best_combo", 0))
+	verdicts.clear()
+	var saved_verdicts = data.get("verdicts", {})
+	if saved_verdicts is Dictionary:
+		for id in saved_verdicts:
+			verdicts[String(id)] = String(saved_verdicts[id])
+	chairman_verdict = str(data.get("chairman_verdict", ""))
+	fear = int(data.get("fear", 0))
+	loyalty = int(data.get("loyalty", 0))
+	greed = int(data.get("greed", 0))
+	suspicious_stage = int(data.get("suspicious_stage", -1))
+	rent_paid_at = str(data.get("rent_paid_at", ""))
+	var saved_ledger = data.get("ledger", {})
+	ledger = saved_ledger.duplicate(true) if saved_ledger is Dictionary else {}
+	ledger_broke = bool(data.get("ledger_broke", false))
 	stage_intros.clear()
 	for st in data.get("stage_intros", []):
 		stage_intros.append(int(st))

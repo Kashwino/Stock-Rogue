@@ -92,7 +92,7 @@ func _on_area_entered(area: Node) -> void:
 func _try_hit(target: Node) -> void:
 	if _spent or target == _shooter:
 		return
-	if target.is_in_group("player") and target.has_method("take_damage"):
+	if (target.is_in_group("player") or target.is_in_group("ally")) and target.has_method("take_damage"):
 		if "last_hit_dir" in target:
 			target.last_hit_dir = _dir
 		target.take_damage(damage)

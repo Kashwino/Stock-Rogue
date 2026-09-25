@@ -619,6 +619,53 @@
 - Settings panel: Gore and Blood choices sit under the frame-rate and touch
   choices; Tutorial tips and Dynamic music joined the toggles.
 
+## Brief 2 · Phase 7 — Boss verdicts
+
+- **Bosses kneel** (`boss.gd`): at 0 HP the three stage bosses and the
+  Chairman drop to their knees instead of dying — hands up, gun skittering
+  away. The arena stays sealed, every guard still standing drops his gun,
+  puts his hands up and STANDS DOWN, time swells (a TimeController moment),
+  the music ducks into the verdict theme and the objective says to walk up.
+  Bullets can't finish him; only a verdict can.
+- **The VERDICT card** (`verdict_card.gd`, press USE next to him): his name,
+  his plea, your FEAR / LOYALTY / GREED, and the options as cards (keys 1-4,
+  a pad or a tap). It pauses the heist while it's up.
+  - **EXECUTE** — a 1.1 s point-blank finisher with his own name (EVICTED,
+    AUDITED, IMMUNITY REVOKED), maximum gore, the full stock shock, his cash
+    and his unique gun, +1 Fear.
+  - **FLIP** — he walks out working for you: the Landlord's Safehouse Rent
+    (gold at every hideout visit), the Auditor's Cooked Books (damage crashes
+    25% smaller) or the Ambassador's Diplomatic Cover (WANTED capped at 4
+    stars). Half the shock, +1 Loyalty, and the Board gets suspicious: every
+    heist of the next stage starts at 1 star.
+  - **SHAKE DOWN** — 60% of the stage's gold quota and his relic: the Deed
+    Box (+1 max HP), the Black Ledger (the wire's next story one heist
+    early, breaking at the end of the next job; +1 position leverage) or the
+    Diplomatic Pouch (the first alarm each heist goes nowhere). No shock,
+    +1 Greed. Boss relics never enter the pools.
+  - **TAKE HIS DEAL** — ends the run on the spot with his early ending; the
+    card shows the buyout (150% of the stage quota) and the Clout. Not on a
+    practice job.
+- **The finale remembers** (`ally.gd`, `chairman_boss.gd`): every flipped
+  boss arrives to fight beside you against the Chairman (a simplified gun,
+  draws the guards' fire, DOWN for 20 s instead of dying); every executed
+  boss's crew comes for revenge (one wave each, +10% damage per execution
+  while they're up); every shaken-down boss sabotages a phase (Deed Box: he
+  starts 15% down; Black Ledger: no Liquidation drain; Diplomatic Pouch:
+  Margin Call strips half as wide).
+- **The Chairman's verdict**: TAKE THE SEAT (the finisher: DELISTED), BURN
+  THE BOARD (the Exchange goes up and every venue crashes to 55%; your open
+  shorts are what's left) or WALK AWAY (he stays on his knees). The last job
+  then wraps itself up.
+- **Endings are data** (`endings.gd`): all eleven, in gallery order, with
+  titles, epilogues, stamps and music families; the Chairman's verdict and
+  your stage verdicts pick the final one. A deal plays its boss's early
+  ending, pays reduced Clout and counts as an early ending, never as a won
+  run (so it never unlocks the Legend).
+- Verdicts, the Chairman's verdict, reputation, suspicion, rent and the
+  Black Ledger's story are saved with the run (old saves load clean).
+- Career: verdict counts and early endings.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -777,3 +824,27 @@
   "WANTED LEVEL 3" because the shipped fonts have no ★.
 - **(Brief 2) Cruisers park along the street** (up and down from the getaway
   car), never across it, so they can't land inside the building.
+- **(Brief 2) Verdict payouts.** SHAKE DOWN pays 60% of the stage's gold
+  quota plus the relic; Safehouse Rent is $40 × (1 + quota block) per
+  hideout visit; a deal buys you out for 150% of the quota and +3 Clout on
+  top of the run's usual award (a won run still earns more: +8 and all four
+  stages). EXECUTE keeps the old boss payday (cash burst, unique gun, full
+  shock); FLIP pays nothing up front.
+- **(Brief 2) "The next stage starts at 1 star"** is every heist of that
+  stage: a star is only a heat floor of 4, so one heist would barely register.
+- **(Brief 2) Shaken-down sabotage follows the verdict**, not the relic, so
+  the Chairman's weaknesses always match what you did to his bosses.
+- **(Brief 2) Guards who stand down stay standing down** for the rest of the
+  heist; vans that arrive afterwards are fresh and fight. They can still be
+  shot, but they count as provoked (no UNAWARE or CRIT bonus for it).
+- **(Brief 2) Allies are drawn to guards' fire only.** Guards pick the
+  nearest of you and your allies; bosses keep their attacks on you. Allies
+  don't melee and never count as your kills.
+- **(Brief 2) BURN THE BOARD crashes every venue to 55%**, and BLACK MONDAY
+  needs $400 of profit across your open Fence shorts and terminal short at
+  that moment.
+- **(Brief 2) "Kills" of kneeling bosses**: the career's bosses-put-down
+  count (the Wolf's feat) counts every verdict except a deal.
+- **(Brief 2) Brief 3 arrived mid-Brief 2**: Brief 2's remaining phases are
+  finished first because Brief 3 restyles the verdict card and the kneel
+  that Brief 2 introduces; Brief 3 then starts on `brief-3` from there.

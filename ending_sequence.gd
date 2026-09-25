@@ -1,10 +1,9 @@
 extends CanvasLayer
 class_name EndingSequence
-## A winning ending: the city pans by in the rain while the epilogue types
-## out, the ending's title slams down with the run's numbers, the credits
-## roll, a NEW SPECIALIST card follows on a first win, then home.
-##   RETIRED           beat the Chairman
-##   THE NEW CHAIRMAN  beat him with the Board index at NEW_CHAIRMAN_INDEX+
+## A winning ending (or an early one: a boss's deal): the city pans by in the
+## rain while the epilogue types out, the ending's title slams down with the
+## run's numbers and verdicts, the credits roll, a NEW SPECIALIST card
+## follows on a first win, then home. The eleven endings live in endings.gd.
 ## Parented to the root; pauses nothing (the heist is already gone).
 
 var summary: Dictionary = {}
@@ -23,7 +22,9 @@ var _narration: Narration
 static func play(host: Node, run_summary: Dictionary) -> EndingSequence:
 	var seq := EndingSequence.new()
 	seq.summary = run_summary
-	seq.ending = Story.ending_id(float(run_summary.get("index", 1.0)))
+	seq.ending = StringName(run_summary.get("ending", "retired"))
+	if not Endings.has(seq.ending):
+		seq.ending = &"retired"
 	host.get_tree().root.add_child(seq)
 	return seq
 
@@ -40,7 +41,7 @@ func _ready() -> void:
 			layer_node.visible = false
 	Audio.loop("alarm", false)
 	Audio.loop("heartbeat", false)
-	Audio.music("end_rule" if ending == &"new_chairman" else "end_retire", 1.5)
+	Audio.music(Endings.theme(ending), 1.5)
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -66,7 +67,7 @@ func _ready() -> void:
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(shade)
 	_narration = Narration.new()
-	_narration.lines = Story.EPILOGUE_CHAIRMAN if ending == &"new_chairman" else Story.EPILOGUE_RETIRED
+	_narration.lines = Endings.epilogue(ending)
 	_narration.hold = 2.4
 	_narration.position = Vector2(140, 210)
 	_narration.size = Vector2(1000, 300)
@@ -101,11 +102,14 @@ func _show_title() -> void:
 	_title_block.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_title_block)
 	_root.move_child(_button, -1)
-	var chair := ending == &"new_chairman"
-	var kicker := VisualTheme.label("ENDING  ·  %s" % ("THE BOARD HAS A NEW SIGNATURE" if chair else "CASE CLOSED"), "KickerLabel", 22)
+	var data: Dictionary = Endings.DATA.get(ending, {})
+	var family := Endings.family(ending)
+	var ink: Color = {"rule": Palette.GOLD, "collapse": Palette.DANGER, "escape": Palette.NEON_CYAN}.get(family, Palette.PAPER)
+	var kicker := VisualTheme.label(String(data.get("kicker", "ENDING")), "KickerLabel", 22)
 	kicker.position = Vector2(90, 90)
 	_title_block.add_child(kicker)
-	var title := VisualTheme.label("THE NEW CHAIRMAN" if chair else "RETIRED", "TitleLabel", 104, Palette.GOLD if chair else Palette.PAPER)
+	var title_text := Endings.title(ending)
+	var title := VisualTheme.label(title_text, "TitleLabel", 104 if title_text.length() <= 16 else 80, ink)
 	title.position = Vector2(84, 120)
 	_title_block.add_child(title)
 	var who := VisualTheme.label(String(summary.get("who", "The Operator")).to_upper(), "", 28, Palette.GOLD_PALE)
@@ -120,13 +124,15 @@ func _show_title() -> void:
 	]
 	if summary.has("clout"):
 		facts.append("CLOUT EARNED ........ +%d" % int(summary["clout"]))
+	var rep: Array = summary.get("reputation", [0, 0, 0])
+	facts.append("FEAR %d · LOYALTY %d · GREED %d" % [int(rep[0]), int(rep[1]), int(rep[2])])
 	var stats := VisualTheme.label("\n".join(facts), "", 22, Palette.PAPER)
 	stats.add_theme_font_override("font", VisualTheme.font("mono"))
 	stats.position = Vector2(92, 320)
 	_title_block.add_child(stats)
 	var stamp := StampArt.new()
-	stamp.text = "THE BOARD IS YOURS" if chair else "CASE CLOSED"
-	stamp.ink = Palette.GOLD if chair else Palette.STAMP_GREEN
+	stamp.text = String(data.get("stamp", "CASE CLOSED"))
+	stamp.ink = {"rule": Palette.GOLD, "collapse": Palette.STAMP_RED}.get(family, Palette.STAMP_GREEN)
 	stamp.font_size = 44
 	stamp.tilt = -0.14
 	_title_block.add_child(stamp)

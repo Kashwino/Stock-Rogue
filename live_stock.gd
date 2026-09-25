@@ -147,6 +147,8 @@ func report_damage_taken(amount: int) -> void:
 		base *= 0.7                     # the Fence's Stop-Loss Order
 	if RunState.has_relic(&"hedge_fund"):
 		base *= 0.7
+	if Verdicts.flipped(&"auditor"):
+		base *= 0.75                    # Cooked Books
 	if RunState.hedge_charges > 0:
 		RunState.hedge_charges -= 1
 		base *= 0.5

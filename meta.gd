@@ -28,7 +28,7 @@ const UNLOCKS := {
 	&"ghost": ["fire_exit_escapes", 5, "Slip out a fire exit 5 times"],
 	&"wolf": ["bosses_killed", 3, "Put down 3 bosses"],
 	&"broker": ["best_index", 350, "Reach Index 350 in one run"],
-	&"legend": ["runs_won", 1, "Retire — win a full run"],
+	&"legend": ["runs_won", 1, "Reach a final ending (beat the Chairman)"],
 }
 ## The meta currency, earned at the end of every run.
 var clout := 0
@@ -56,6 +56,7 @@ var total_profit: float = 0.0                    # lifetime cash earned
 const STAT_DEFAULTS := {
 	"fire_exit_escapes": 0, "bosses_killed": 0, "best_index": 0.0, "runs_won": 0,
 	"heists_completed": 0, "total_gold": 0, "deaths": 0, "takedowns": 0, "best_combo": 0,
+	"verdict_execute": 0, "verdict_flip": 0, "verdict_shake": 0, "verdict_deal": 0, "early_endings": 0,
 }
 var stats: Dictionary = STAT_DEFAULTS.duplicate()
 ## Stage bosses put down, by id (lieutenants count only in bosses_killed).
@@ -64,6 +65,11 @@ var bosses_seen: Array = []
 var prologue_slots: Array = []
 ## Onboarding hints already shown once (ids from Hints).
 var hints_seen: Array = []
+## CASE CLOSED: every ending reached ({ending id: times}), and busts.
+var endings_seen: Dictionary = {}
+## The first time you reach an ending it pays extra Clout.
+const FIRST_ENDING_CLOUT := 5
+const FIRST_EARLY_CLOUT := 3
 
 func _ready() -> void:
 	load_meta()
@@ -86,6 +92,7 @@ func save_meta() -> bool:
 		"bosses_seen": bosses_seen,
 		"prologue_slots": prologue_slots,
 		"hints_seen": hints_seen,
+		"endings_seen": endings_seen,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	last_save_ok = f != null
@@ -137,6 +144,11 @@ func load_meta() -> void:
 	hints_seen = []
 	for h in parsed.get("hints_seen", []):
 		hints_seen.append(String(h))
+	endings_seen = {}
+	var saved_endings = parsed.get("endings_seen", {})
+	if saved_endings is Dictionary:
+		for id in saved_endings:
+			endings_seen[String(id)] = int(saved_endings[id])
 	if starting_perk not in unlocked_assets or not CATALOG.has(starting_perk) or CATALOG[starting_perk]["kind"] != "perk":
 		starting_perk = &""
 
@@ -199,11 +211,17 @@ func equip_starting_perk(id: StringName) -> bool:
 ## and a bonus for retiring. A receipt stops a run paying twice.
 ## Clout for a finished run: stages x3, stage bosses x2, index / 60, +8 for a
 ## win, and up to +3 for the run's best combo (one per 20 points).
-func award_run(run_id: String, stages_cleared: int, bosses: int, index: float, won: bool, best_combo: int = 0) -> int:
+## Clout for a run: stages x3 + bosses x2 + index / 60 + 8 for a win + up to
+## 3 for the best combo (never less than 1).
+static func clout_for(stages_cleared: int, bosses: int, index: float, won: bool, best_combo: int = 0) -> int:
+	var earned := stages_cleared * 3 + bosses * 2 + int(maxf(index, 0.0) / 60.0) + (8 if won else 0) + mini(3, maxi(best_combo, 0) / 20)
+	return maxi(earned, 1)
+
+## `extra`: a bonus on top (TAKE HIS DEAL's early ending).
+func award_run(run_id: String, stages_cleared: int, bosses: int, index: float, won: bool, best_combo: int = 0, extra: int = 0) -> int:
 	if run_id == "" or extraction_receipts.has(run_id):
 		return 0
-	var earned := stages_cleared * 3 + bosses * 2 + int(maxf(index, 0.0) / 60.0) + (8 if won else 0) + mini(3, maxi(best_combo, 0) / 20)
-	earned = maxi(earned, 1)
+	var earned := clout_for(stages_cleared, bosses, index, won, best_combo) + maxi(extra, 0)
 	extraction_receipts[run_id] = earned
 	clout += earned
 	if not save_meta():
@@ -261,6 +279,35 @@ func record_best(stat: String, value: float) -> void:
 		stats[stat] = value
 		save_meta()
 
+## An ending reached. The first time pays bonus Clout (returned).
+func record_ending(id: StringName) -> int:
+	var key := String(id)
+	var first := not endings_seen.has(key)
+	endings_seen[key] = int(endings_seen.get(key, 0)) + 1
+	var bonus := 0
+	if first and Endings.has(id):
+		bonus = FIRST_EARLY_CLOUT if Endings.is_early(id) else FIRST_ENDING_CLOUT
+		clout += bonus
+	save_meta()
+	return bonus
+
+func has_seen_ending(id: StringName) -> bool:
+	return endings_seen.has(String(id))
+
+## Any ending at all (the gallery's hints appear once you have one).
+func any_ending_seen() -> bool:
+	for id in endings_seen:
+		if Endings.has(StringName(id)):
+			return true
+	return false
+
+## A verdict handed down (execute / flip / shake / deal).
+func record_verdict(verdict: StringName) -> void:
+	var key := "verdict_" + String(verdict)
+	if stats.has(key):
+		stats[key] = int(stats[key]) + 1
+		save_meta()
+
 ## A boss or lieutenant put down: counts toward the Wolf.
 func record_boss(boss_id: StringName, is_lieutenant: bool) -> void:
 	stats["bosses_killed"] = int(stats.get("bosses_killed", 0)) + 1
@@ -304,4 +351,5 @@ func reset() -> void:
 	bosses_seen.clear()
 	prologue_slots.clear()
 	hints_seen.clear()
+	endings_seen.clear()
 	save_meta()

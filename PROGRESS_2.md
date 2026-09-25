@@ -56,11 +56,11 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Dynamic music setting
 
 ## Phase 7 — Boss verdicts
-- [ ] Bosses kneel; arena stays sealed; guards stand down; VERDICT card
-- [ ] EXECUTE / FLIP / SHAKE DOWN / TAKE HIS DEAL with passives and relics
-- [ ] Finale: flipped allies, revenge wave, sabotaged phases
-- [ ] Chairman verdict: TAKE THE SEAT / BURN THE BOARD / WALK AWAY
-- [ ] Verdicts in the run save (defaults for old saves)
+- [x] Bosses kneel; arena stays sealed; guards stand down; VERDICT card
+- [x] EXECUTE / FLIP / SHAKE DOWN / TAKE HIS DEAL with passives and relics
+- [x] Finale: flipped allies, revenge wave, sabotaged phases
+- [x] Chairman verdict: TAKE THE SEAT / BURN THE BOARD / WALK AWAY
+- [x] Verdicts in the run save (defaults for old saves)
 
 ## Phase 8 — Endings & gallery
 - [ ] 11 endings resolved in order + BUSTED variants

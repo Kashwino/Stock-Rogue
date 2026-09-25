@@ -57,6 +57,12 @@ func _run() -> void:
 			scene.call(extra)
 		for i in 30:
 			await get_tree().process_frame
+	if args.has("card") and scene is HeistFloor and scene.boss:
+		# The VERDICT card over a kneeling boss (then=debug_kill_boss first).
+		scene.player.global_position = scene.boss.global_position + Vector2(0, 80)
+		scene.open_verdict(scene.boss)
+		for i in 30:
+			await get_tree().process_frame
 	if args.has("kills") and scene is HeistFloor:
 		# A multi-kill in front of the player: bodies slide, guns skitter.
 		var owner: Enemy = null
@@ -156,6 +162,14 @@ func _setup(shot: String) -> Node:
 			if shot == "heist":
 				var step = RunState.run_map.current()
 				RunFlow.pending_heist = RunState.run_map.first_heist_option() if RunState.run_map.has_method("first_heist_option") else MapNode.new()
+				if args.has("boss"):
+					RunFlow.pending_heist = MapNode.new(MapNode.Type.BOSS)
+					RunFlow.pending_heist.venue_id = &"bank_job"
+					RunFlow.pending_heist.boss_id = StringName(args["boss"])
+				if args.has("verdicts"):
+					# verdicts=landlord:flip,auditor:execute
+					for pair in String(args["verdicts"]).split(","):
+						RunState.verdicts[pair.get_slice(":", 0)] = pair.get_slice(":", 1)
 				if args.has("objective"):
 					RunFlow.pending_heist.objective = StringName(args["objective"])
 				if args.has("mods"):
@@ -174,7 +188,7 @@ func _setup(shot: String) -> Node:
 			var seq := EndingSequence.new()
 			seq.freeze_beneath = false
 			seq.summary = {"heists": 12, "index": float(args.get("index", "420")), "gold": 1840, "kills": 96, "who": "The Operator", "clout": 42}
-			seq.ending = Story.ending_id(seq.summary["index"])
+			seq.ending = StringName(args.get("id", "new_chairman" if float(seq.summary["index"]) >= Story.NEW_CHAIRMAN_INDEX else "seat_at_table"))
 			get_tree().root.add_child(seq)
 			var part := String(args.get("part", ""))
 			if part in ["title", "credits"]:

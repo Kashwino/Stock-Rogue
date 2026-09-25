@@ -8,14 +8,17 @@ class_name Takedown
 ##   STAGGER EXECUTION — a guard hit into his last quarter of health staggers
 ##       for 1.2 s; melee on him is a 0.5 s point-blank shot with your gun:
 ##       loud unless suppressed, refunds 2 rounds, always an overkill.
+##   BOSS FINISHER — the EXECUTE verdict (and TAKE THE SEAT) on a kneeling
+##       boss: a 1.1 s point-blank finisher, three rounds, maximum gore.
 
 const STEALTH := &"stealth"
 const EXECUTION := &"execution"
+const FINISHER := &"finisher"
 const STEALTH_RANGE := 45.0
 const BACK_CONE := deg_to_rad(55.0)       # half of the 110° cone behind him
 const EXECUTION_RANGE := 70.0
-const DURATION := {STEALTH: 0.45, EXECUTION: 0.5}
-const STRIKE_AT := {STEALTH: 0.26, EXECUTION: 0.3}
+const DURATION := {STEALTH: 0.45, EXECUTION: 0.5, FINISHER: 1.1}
+const STRIKE_AT := {STEALTH: 0.26, EXECUTION: 0.3, FINISHER: 0.7}
 
 ## Can this guard be knifed from behind at all?
 static func stealth_allowed(e: Enemy) -> bool:
@@ -64,4 +67,5 @@ static func strike_spot(e: Enemy, mode: StringName, from: Vector2) -> Vector2:
 		var facing := Vector2.from_angle(e.sprite.global_rotation) if e.sprite else (e.global_position - from).normalized()
 		return e.global_position - facing * 26.0
 	var away := (from - e.global_position)
-	return e.global_position + (away.normalized() if away.length() > 1.0 else Vector2.LEFT) * 34.0
+	var reach := 52.0 if mode == FINISHER else 34.0
+	return e.global_position + (away.normalized() if away.length() > 1.0 else Vector2.LEFT) * reach

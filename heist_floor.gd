@@ -119,6 +119,14 @@ var rivals: Array = []
 ## Boss fight state.
 var boss: Boss = null
 var lieutenant: Enemy = null
+## Verdicts (verdicts.gd): the open card, flipped bosses fighting beside you
+## in the finale, and the executed bosses' revenge waves.
+var _verdict_card: VerdictCard = null
+var allies: Array = []
+var revenge: Array = []
+var _revenge_left: Array = []
+var _revenge_clock := 0.0
+var _pouch_used := false
 var audit_active := false
 var _shutters: Array = []
 var _focus_point := Vector2.ZERO
@@ -272,6 +280,13 @@ func _build_floor() -> void:
 	_assign_guard_roles()
 	_spawn_civilians()
 	director.refresh()
+	# A flipped boss made the Board wary: this stage's heists start at 1 star.
+	if RunState.board_suspicious() and not RunFlow.practice:
+		heat = maxf(heat, Wanted.THRESHOLDS[0])
+		wanted.on_heat(heat)
+		last_heat_source = "The Board is suspicious"
+		if hud and hud.has_method("log_heat"):
+			hud.log_heat("THE BOARD IS SUSPICIOUS  +%d" % roundi(Wanted.THRESHOLDS[0]))
 	var terminal := MarketTerminal.new()
 	terminal.position = generator.start_room.position + Vector2(430, 270)
 	add_child(terminal)
@@ -663,7 +678,8 @@ func _on_room_cleared(room) -> void:
 		_become_marked()
 		fx.slow_mo(0.9, 0.25)
 
-func _become_marked() -> void:
+## `shock`: the venue move (a stage boss's comes with his verdict instead).
+func _become_marked(shock: float = 0.30) -> void:
 	marked = true
 	# Marked: at least three stars.
 	heat = maxf(heat, Wanted.THRESHOLDS[2])
@@ -675,8 +691,12 @@ func _become_marked() -> void:
 	# a hard stock shock on the venue.
 	if not boss_heist:
 		RunEconomy.add_bonus(roundi(_rng.randi_range(250, 400) * loot_multiplier()))
-	if live:
-		live.report_shock(0.70 if live.inverted() else 1.30, &"boss")
+	_boss_shock(shock)
+
+## The venue moves on a boss: `pct` up on a CONTRACT (down on a HIT/short).
+func _boss_shock(pct: float) -> void:
+	if live and pct > 0.0:
+		live.report_shock(1.0 - pct if live.inverted() else 1.0 + pct, &"boss")
 
 # ------------------------------------------------- heat & reinforcements ----
 func _process(delta: float) -> void:
@@ -720,6 +740,7 @@ func _process(delta: float) -> void:
 	# never below the floor of the WANTED stars you've earned.
 	quiet_seconds += delta
 	wanted.tick(delta)
+	_tick_revenge(delta)
 	if wanted.laying_low():
 		heat = maxf(wanted.floor_heat(), heat - Wanted.LAY_LOW_RATE * delta)
 	_heat_timer = maxf(0.0, _heat_timer - delta)
@@ -964,6 +985,10 @@ func _extract() -> void:
 	RunState.job_gear.clear()
 	# The wire's rumors land, then every Fence position settles at today's prices.
 	result["rumors"] = MarketNews.resolve_rumors()
+	var ledger_story := MarketNews.break_ledger()
+	if not ledger_story.is_empty():
+		result["rumors"].append({"kind": "ledger", "venue": ledger_story.get("venue", ""), "move": float(ledger_story.get("move", 0.0)),
+			"text": "BLACK LEDGER: " + MarketNews.line(ledger_story)})
 	result["positions"] = Positions.settle_all()
 	result["stats"] = stats
 	RunState.sync_from_player(player)
@@ -1182,6 +1207,8 @@ func add_heat(amount: float, source: String) -> void:
 ## A witnessed intrusion (camera, radio call): heat now, and the nearest alarm
 ## panel starts transmitting until someone cuts it.
 func security_alert(room: Node, source: String, amount: float) -> void:
+	if _pouch_ignores(source):
+		return
 	alerts += 1
 	add_heat(amount, source)
 	var at: Vector2 = room.center_position() if room and room.has_method("center_position") else player.global_position
@@ -1189,6 +1216,15 @@ func security_alert(room: Node, source: String, amount: float) -> void:
 	if panel:
 		panel.armed = true
 		panel.transmit_clock = maxf(panel.transmit_clock, 2.0)
+
+## The Diplomatic Pouch: the first alarm of each heist goes nowhere.
+func _pouch_ignores(source: String) -> bool:
+	if _pouch_used or not RunState.has_relic(&"diplomatic_pouch"):
+		return false
+	_pouch_used = true
+	if is_instance_valid(player):
+		fx.chip(player.global_position + Vector2(0, -50), "DIPLOMATIC POUCH — %s ignored" % source.to_lower(), Palette.GOLD)
+	return true
 
 func on_security_disabled(_device: SecurityDevice) -> void:
 	security_disabled += 1
@@ -1275,7 +1311,7 @@ func nearest_alarm_panel(pos: Vector2) -> SecurityDevice:
 ## Someone reached a panel: heat spike, every panel transmits, and a van is
 ## sent right now.
 func raise_alarm(source: String, panel: SecurityDevice = null) -> void:
-	if _extracting:
+	if _extracting or _pouch_ignores(source):
 		return
 	alarms_raised += 1
 	alerts += 1
@@ -1605,7 +1641,12 @@ func _update_objective_hud() -> void:
 	var body := ""
 	match objective:
 		&"boss":
-			body = "The car won't leave while he stands." if not marked else "He's down. Get to the car."
+			if not marked:
+				body = "The car won't leave while he stands."
+			elif is_instance_valid(boss) and boss.kneeling and boss.verdict == &"":
+				body = "On his knees. Walk up: hand down a verdict." if boss.boss_id != &"ambassador" else "On her knees. Walk up: hand down a verdict."
+			else:
+				body = "It's done. Get to the car."
 		&"assassination":
 			if objective_success():
 				body = "Target down.\nGet back to the car."
@@ -1709,6 +1750,8 @@ func start_boss_fight(b: Boss) -> void:
 func _on_boss_intro_done() -> void:
 	if is_instance_valid(boss) and not boss._dead:
 		boss.finish_intro()
+		if boss.boss_id == &"chairman":
+			_start_finale()
 
 ## Steel shutters drop over every doorway of the arena.
 func _seal_arena(room: Node2D) -> void:
@@ -1794,30 +1837,234 @@ func _clear_props_at(room: Node2D, local: Vector2, radius: float) -> void:
 		if c is Prop and c.position.distance_to(local) < radius:
 			c.queue_free()
 
-## Boss down: slow motion, a burst of cash, the stock shock, the doors open,
-## and a unique reward drops where he fell.
+# ------------------------------------------------------------ verdicts -----
+## The boss is beaten and on his knees: the arena stays sealed, his guards
+## drop their guns, time swells, the verdict theme plays. Walk up and press
+## USE for the VERDICT card.
+func on_boss_kneel(b: Boss) -> void:
+	TimeController.request(0.3, 1.4, TimeController.PRIORITY_MOMENT, &"kneel")
+	fx.add_trauma(0.7)
+	Audio.play("boss_death")
+	Audio.duck(-8.0, 2.5)
+	_boss_music = true
+	Audio.music("verdict", 1.0)
+	set_audit(false)
+	if not marked:
+		_become_marked(0.0)
+	for e in director.enemies:
+		if is_instance_valid(e) and e != b:
+			e.stand_down()
+	if hud and hud.boss_bar:
+		hud.boss_bar.say(Verdicts.plea(b.boss_id))
+	if hud and hud.has_method("combo_popup"):
+		var knees := "ON HER KNEES" if b.boss_id == &"ambassador" else "ON HIS KNEES"
+		hud.combo_popup("%s — %s · HAND DOWN A VERDICT" % [Story.boss_name(b.boss_id), knees], Palette.GOLD, true)
+	if b.boss_id == &"ambassador":
+		b.overhead.tag = "ON HER KNEES"
+	if b is ChairmanBoss:
+		b.stand_down_floor()
+
+## Open the VERDICT card for a kneeling boss.
+func open_verdict(b: Boss) -> void:
+	if is_instance_valid(_verdict_card) or not is_instance_valid(b) or b.verdict != &"" or not b.kneeling:
+		return
+	var card := VerdictCard.new()
+	card.boss_id = b.boss_id
+	if RunFlow.practice:
+		card.disabled = [Verdicts.DEAL]
+	card.chosen.connect(apply_verdict.bind(b))
+	add_child(card)
+	_verdict_card = card
+
+## Carry out a verdict on a kneeling boss.
+func apply_verdict(v: StringName, b: Boss) -> void:
+	_verdict_card = null
+	if not is_instance_valid(b) or b.verdict != &"" or b._dead:
+		return
+	if v == Verdicts.DEAL and RunFlow.practice:
+		return
+	b.verdict = v
+	TimeController.release(&"kneel")
+	RunState.record_verdict(b.boss_id, v)
+	if not RunFlow.practice and b.boss_id != &"chairman":
+		Meta.record_verdict(v)
+	var chairman := b.boss_id == &"chairman"
+	match v:
+		Verdicts.EXECUTE, Verdicts.SEAT:
+			# The finisher: on_boss_down runs when his body hits the floor.
+			if is_instance_valid(player) and not player.is_dead():
+				player.start_melee(b, Takedown.FINISHER)
+			else:
+				b.finish_off({"source": &"execution", "by_player": true, "dir": Vector2.RIGHT, "force": 480.0})
+			if hud and hud.has_method("combo_popup"):
+				hud.combo_popup(Verdicts.finisher_name(b.boss_id), Palette.DANGER, true)
+			return
+		Verdicts.DEAL:
+			_resolve_boss(b)
+			RunFlow.take_deal(b.boss_id)
+			return
+	_resolve_boss(b)
+	match v:
+		Verdicts.FLIP:
+			_boss_shock(0.15)
+			_verdict_popup("FLIPPED — %s" % Verdicts.flip_name(b.boss_id), Palette.STAMP_GREEN)
+			b.leave(Verdicts.leave_line(b.boss_id))
+		Verdicts.SHAKE:
+			var gold := Verdicts.shake_gold()
+			RunEconomy.add_bonus(gold)
+			var relic_id := Verdicts.shake_relic(b.boss_id)
+			RunState.add_relic(relic_id)
+			if relic_id == &"deed_box":
+				RunState.add_max_health(1)
+				if is_instance_valid(player):
+					player.max_health += 1
+					player.health += 1
+					player.health_changed.emit(player.health, player.max_health)
+			var relic := Relics.make(relic_id)
+			_verdict_popup("SHAKEN DOWN — +$%d · %s" % [gold, relic.display_name.to_upper() if relic else ""], Palette.GOLD)
+			_cash_burst_visual(b.global_position)
+			Audio.play("cash_register")
+			b.leave(Verdicts.leave_line(b.boss_id))
+		Verdicts.BURN:
+			_burn_the_board(b)
+		Verdicts.WALK:
+			b.stay_down()
+			_verdict_popup("WALK AWAY", Palette.NEON_CYAN)
+	if chairman:
+		_chairman_exit()
+
+## Common to every verdict: the fight is over.
+func _resolve_boss(b: Boss) -> void:
+	if hud and hud.boss_bar:
+		hud.boss_bar.clear()
+	_open_arena()
+	if not RunFlow.practice and b.verdict != Verdicts.DEAL:
+		Meta.record_boss(b.boss_id, false)
+	if b.boss_id != &"chairman":
+		_boss_music = false
+		Audio.play_stage_music(_stage)
+
+func _verdict_popup(text: String, color: Color) -> void:
+	if hud and hud.has_method("combo_popup"):
+		hud.combo_popup(text, color, true)
+
+## After the Chairman's verdict the last job wraps itself up.
+func _chairman_exit() -> void:
+	RunEconomy.add_bonus(_rng.randi_range(400, 600))
+	get_tree().create_timer(3.2, false).timeout.connect(_extract)
+
+## BURN THE BOARD: the Exchange goes up and every listed venue crashes.
+## Your open shorts are what's left standing (BLACK MONDAY).
+func _burn_the_board(b: Boss) -> void:
+	_verdict_popup("BURN THE BOARD", Palette.DANGER)
+	fx.add_trauma(1.0)
+	for i in 6:
+		var at := b.arena.grow(-80.0)
+		var spot := Vector2(_rng.randf_range(at.position.x, at.end.x), _rng.randf_range(at.position.y, at.end.y))
+		Blast.flare(self, spot, 0.3 + 0.25 * i, 110.0)
+	if RunState.market:
+		for a: CriminalAsset in RunState.market.assets:
+			if a.id != _venue:
+				a.current_price = maxf(a.current_price * Endings.BURN_CRASH, 0.01)
+	if live:
+		live.report_shock(Endings.BURN_CRASH, &"burn")
+	RunState.burn_short_profit = Positions.short_profit() + ShortBook.open_profit()
+	if b is ChairmanBoss and b.wall:
+		b.wall.crashed = true
+	b.stay_down()
+
+## Coins and notes out of a shaken-down boss's pockets (for show: the money
+## is already paid).
+func _cash_burst_visual(at: Vector2) -> void:
+	for i in 10:
+		fx.spark(at + Vector2.from_angle(TAU * i / 10.0) * 20.0, Vector2.from_angle(TAU * i / 10.0), Palette.GOLD)
+
+## The EXECUTE (or TAKE THE SEAT) finisher landed: slow motion, the full
+## shock, the cash, the doors open and his reward drops where he fell.
 func on_boss_down(b: Boss) -> void:
 	fx.slow_mo(1.2, 0.2)
 	fx.add_trauma(0.9)
 	Audio.play("boss_death")
 	set_audit(false)
-	if hud and hud.boss_bar:
-		hud.boss_bar.clear()
 	if not marked:
-		_become_marked()
-	_open_arena()
-	_boss_music = false
-	Audio.play_stage_music(_stage)
-	if not RunFlow.practice:
-		Meta.record_boss(b.boss_id, false)
+		_become_marked(0.0)
+	_resolve_boss(b)
+	_boss_shock(0.30)
 	_pump_and_dump()
 	if b.boss_id == &"chairman":
 		# The last trade: the heist wraps itself up and the ending plays.
-		RunEconomy.add_bonus(_rng.randi_range(400, 600))
-		get_tree().create_timer(3.2, false).timeout.connect(_extract)
+		_chairman_exit()
 		return
 	_cash_burst(b.global_position, _rng.randi_range(8, 12), 18 + 8 * _stage)
 	_drop_boss_reward(b)
+
+# -------------------------------------------------------------- finale -----
+## The Chairman's fight begins: flipped bosses arrive to back you up and the
+## executed bosses' crews come for revenge (one wave each).
+func _start_finale() -> void:
+	for id: StringName in Verdicts.STAGE_BOSSES:
+		if Verdicts.flipped(id):
+			_spawn_ally(id)
+	_revenge_left.clear()
+	for id: StringName in Verdicts.STAGE_BOSSES:
+		if Verdicts.executed(id):
+			_revenge_left.append(id)
+	_revenge_clock = 3.0
+
+func _spawn_ally(id: StringName) -> void:
+	if not is_instance_valid(player):
+		return
+	var a := Ally.new()
+	a.boss_id = id
+	a.host = self
+	a._slot = PI * 0.5 + allies.size() * 2.1
+	a.max_health = 10 + 2 * _stage
+	a.health = a.max_health
+	add_child(a)
+	a.global_position = player.global_position + Vector2.from_angle(a._slot) * 60.0
+	allies.append(a)
+	fx.chip(a.global_position, "%s HAS YOUR BACK" % Story.boss_name(id), Palette.STAMP_GREEN)
+
+func allies_up() -> int:
+	var n := 0
+	for a in allies:
+		if is_instance_valid(a) and not a.is_dead():
+			n += 1
+	return n
+
+## +10% damage per execution while an executed boss's crew is on the floor.
+func revenge_damage_mult() -> float:
+	if revenge.is_empty():
+		return 1.0
+	return 1.0 + Verdicts.REVENGE_DAMAGE * Verdicts.count(Verdicts.EXECUTE)
+
+func _tick_revenge(delta: float) -> void:
+	if _revenge_left.is_empty() or not is_instance_valid(boss) or boss.is_down():
+		return
+	revenge = revenge.filter(func(e): return is_instance_valid(e) and not e._dead)
+	if not revenge.is_empty():
+		return
+	_revenge_clock -= delta
+	if _revenge_clock > 0.0:
+		return
+	_revenge_clock = 8.0
+	_revenge_wave(_revenge_left.pop_front())
+
+func _revenge_wave(id: StringName) -> void:
+	var kinds: Array = Verdicts.crew_kinds(id)
+	for i in kinds.size():
+		var spot := boss.arena_point(90.0)
+		if is_instance_valid(player) and spot.distance_to(player.global_position) < 260.0:
+			spot = boss.arena.get_center() + (boss.arena.get_center() - player.global_position).normalized() * 220.0
+		var e := spawn_companion(boss, int(kinds[i]), spot - boss.global_position)
+		if e:
+			e.hunting = true
+			e.elite_tag = "REVENGE"
+			e.overhead.tag_color = Palette.DANGER
+			revenge.append(e)
+	var crew := "%s'S CREW" % Story.boss_name(id)
+	_verdict_popup("REVENGE — %s · +%d%% DAMAGE" % [crew, roundi(Verdicts.REVENGE_DAMAGE * 100.0 * Verdicts.count(Verdicts.EXECUTE))], Palette.DANGER)
+	Audio.sting("boss_phase")
 
 ## Coins and notes spraying out of a fallen boss.
 func _cash_burst(at: Vector2, count: int, each: int) -> void:
@@ -1872,8 +2119,9 @@ func _drop_boss_reward(b: Boss) -> void:
 	chest.position = to_local(b.global_position)
 	spawn_deferred(chest)
 
-## Debug/screenshot helper: skip the intro and put the stage boss down.
-func debug_kill_boss() -> void:
+## Debug/screenshot helper: skip the intro and put the stage boss on his
+## knees (and hand down `verdict` if one is given).
+func debug_kill_boss(verdict: StringName = &"") -> void:
 	var b: Boss = boss
 	if b == null and generator and generator.boss_room:
 		for c in generator.boss_room.get_children():
@@ -1888,6 +2136,8 @@ func debug_kill_boss() -> void:
 	b.immune_reason = ""
 	b._transition = 0.0
 	b.take_damage(999999)
+	if verdict != &"" and b.kneeling:
+		apply_verdict(verdict, b)
 
 ## Pump & Dump: a big kill moves the venue 15% more, whichever way it runs.
 func _pump_and_dump() -> void:

@@ -15,6 +15,8 @@ var _chart: Array = []            # pending volley: [Vector2 offset along/side]
 var _dir := Vector2.RIGHT
 var _drain_clock := 1.0
 var drained := 0
+## Black Ledger sabotage: no Liquidation drain.
+var drain_disabled := false
 var _cycle := 0
 
 func setup_boss() -> void:
@@ -40,13 +42,42 @@ func begin_fight() -> void:
 		margin.arena = arena.grow(-30.0)
 		margin.boss = self
 		host.add_child(margin)
+	_sabotage()
 	attack = &"stroll"
 	clock = 1.0
 
+## The shaken-down bosses' relics each break one of his phases.
+##   Deed Box          he starts 15% down
+##   Black Ledger      Liquidation can't touch your gold
+##   Diplomatic Pouch  Margin Call's hazard strips are half as wide
+func _sabotage() -> void:
+	var host := heist()
+	var lines: Array = []
+	if Verdicts.shaken(&"landlord"):
+		health = int(round(max_health * Verdicts.DEED_BOX_HP))
+		lines.append("DEED BOX: HE STARTS 15% DOWN")
+	if Verdicts.shaken(&"auditor"):
+		drain_disabled = true
+		lines.append("BLACK LEDGER: NO LIQUIDATION")
+	if Verdicts.shaken(&"ambassador") and margin:
+		margin.hazard_scale = Verdicts.MARGIN_HALVED
+		lines.append("DIPLOMATIC POUCH: MARGIN CALL HALVED")
+	if host:
+		for i in lines.size():
+			host.fx.chip(global_position + Vector2(0, -60 - 26 * i), "SABOTAGED — " + lines[i], Palette.GOLD)
+
+## On his knees: the floor stops trading against you.
+func stand_down_floor() -> void:
+	if margin:
+		margin.active = false
+		margin.queue_redraw()
+	if wall:
+		wall.alarm = false
+
 func _process(delta: float) -> void:
-	if not intro_done or _dead:
+	if not intro_done or is_down():
 		return
-	if phase >= 3:
+	if phase >= 3 and not drain_disabled:
 		_drain_clock -= delta
 		if _drain_clock <= 0.0:
 			_drain_clock = 1.0
@@ -135,7 +166,7 @@ func on_phase(n: int) -> void:
 	if n == 3:
 		var host := heist()
 		if host:
-			host.fx.chip(global_position, "LIQUIDATION", Palette.DANGER)
+			host.fx.chip(global_position, "LIQUIDATION" if not drain_disabled else "LIQUIDATION — BLOCKED BY THE BLACK LEDGER", Palette.DANGER)
 
 func _die() -> void:
 	if margin:
@@ -199,6 +230,8 @@ class MarginFloor extends Node2D:
 	var arena := Rect2()
 	var boss: Boss
 	var active := false
+	## Diplomatic Pouch sabotage: each hazard strip is only this wide.
+	var hazard_scale := 1.0
 	var prices: Array = []
 	var state: Array = []          # 0 safe, 1 warning, 2 hazard
 	var _clock := 0.0
@@ -223,7 +256,7 @@ class MarginFloor extends Node2D:
 		var host := get_tree().current_scene as HeistFloor
 		if host and is_instance_valid(host.player) and _hurt <= 0.0:
 			var p: Vector2 = host.player.global_position
-			if arena.has_point(p) and state[strip_at(p.x)] == 2:
+			if arena.has_point(p) and state[strip_at(p.x)] == 2 and in_hazard(p.x):
 				_hurt = 1.0
 				host.player.last_hit_dir = Vector2.UP
 				host.player.take_damage(1)
@@ -231,6 +264,17 @@ class MarginFloor extends Node2D:
 
 	func strip_at(x: float) -> int:
 		return clampi(int((x - arena.position.x) / (arena.size.x / STRIPS)), 0, STRIPS - 1)
+
+	## Inside the burning part of a strip (the middle `hazard_scale` of it).
+	func in_hazard(x: float) -> bool:
+		var w := arena.size.x / STRIPS
+		var centre := arena.position.x + (strip_at(x) + 0.5) * w
+		return absf(x - centre) <= w * 0.5 * hazard_scale
+
+	func strip_rect(i: int) -> Rect2:
+		var w := arena.size.x / STRIPS
+		var hw := w * hazard_scale
+		return Rect2(arena.position.x + i * w + (w - hw) * 0.5, arena.position.y, hw, arena.size.y)
 
 	## The price ticks; history slides one strip left; the three lowest strips
 	## are under the margin line.
@@ -252,7 +296,7 @@ class MarginFloor extends Node2D:
 			return
 		var w := arena.size.x / STRIPS
 		for i in STRIPS:
-			var r := Rect2(arena.position.x + i * w, arena.position.y, w, arena.size.y)
+			var r := strip_rect(i)
 			if state[i] == 1:
 				draw_rect(r, Color(1.0, 0.55, 0.1, 0.16))
 				draw_rect(r, Color(1.0, 0.55, 0.1, 0.5), false, 3.0)
