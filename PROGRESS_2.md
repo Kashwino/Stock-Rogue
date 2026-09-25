@@ -34,10 +34,10 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Bodies are evidence (guards investigate, radio on a second body; civilians flee; Ghost +50%)
 
 ## Phase 4 — Takedowns
-- [ ] `melee` input action (F + right mouse)
-- [ ] Stealth takedown (behind, unprovoked, silent, invulnerable) with exclusions
-- [ ] Stagger below 25% (Brutes 10%), stagger execution (+2 rounds, OVERKILL)
-- [ ] Ghost Run allows stealth takedowns; Meta takedowns stat
+- [x] `melee` input action (F + right mouse)
+- [x] Stealth takedown (behind, unprovoked, silent, invulnerable) with exclusions
+- [x] Stagger below 25% (Brutes 10%), stagger execution (+2 rounds, OVERKILL)
+- [x] Ghost Run allows stealth takedowns; Meta takedowns stat
 
 ## Phase 5 — Combo "THE RALLY"
 - [ ] Combo core: points, window, tiers, cash-out, PANIC SELL

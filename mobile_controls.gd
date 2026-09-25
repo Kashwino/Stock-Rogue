@@ -22,7 +22,7 @@ func _ready() -> void:
 	_right_base = _ring("AIM / FIRE")
 	_left_knob = _knob(_left_base)
 	_right_knob = _knob(_right_base)
-	for pair in [["dodge", "DODGE"], ["reload", "RELOAD"], ["swap_weapon", "SWAP"], ["interact", "USE"]]:
+	for pair in [["dodge", "DODGE"], ["reload", "RELOAD"], ["swap_weapon", "SWAP"], ["interact", "USE"], ["melee", "MELEE"]]:
 		var button := TouchScreenButton.new()
 		button.action = pair[0]
 		var shape := CircleShape2D.new()
@@ -103,6 +103,7 @@ func _process(_delta: float) -> void:
 	_buttons[1].position = Vector2(size.x - 330, size.y - 210)
 	_buttons[2].position = Vector2(size.x - 445, size.y - 95)
 	_buttons[3].position = Vector2(size.x - 445, size.y - 210)
+	_buttons[4].position = Vector2(size.x - 145, size.y - 300)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:

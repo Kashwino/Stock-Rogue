@@ -6,7 +6,7 @@ class_name Objectives
 ##   assassination  a named VIP elite is somewhere inside
 ##   smash_grab     the alarm is already ringing; marked rooms hold jackpots;
 ##                  a lockdown seals every fire exit when the timer runs out
-##   ghost          no kills and no alarms: a big move on the venue
+##   ghost          no loud kills (silent takedowns are fine) and no alarms
 ##   sabotage       plant charges at 2-3 marked points (hold USE 2 s)
 ##   package        carry a case to the car (15% slower while you carry it)
 
@@ -14,7 +14,7 @@ const DATA := {
 	&"loot": ["LOOT", "Grab the valuables and get back to the car.", ""],
 	&"assassination": ["ASSASSINATION", "A named VIP is inside. Put them down.", "a bounty and a jolt to the venue"],
 	&"smash_grab": ["SMASH & GRAB", "The alarm is already ringing. Hit the marked rooms before the lockdown.", "jackpot rooms and a finder's fee"],
-	&"ghost": ["GHOST RUN", "In and out: no kills, no alarms.", "a big move on the venue and a fee"],
+	&"ghost": ["GHOST RUN", "In and out: no gunfire kills, no alarms. Silent takedowns are fine.", "a big move on the venue and a fee"],
 	&"sabotage": ["SABOTAGE", "Plant charges at the marked points (hold USE 2 s).", "the venue crashes when you leave"],
 	&"package": ["THE PACKAGE", "Carry the case to the car. It slows you down.", "a courier's fee"],
 }

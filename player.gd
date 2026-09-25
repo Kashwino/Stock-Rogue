@@ -118,13 +118,16 @@ func _physics_process(delta: float) -> void:
 	_since_shot += delta
 	_tick_burst(delta)
 
-	if _dodging:
+	if _melee_left > 0.0:
+		_process_melee(delta)
+	elif _dodging:
 		_process_dodge(delta)
 	else:
 		_process_move()
 		_process_aim()
 		_try_dodge()
 		_try_fire()
+		_update_melee(delta)
 
 	if _knock.length() > 1.0:
 		velocity += _knock
@@ -331,6 +334,108 @@ func _spawn_bullet(weapon: WeaponItem = null, last_round := false) -> void:
 		if RunState.has_relic(&"silent_partner"):
 			loud *= 0.6
 		get_node("/root/Noise").emit_noise(global_position, &"gunshot", loud)
+
+# ----------------------------------------------------------------- melee ----
+## The melee target in reach right now ([Enemy, Takedown mode] or empty) and
+## the takedown in progress. See takedown.gd.
+var melee_target: Array = []
+var takedowns := 0
+var _melee_scan := 0.0
+var _melee_left := 0.0
+var _melee_elapsed := 0.0
+var _melee_victim: Enemy = null
+var _melee_mode: StringName = &""
+var _melee_spot := Vector2.ZERO
+var _melee_struck := false
+var _melee_was_invulnerable := false
+
+func _update_melee(delta: float) -> void:
+	_melee_scan -= delta
+	if _melee_scan <= 0.0:
+		_melee_scan = 0.08
+		_set_melee_target(Takedown.find(self))
+	if not melee_target.is_empty() and Input.is_action_just_pressed("melee"):
+		start_melee(melee_target[0], melee_target[1])
+
+func _set_melee_target(target: Array) -> void:
+	if not melee_target.is_empty() and is_instance_valid(melee_target[0]) and (target.is_empty() or target[0] != melee_target[0]):
+		melee_target[0].overhead.prompt = ""
+	melee_target = target
+	if not target.is_empty():
+		var key := OnboardingHints.prompt("melee", TouchInput.device())
+		target[0].overhead.prompt = "%s · %s" % [key, "TAKEDOWN" if target[1] == Takedown.STEALTH else "EXECUTE"]
+
+## Begin a takedown on `victim` (mode: Takedown.STEALTH or EXECUTION).
+func start_melee(victim: Enemy, mode: StringName) -> void:
+	if victim == null or victim._dead or _melee_left > 0.0:
+		return
+	_set_melee_target([])
+	_melee_victim = victim
+	_melee_mode = mode
+	_melee_left = Takedown.DURATION[mode]
+	_melee_elapsed = 0.0
+	_melee_struck = false
+	_melee_spot = Takedown.strike_spot(victim, mode, global_position)
+	_melee_was_invulnerable = _invulnerable
+	_invulnerable = true
+	victim.hold(_melee_left + 0.1)
+	if sprite:
+		sprite.rotation = (victim.global_position - global_position).angle()
+	if mode == Takedown.STEALTH:
+		Audio.play("dodge", global_position, -10.0, 1.3)
+
+func _process_melee(delta: float) -> void:
+	_melee_left -= delta
+	_melee_elapsed += delta
+	var to_spot := _melee_spot - global_position
+	velocity = to_spot / maxf(delta, 0.001) * 0.25 if to_spot.length() > 2.0 else Vector2.ZERO
+	velocity = velocity.limit_length(420.0)
+	if is_instance_valid(_melee_victim) and sprite:
+		sprite.rotation = (_melee_victim.global_position - global_position).angle()
+	if not _melee_struck and _melee_elapsed >= Takedown.STRIKE_AT[_melee_mode]:
+		_melee_struck = true
+		_strike_melee()
+	if _melee_left <= 0.0:
+		_melee_left = 0.0
+		velocity = Vector2.ZERO
+		_invulnerable = _melee_was_invulnerable or _dodging
+		_melee_victim = null
+
+func _strike_melee() -> void:
+	var v := _melee_victim
+	if v == null or not is_instance_valid(v) or v._dead:
+		return
+	var dir := (v.global_position - global_position).normalized()
+	v.shield_hp = 0
+	var host := get_tree().current_scene
+	if _melee_mode == Takedown.STEALTH:
+		if kit:
+			kit.kick(1.2)
+		v.note_hit({"source": &"takedown", "stealth": true, "by_player": true, "dir": dir, "force": 20.0})
+		v.take_damage(v.health)
+	else:
+		# Point-blank with whatever you're holding: loud unless suppressed.
+		var weapon: WeaponItem = loadout.get_active() if loadout else null
+		Audio.play(shot_sound(weapon), global_position)
+		if host is HeistFloor:
+			host.fx.muzzle(muzzle.global_position, dir, true)
+			host.fx.recoil(dir, 8.0)
+		if kit:
+			kit.kick(1.0)
+		var loud: float = (weapon.eff_noise() if weapon else 900.0) * float(RunState.profile_value("gunshot_noise", 1.0))
+		if has_node("/root/Noise"):
+			get_node("/root/Noise").emit_noise(global_position, &"gunshot", loud)
+		v.note_hit({"source": &"execution", "by_player": true, "dir": dir, "force": 260.0, "weapon": weapon.id if weapon else &""})
+		v.take_damage(v.health + 3)
+		if loadout:
+			loadout.refund_round()
+			loadout.refund_round()
+	takedowns += 1
+	if host is HeistFloor:
+		host.on_takedown(_melee_mode)
+
+func is_busy_meleeing() -> bool:
+	return _melee_left > 0.0
 
 func _try_dodge() -> void:
 	if _dodge_cd_timer > 0.0:

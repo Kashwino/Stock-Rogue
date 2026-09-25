@@ -133,10 +133,10 @@ func _quit() -> void:
 static func controls_text(device: String) -> String:
 	match device:
 		"pad":
-			return "L-STICK move   R-STICK aim   RT fire   LB roll\nX reload   Y swap   A use   VIEW map   START pause"
+			return "L-STICK move   R-STICK aim   RT fire   LB roll   B melee\nX reload   Y swap   A use   VIEW map   START pause"
 		"touch":
-			return "Left thumb moves, right thumb aims and fires.\nDODGE · RELOAD · SWAP · USE · MAP on screen."
-	return "WASD move   MOUSE aim   CLICK fire   SPACE roll\nR reload   Q swap   E use   TAB map   ESC pause"
+			return "Left thumb moves, right thumb aims and fires.\nDODGE · RELOAD · SWAP · USE · MELEE · MAP on screen."
+	return "WASD move   MOUSE aim   CLICK fire   SPACE roll   F melee\nR reload   Q swap   E use   TAB map   ESC pause"
 
 ## The job's case file: venue, objective, modifiers, heat and time on the job.
 func _build_job_card() -> void:

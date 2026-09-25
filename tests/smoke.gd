@@ -78,6 +78,7 @@ func _run() -> void:
 	await _test_kill_feedback()
 	await _test_kill_sounds()
 	await _test_gore()
+	await _test_takedowns()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -1036,6 +1037,77 @@ func _test_gore() -> void:
 	floor_scene.blood_vignette.set_health(player.health, player.max_health)
 	# The corpse cap retires the oldest body.
 	check(Corpse.CAP == 40, "forty bodies per building")
+
+func _test_takedowns() -> void:
+	check(InputMap.has_action("melee") and InputMap.action_get_events("melee").size() >= 2, "melee is bound (F and right mouse)")
+	var player := floor_scene.player
+	var owner: Enemy = null
+	for e: Enemy in get_tree().get_nodes_in_group("enemies"):
+		if not (e is Boss) and e.get_parent() is BuildingRoom:
+			owner = e
+			break
+	var pair := _clear_pair(120.0)
+	var guard := floor_scene.spawn_companion(owner, Enemy.Kind.GRUNT, Vector2.ZERO)
+	guard.global_position = pair[1]
+	guard.set_post(pair[1])
+	guard._provoked = false
+	guard._alert = Enemy.Alert.IDLE
+	guard.sprite.global_rotation = 0.0            # facing east
+	var back: Vector2 = pair[1] + Vector2(-30, 0)
+	var front: Vector2 = pair[1] + Vector2(30, 0)
+	check(Takedown.can_stealth(guard, back), "a takedown works from behind an unaware guard")
+	check(not Takedown.can_stealth(guard, front), "not from the front")
+	check(not Takedown.can_stealth(guard, pair[1] + Vector2(-70, 0)), "not from arm's length away")
+	guard._provoked = true
+	check(not Takedown.can_stealth(guard, back), "not once he's provoked")
+	guard._provoked = false
+	var brute := floor_scene.spawn_companion(owner, Enemy.Kind.BRUTE, Vector2.ZERO)
+	check(not Takedown.stealth_allowed(brute), "Brutes can't be taken down")
+	brute.make_lieutenant("TEST")
+	check(not Takedown.stealth_allowed(brute), "nor lieutenants")
+	check(brute.stagger_threshold() == maxi(1, roundi(brute.max_health * 0.1)), "Brutes only stagger in their last tenth")
+	brute.queue_free()
+	var saved := player.global_position
+	player.global_position = back
+	player._update_melee(0.2)
+	check(not player.melee_target.is_empty() and player.melee_target[0] == guard and guard.overhead.prompt.ends_with("TAKEDOWN"), "the takedown prompt shows over him")
+	var loud_before := floor_scene.loud_kills
+	var takedowns := player.takedowns
+	var infos: Array = []
+	guard.died.connect(func(e): infos.append(e.kill_info))
+	var was_invulnerable: bool = player._invulnerable
+	player._invulnerable = false
+	player.start_melee(guard, Takedown.STEALTH)
+	check(player._invulnerable and guard.freeze_left > 0.0, "a takedown holds him and makes you untouchable")
+	await get_tree().create_timer(0.6).timeout
+	check(infos.size() == 1 and infos[0].kill_class == KillInfo.TAKEDOWN and infos[0].stealth, "the knife lands: a silent TAKEDOWN")
+	check(player.takedowns == takedowns + 1 and floor_scene.loud_kills == loud_before, "a stealth takedown doesn't count as a loud kill (Ghost Run survives)")
+	check(not player._invulnerable, "you're vulnerable again afterwards")
+	player._invulnerable = was_invulnerable
+	# Stagger and execution.
+	var victim := floor_scene.spawn_companion(owner, Enemy.Kind.ENFORCER, Vector2.ZERO)
+	victim.global_position = pair[0] + Vector2(40, 0)
+	victim.set_post(victim.global_position)
+	await get_tree().physics_frame
+	victim.take_damage(victim.health - victim.stagger_threshold())
+	check(victim.is_staggered() and victim.overhead.staggered, "a guard shot into his last quarter staggers")
+	var pos_before := victim.global_position
+	await get_tree().create_timer(0.3).timeout
+	check(victim.global_position.distance_to(pos_before) < 4.0 and victim.is_staggered(), "a staggered guard can't move")
+	player.global_position = victim.global_position + Vector2(-50, 0)
+	player._update_melee(0.2)
+	check(not player.melee_target.is_empty() and player.melee_target[1] == Takedown.EXECUTION, "melee on a staggered guard executes him")
+	RunState.loadout.consume_round()
+	RunState.loadout.consume_round()
+	var mag_before := int(RunState.loadout._active_ammo()["mag"])
+	victim.died.connect(func(e): infos.append(e.kill_info))
+	player.start_melee(victim, Takedown.EXECUTION)
+	await get_tree().create_timer(0.6).timeout
+	check(infos.size() == 2 and infos[1].kill_class == KillInfo.TAKEDOWN and infos[1].overkill and not infos[1].stealth, "an execution is a guaranteed overkill")
+	check(int(RunState.loadout._active_ammo()["mag"]) == mag_before + 2, "an execution refunds two rounds")
+	check(floor_scene.loud_kills == loud_before + 1, "an execution is loud")
+	player.global_position = saved
+	TimeController.clear()
 
 func _test_debug_menu() -> void:
 	var debug := get_node("/root/Debug")

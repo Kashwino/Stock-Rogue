@@ -14,7 +14,7 @@ const REQUIRED := {
 	"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 	"dodge": [KEY_SPACE, KEY_SHIFT], "reload": [KEY_R],
 	"swap_weapon": [KEY_Q], "interact": [KEY_E], "pause": [KEY_ESCAPE],
-	"tactical_map": [KEY_TAB, KEY_M], "debug_menu": [KEY_F1],
+	"tactical_map": [KEY_TAB, KEY_M], "debug_menu": [KEY_F1], "melee": [KEY_F],
 	"aim_left": [], "aim_right": [], "aim_up": [], "aim_down": [], "fire": [],
 }
 
@@ -67,5 +67,5 @@ func pad_aim() -> Vector2:
 func reset() -> void:
 	move = Vector2.ZERO
 	firing = false
-	for action in ["fire", "dodge", "reload", "swap_weapon", "interact"]:
+	for action in ["fire", "dodge", "reload", "swap_weapon", "interact", "melee"]:
 		Input.action_release(action)

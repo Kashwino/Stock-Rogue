@@ -24,6 +24,10 @@ func _draw() -> void:
 		"dodge":
 			for x in [-6, 5]:
 				draw_polyline(PackedVector2Array([Vector2(x - 5, -22), Vector2(x + 4, -13), Vector2(x - 5, -4)]), color, 3, true)
+		"melee":
+			# A knife: blade and grip.
+			draw_colored_polygon(PackedVector2Array([Vector2(-12, -8), Vector2(10, -20), Vector2(4, -8)]), color)
+			draw_line(Vector2(-12, -8), Vector2(-17, -3), color, 4, true)
 		"swap_weapon":
 			draw_line(Vector2(-12, -17), Vector2(12, -17), color, 2)
 			draw_line(Vector2(-12, -6), Vector2(12, -6), color, 2)

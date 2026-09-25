@@ -55,7 +55,7 @@ var total_profit: float = 0.0                    # lifetime cash earned
 ## Career stats across all three case files. Specialist unlocks read these.
 const STAT_DEFAULTS := {
 	"fire_exit_escapes": 0, "bosses_killed": 0, "best_index": 0.0, "runs_won": 0,
-	"heists_completed": 0, "total_gold": 0, "deaths": 0,
+	"heists_completed": 0, "total_gold": 0, "deaths": 0, "takedowns": 0,
 }
 var stats: Dictionary = STAT_DEFAULTS.duplicate()
 ## Stage bosses put down, by id (lieutenants count only in bosses_killed).

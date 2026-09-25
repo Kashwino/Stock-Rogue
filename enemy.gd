@@ -505,6 +505,9 @@ func _can_see_player() -> bool:
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
+	if freeze_left > 0.0 or stagger_left > 0.0:
+		_tick_frozen(delta)
+		return
 	if _player == null or not is_instance_valid(_player):
 		_acquire_player()
 		return
@@ -842,6 +845,8 @@ func take_damage(amount: int = 1) -> void:
 	_flash()
 	if health <= 0:
 		_die()
+	elif can_stagger() and health <= stagger_threshold():
+		stagger(STAGGER_TIME)
 
 ## Riot shields stop bullets from the front.
 func deflects(dir: Vector2) -> bool:
@@ -859,9 +864,12 @@ func _die() -> void:
 	for c in get_children():
 		if c is CollisionShape2D or c is CollisionPolygon2D:
 			c.set_deferred("disabled", true)
-	# A body hitting the floor is heard by anyone nearby.
-	if has_node("/root/Noise"):
+	# A body hitting the floor is heard by anyone nearby — except a silent
+	# stealth takedown.
+	if has_node("/root/Noise") and not bool(_killing_hit.get("stealth", false)):
 		get_node("/root/Noise").death(global_position)
+	overhead.prompt = ""
+	overhead.staggered = false
 	kill_info = KillInfo.classify(self, _killing_hit, _last_excess)
 	if kit and get_parent():
 		kill_info.corpse = Corpse.spawn(get_parent(), global_position, sprite.global_rotation if sprite else 0.0, kit.spec, kill_info)
@@ -906,6 +914,53 @@ func _radio_step(delta: float, sees: bool) -> bool:
 		if host:
 			host.security_alert(get_parent(), "Guard radio call", 10.0)
 	return true
+
+# -------------------------------------------------------------- stagger ----
+## A guard hit into the last quarter of his health (a Brute: the last tenth,
+## always at least his last hit point) staggers: he can't move or shoot, he
+## wobbles with a flashing outline, and a melee press executes him.
+const STAGGER_TIME := 1.2
+var stagger_left := 0.0
+## Held still (a takedown in progress): like a stagger without the wobble.
+var freeze_left := 0.0
+
+func can_stagger() -> bool:
+	return not (self is Boss) and not (kind in [Kind.TURRET, Kind.DRONE])
+
+func stagger_threshold() -> int:
+	return maxi(1, roundi(max_health * (0.10 if kind == Kind.BRUTE else 0.25)))
+
+func is_staggered() -> bool:
+	return stagger_left > 0.0 and not _dead
+
+func stagger(seconds: float) -> void:
+	stagger_left = maxf(stagger_left, seconds)
+	overhead.staggered = true
+	velocity = Vector2.ZERO
+
+## Freeze in place for a takedown.
+func hold(seconds: float) -> void:
+	freeze_left = maxf(freeze_left, seconds)
+	velocity = Vector2.ZERO
+
+func _tick_frozen(delta: float) -> void:
+	_tick_burn(delta)
+	velocity = velocity.lerp(Vector2.ZERO, 0.35)
+	move_and_slide()
+	if freeze_left > 0.0:
+		freeze_left -= delta
+		return
+	stagger_left -= delta
+	if sprite and not Settings.values.get("reduce_flashing", false):
+		sprite.rotation += sin(Time.get_ticks_msec() * 0.03) * 0.04
+	if kit:
+		var blink := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.025)
+		kit.modulate = Color.WHITE.lerp(Color(1.8, 1.4, 1.3), blink if not Settings.values.get("reduce_flashing", false) else 0.5)
+	if stagger_left <= 0.0:
+		stagger_left = 0.0
+		overhead.staggered = false
+		if kit:
+			kit.modulate = Color.WHITE
 
 # ------------------------------------------------------------- evidence ----
 ## Seconds of looking before a body registers (the Ghost's slower cameras

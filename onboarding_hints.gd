@@ -5,7 +5,7 @@ class_name OnboardingHints
 ## card slides in under the heat bar for a few seconds; nothing pauses. The
 ## key names follow the player's hands (keyboard, controller or touch).
 
-const ORDER := ["move", "provoke", "shoot", "reload", "loot", "heat", "extract", "fire_exit"]
+const ORDER := ["move", "provoke", "shoot", "reload", "loot", "heat", "extract", "fire_exit", "takedown"]
 const HOLD := 7.0
 
 var host: Node
@@ -20,9 +20,9 @@ var _elapsed := 0.0
 ## Button names per device for an input action.
 static func prompt(action: String, device: String) -> String:
 	var table := {
-		"keys": {"fire": "LEFT CLICK", "reload": "R", "swap_weapon": "Q", "interact": "E", "dodge": "SPACE", "pause": "ESC", "tactical_map": "TAB"},
-		"pad": {"fire": "RT", "reload": "X", "swap_weapon": "Y", "interact": "A", "dodge": "LB", "pause": "START", "tactical_map": "VIEW"},
-		"touch": {"fire": "the right thumb", "reload": "RELOAD", "swap_weapon": "SWAP", "interact": "USE", "dodge": "DODGE", "pause": "PAUSE", "tactical_map": "MAP"},
+		"keys": {"fire": "LEFT CLICK", "reload": "R", "swap_weapon": "Q", "interact": "E", "dodge": "SPACE", "pause": "ESC", "tactical_map": "TAB", "melee": "F"},
+		"pad": {"fire": "RT", "reload": "X", "swap_weapon": "Y", "interact": "A", "dodge": "LB", "pause": "START", "tactical_map": "VIEW", "melee": "B"},
+		"touch": {"fire": "the right thumb", "reload": "RELOAD", "swap_weapon": "SWAP", "interact": "USE", "dodge": "DODGE", "pause": "PAUSE", "tactical_map": "MAP", "melee": "MELEE"},
 	}
 	return String(table.get(device, table["keys"]).get(action, action.to_upper()))
 
@@ -53,6 +53,8 @@ static func text(id: String, device: String) -> Array:
 			return ["GET OUT", "Back at the getaway car, hold still for four seconds to extract with the bag."]
 		"fire_exit":
 			return ["FIRE EXITS", "Green fire exits are a quiet way out while HEAT is under the EXITS mark: hold still at one."]
+		"takedown":
+			return ["TAKEDOWN", "%s from behind an unaware guard is a silent kill. A guard you've shot down to his last legs staggers: %s executes him." % [p.call("melee"), p.call("melee")]]
 	return ["", ""]
 
 func _ready() -> void:
@@ -116,6 +118,8 @@ func _due(id: String) -> bool:
 			return float(host.heat) >= 3.0
 		"extract":
 			return int(host.loot_banked) > 0
+		"takedown":
+			return not player.get("melee_target").is_empty()
 		"fire_exit":
 			if int(host.loot_banked) <= 0 or float(host.heat) >= host.fire_exit_limit():
 				return false

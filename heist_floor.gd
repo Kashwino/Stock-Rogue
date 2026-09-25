@@ -610,9 +610,15 @@ func _hook_room_enemies(room) -> void:
 			_enemies_total += 1
 			c.died.connect(_on_enemy_died)
 
+## Kills that make noise (everything but silent stealth takedowns): a Ghost
+## Run survives only the silent kind.
+var loud_kills := 0
+
 func _on_enemy_died(e) -> void:
 	hooks.kill.emit(e)
 	_kills += 1
+	if not (e.kill_info and e.kill_info.stealth):
+		loud_kills += 1
 	_kill_streak += 1
 	if RunState.has_perk(&"blood_dividend") and _kill_streak % 8 == 0 and player.health > 0 and not RunState.profile_value("no_healing", false):
 		player.health = mini(player.health + 1, player.max_health)
@@ -1316,6 +1322,11 @@ func nearest_way_out(pos: Vector2) -> Vector2:
 			best = out
 	return best
 
+## A stealth takedown or a stagger execution landed (player.gd).
+func on_takedown(mode: StringName) -> void:
+	if not RunFlow.practice:
+		Meta.stats["takedowns"] = int(Meta.stats.get("takedowns", 0)) + 1
+
 func on_civilian_killed(civ: Node2D, player_caused: bool) -> void:
 	if player_caused:
 		civilians_killed += 1
@@ -1538,7 +1549,7 @@ func objective_success() -> bool:
 		&"smash_grab":
 			return not jackpots.is_empty() and jackpots_left() == 0
 		&"ghost":
-			return _kills == 0 and alerts == 0
+			return loud_kills == 0 and alerts == 0
 		&"sabotage":
 			return not charges.is_empty() and charges_planted >= charges.size()
 		&"package":
@@ -1562,7 +1573,7 @@ func _update_objective_hud() -> void:
 			var clock := "LOCKDOWN — main door only" if _lockdown_clock <= 0.0 and _smash_started else "Lockdown in %d:%02d" % [int(_lockdown_clock) / 60, int(_lockdown_clock) % 60]
 			body = "Jackpot rooms %d/%d\n%s" % [jackpots.size() - jackpots_left(), jackpots.size(), clock]
 		&"ghost":
-			body = ("No kills, no alarms.\nKills %d · Alarms %d" % [_kills, alerts]) if objective_success() else "Ghost run blown.\nLoot and leave."
+			body = "No gunfire kills, no alarms.\nSilent takedowns only." if objective_success() else "Ghost run blown.\nLoot and leave."
 		&"sabotage":
 			body = "Charges set %d/%d\n%s" % [charges_planted, charges.size(), "Get clear: to the car." if objective_success() else "Hold USE at the marks."]
 		&"package":

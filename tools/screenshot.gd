@@ -79,6 +79,28 @@ func _run() -> void:
 			scene.player.health_changed.emit(scene.player.health, scene.player.max_health)
 			for i in 20:
 				await get_tree().process_frame
+	if args.has("melee") and scene is HeistFloor:
+		# A guard to knife from behind, and a staggered one.
+		var src: Enemy = null
+		for e: Enemy in get_tree().get_nodes_in_group("enemies"):
+			if not (e is Boss) and e.get_parent() is BuildingRoom:
+				src = e
+				break
+		var p: Vector2 = scene.player.global_position
+		var calm: Enemy = scene.spawn_companion(src, Enemy.Kind.GRUNT, Vector2.ZERO)
+		calm.global_position = p + Vector2(32, 0)
+		calm.set_post(calm.global_position)
+		calm._provoked = false
+		calm.sprite.global_rotation = 0.0
+		var shaky: Enemy = scene.spawn_companion(src, Enemy.Kind.ENFORCER, Vector2.ZERO)
+		shaky.global_position = p + Vector2(-60, 90)
+		shaky.set_post(shaky.global_position)
+		await get_tree().physics_frame
+		shaky.take_damage(shaky.health - shaky.stagger_threshold())
+		shaky.stagger_left = 30.0
+		scene.player._update_melee(0.2)
+		for i in 10:
+			await get_tree().process_frame
 	if args.has("hint"):
 		Meta.hints_seen.clear()
 		var hints := get_tree().root.find_children("*", "OnboardingHints", true, false)

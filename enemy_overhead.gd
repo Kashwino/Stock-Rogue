@@ -26,7 +26,7 @@ var alarm := false:
 	set(v):
 		if v != alarm:
 			alarm = v
-			set_process(v)
+			set_process(v or staggered)
 			queue_redraw()
 ## Shield bubble strength 0..1 (0 = none).
 var bubble := 0.0:
@@ -35,6 +35,19 @@ var bubble := 0.0:
 			bubble = v
 			queue_redraw()
 var lift := 46.0
+## A melee prompt under the guard ("F · TAKEDOWN"), set by the player.
+var prompt := "":
+	set(v):
+		if v != prompt:
+			prompt = v
+			queue_redraw()
+## Staggered: a pulsing ring at his feet.
+var staggered := false:
+	set(v):
+		if v != staggered:
+			staggered = v
+			set_process(v or alarm)
+			queue_redraw()
 
 func _ready() -> void:
 	z_index = 40
@@ -45,6 +58,18 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	if staggered:
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.02)
+		if Settings.values.get("reduce_flashing", false):
+			pulse = 0.7
+		draw_arc(Vector2.ZERO, 22.0, 0.0, TAU, 28, Palette.with_alpha(Palette.SODIUM, 0.45 + 0.45 * pulse), 2.5, true)
+	if prompt != "":
+		var pf := VisualTheme.font("heading_bold")
+		var pw := pf.get_string_size(prompt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+		var pbox := Rect2(-pw * 0.5 - 6.0, 26.0, pw + 12.0, 20.0)
+		draw_rect(pbox, Color(0.04, 0.04, 0.05, 0.85))
+		draw_rect(pbox, Palette.GOLD, false, 1.5)
+		draw_string(pf, Vector2(-pw * 0.5, 41.0), prompt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Palette.GOLD)
 	var y := -lift
 	if bubble > 0.0:
 		draw_circle(Vector2.ZERO, 30.0, Palette.with_alpha(Palette.NEON_CYAN, 0.07 + 0.08 * bubble))

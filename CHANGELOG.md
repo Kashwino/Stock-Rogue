@@ -526,6 +526,28 @@
   With the Ghost's slow cameras guards also take half again as long to take
   a body in.
 
+## Brief 2 · Phase 4 — Takedowns
+
+- New **`melee`** action: F, right mouse, pad B, and a MELEE touch button
+  (checked at start-up like every other action). A prompt ("F · TAKEDOWN" /
+  "F · EXECUTE", with the right button for your device) appears over the
+  guard in reach, and a one-time tip explains both moves.
+- **Stealth takedown** (`takedown.gd`): from behind — within 45 px and 110°
+  of his back — on an unprovoked guard: a 0.45 s knife, invulnerable while
+  it lands, and no noise at all (the body makes no sound for guards to
+  hear). Not on Brutes, turrets, drones, lieutenants or bosses; a riot
+  shield only covers the front.
+- **Stagger**: a guard hit into his last quarter of health (a Brute: his
+  last tenth; always at least his last hit point) staggers for 1.2 s — no
+  moving, no shooting, a wobble and a flashing outline with a pulsing ring.
+  Bosses never stagger.
+- **Stagger execution**: melee on a staggered guard is a 0.5 s point-blank
+  shot with the equipped gun — loud unless it's suppressed — refunds two
+  rounds and is always an OVERKILL (full gore).
+- **Ghost Run** now allows silent stealth takedowns; any other kill still
+  blows it.
+- Career stats count takedowns (both kinds).
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -649,3 +671,10 @@
   two pixels): sharp enough for blood, a quarter of the memory.
 - **(Brief 2) Corpses no longer fade** after 22 s — they're evidence now —
   except with Gore off.
+- **(Brief 2) Stagger threshold with whole-number health**: "below 25%" is
+  read as the last quarter of max health rounded, and never less than the
+  last hit point — otherwise three-hit guards could never stagger.
+- **(Brief 2) Ghost Run rule change**: silent stealth takedowns no longer
+  fail it; gunfire (and explosion) kills still do.
+- **(Brief 2) Executions refund rounds** up to a full magazine; they don't
+  spend one.
