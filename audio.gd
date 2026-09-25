@@ -4,7 +4,9 @@ extends Node
 ##   play_ui(id)      interface sounds on the UI bus
 ##   loop(id, on)     looping one-shots (alarm, heartbeat, van engine)
 ##   music(track)     crossfade to a looping track
-##   music_layers(a, b) + set_intensity(0..1)   two synced heist layers
+##   play_stage_music(stage) + set_music_state(...)   adaptive heist stems
+##   play_boss_music(id) + set_boss_intensity(on)      boss theme + layer
+##   sting(id)        a stinger on the next beat
 ## Per-sound voice limits keep a firefight from stacking fifty gunshots, and
 ## every play gets ±6% pitch variance. Buses: Master / Music / SFX / UI.
 ## All audio is generated placeholder audio: see assets/audio/README.md.
@@ -45,6 +47,7 @@ const GAIN := {
 	"fall_carpet": -6.0, "fall_marble": -8.0, "fall_metal": -8.0, "clatter": -9.0, "kill_tick": -9.0,
 	"crit_ding": -10.0, "burn_sizzle": -5.0, "takedown_knife": -3.0, "takedown_crack": -2.0,
 	"multi_2": -5.0, "multi_3": -4.0, "multi_4": -3.0, "combo_up": -8.0, "combo_cash": -4.0, "combo_crash": -3.0,
+	"star_up": -6.0, "siren_blip": -9.0, "sirens_far": -10.0, "sirens_near": -12.0, "heli": -10.0,
 }
 const POSITIONAL_POOL := 24
 const FLAT_POOL := 10
@@ -60,8 +63,6 @@ var _music_a: AudioStreamPlayer
 var _music_b: AudioStreamPlayer
 var _track := ""
 var _layered := false
-var _intensity := 0.0
-var _intensity_target := 0.0
 var _rng := RandomNumberGenerator.new()
 ## Music ducking: an Amplify effect on the Music bus (the bus volume itself
 ## belongs to Settings).
@@ -308,8 +309,9 @@ func _music_stream(track: String) -> AudioStream:
 
 ## Crossfade to a single looping track ("" stops the music).
 func music(track: String, fade: float = 1.2) -> void:
-	if track == _track and not _layered:
+	if track == _track and not _layered and not stems_playing():
 		return
+	stop_stems(fade)
 	_track = track
 	_layered = false
 	var old := _music_a if _music_a.playing else null
@@ -329,36 +331,186 @@ func music(track: String, fade: float = 1.2) -> void:
 	var tw := incoming.create_tween()
 	tw.tween_property(incoming, "volume_db", 0.0, fade)
 
-## Two layers that play in lockstep; set_intensity crossfades between them.
-func music_layers(calm: String, tense: String) -> void:
-	var key := calm + "+" + tense
-	if _layered and _track == key:
-		return
-	_track = key
-	_layered = true
-	var a := _music_stream(calm)
-	var b := _music_stream(tense)
-	if a == null or b == null:
-		return
-	_music_a.stream = a
-	_music_b.stream = b
-	_intensity = 0.0
-	_intensity_target = 0.0
-	_music_a.volume_db = -40.0
-	_music_b.volume_db = -60.0
-	_music_a.play()
-	_music_b.play()
-	var tw := _music_a.create_tween()
-	tw.tween_property(_music_a, "volume_db", 0.0, 1.5)
+# ------------------------------------------------------- adaptive stems ----
+## Heist music is a stack of synced stems (tools/gen_music.py). Each stage has
+## its own EXPLORE / TENSION / COMBAT stems at its tempo; the drum, WANTED and
+## COMBO stems are shared, written at 96 BPM and pitch-scaled to the stage's
+## tempo (so they stay in tune and in time). Layers change on bar lines;
+## stingers wait for the next beat. Bosses swap in their theme plus a
+## phase-2 intensity layer the same way.
+const STEM_BASE_BPM := 96.0
+const STAGE_MUSIC := [["town", 96.0], ["city", 104.0], ["world", 112.0], ["doomsday", 124.0]]
+const BOSS_BPM := {&"landlord": 100.0, &"auditor": 118.0, &"ambassador": 108.0, &"chairman": 128.0}
+const STAGE_LAYERS := ["explore", "drums_brush", "tension", "combat", "drums_combat", "wanted3", "wanted4", "wanted5", "combo_a", "combo_b"]
+const SHARED_LAYERS := ["drums_brush", "drums_combat", "wanted3", "wanted4", "wanted5", "combo_a", "combo_b"]
+## Per-layer gain (linear) so the generated stems sit together.
+const LAYER_GAIN := {"explore": 1.0, "drums_brush": 1.3, "tension": 1.0, "combat": 0.9, "drums_combat": 1.0,
+	"wanted3": 1.0, "wanted4": 0.7, "wanted5": 1.4, "combo_a": 1.7, "combo_b": 1.5, "boss": 1.0, "boss_hi": 1.3}
 
-func set_intensity(value: float) -> void:
-	_intensity_target = clampf(value, 0.0, 1.0)
+var _stems: Dictionary = {}          # layer -> AudioStreamPlayer
+var _stem_target: Dictionary = {}    # layer -> 0/1 (applied on the next bar)
+var _stem_live: Dictionary = {}      # layer -> 0/1 (fading toward)
+var _stem_level: Dictionary = {}     # layer -> current 0..1
+var _stem_bpm := 96.0
+var _stem_master := ""
+var _stem_key := ""
+var _last_bar := -1
+var _resync_clock := 0.0
+
+func stems_playing() -> bool:
+	return _stem_master != "" and _stems.has(_stem_master) and _stems[_stem_master].playing
+
+func _stem_player(layer: String) -> AudioStreamPlayer:
+	if not _stems.has(layer):
+		var p := AudioStreamPlayer.new()
+		p.bus = &"Music"
+		add_child(p)
+		_stems[layer] = p
+	return _stems[layer]
+
+## Start a stage's heist stems (0 Town .. 3 Doomsday). Everything starts on
+## the same frame; EXPLORE and the brushed drums are up, the rest silent.
+func play_stage_music(stage: int) -> void:
+	var entry: Array = STAGE_MUSIC[clampi(stage, 0, STAGE_MUSIC.size() - 1)]
+	var key := "stage:" + String(entry[0])
+	if _stem_key == key and stems_playing():
+		return
+	var layers := {}
+	for layer: String in STAGE_LAYERS:
+		var file := layer if layer in SHARED_LAYERS else "%s_%s" % [entry[0], layer]
+		layers[layer] = [file, float(entry[1]) / STEM_BASE_BPM if layer in SHARED_LAYERS else 1.0]
+	_start_stems(key, layers, float(entry[1]), "explore", {"explore": 1.0, "drums_brush": 1.0})
+
+## A boss theme with its intensity layer waiting in the wings.
+func play_boss_music(boss_id: StringName) -> void:
+	var key := "boss:" + String(boss_id)
+	if _stem_key == key and stems_playing():
+		return
+	var layers := {"boss": ["boss_" + String(boss_id), 1.0], "boss_hi": ["boss_%s_hi" % boss_id, 1.0]}
+	_start_stems(key, layers, float(BOSS_BPM.get(boss_id, 120.0)), "boss", {"boss": 1.0})
+
+func _start_stems(key: String, layers: Dictionary, bpm: float, master: String, up: Dictionary) -> void:
+	_fade_out(_music_a, 0.8)
+	_fade_out(_music_b, 0.8)
+	_track = ""
+	_layered = false
+	for p: AudioStreamPlayer in _stems.values():
+		p.stop()
+	_stem_key = key
+	_stem_bpm = bpm
+	_stem_master = master
+	_stem_target.clear()
+	_stem_live.clear()
+	_stem_level.clear()
+	_last_bar = -1
+	var started: Array = []
+	for layer: String in layers:
+		var file: String = layers[layer][0]
+		var s := _music_stream(file)
+		if s == null:
+			continue
+		var p := _stem_player(layer)
+		p.stream = s
+		p.pitch_scale = float(layers[layer][1])
+		var on: float = float(up.get(layer, 0.0))
+		_stem_target[layer] = on
+		_stem_live[layer] = on
+		_stem_level[layer] = 0.0
+		p.volume_db = -80.0
+		started.append(p)
+	for p: AudioStreamPlayer in started:
+		p.play()
+
+## What the heist is doing: tension (someone investigating), combat (someone
+## hunting you), WANTED stars, the combo tier. Takes effect on the next bar.
+func set_music_state(tension: bool, combat: bool, stars: int, combo_tier: int) -> void:
+	if not _stem_key.begins_with("stage:"):
+		return
+	var dynamic: bool = Settings.values.get("dynamic_music", true)
+	var hot := combat or stars >= 3
+	var want := {
+		"explore": 1.0,
+		"drums_brush": 0.0 if hot else 1.0,
+		"tension": 1.0 if (tension or stars in [1, 2]) and not hot else 0.0,
+		"combat": 1.0 if hot else 0.0,
+		"drums_combat": 1.0 if hot else 0.0,
+		"wanted3": 1.0 if stars >= 3 else 0.0,
+		"wanted4": 1.0 if stars >= 4 else 0.0,
+		"wanted5": 1.0 if stars >= 5 else 0.0,
+		"combo_a": 1.0 if combo_tier >= 2 else 0.0,
+		"combo_b": 1.0 if combo_tier >= 4 else 0.0,
+	}
+	if not dynamic:
+		# One flat track: the explore bed and its drums, nothing moves.
+		want = {"explore": 1.0, "drums_brush": 1.0}
+	for layer: String in _stem_target:
+		_stem_target[layer] = float(want.get(layer, 0.0))
+
+## Phase 2+: the boss theme's intensity layer comes in on the next bar.
+func set_boss_intensity(on: bool) -> void:
+	if _stem_key.begins_with("boss:") and _stem_target.has("boss_hi"):
+		_stem_target["boss_hi"] = 1.0 if on else 0.0
+
+func beat_length() -> float:
+	return 60.0 / _stem_bpm
+
+func _stem_position() -> float:
+	if not stems_playing():
+		return 0.0
+	var p: AudioStreamPlayer = _stems[_stem_master]
+	return p.get_playback_position() / maxf(p.pitch_scale, 0.01)
+
+## Play a stinger on the next beat of the music (immediately with no stems).
+func sting(id: String, volume_db: float = 0.0) -> void:
+	if not stems_playing():
+		play(id, null, volume_db)
+		return
+	var beat := beat_length()
+	var wait := beat - fmod(_stem_position(), beat)
+	if wait < 0.03:
+		wait += beat
+	get_tree().create_timer(wait, true, false, true).timeout.connect(play.bind(id, null, volume_db))
+
+func stop_stems(fade: float = 1.0) -> void:
+	_stem_key = ""
+	_stem_master = ""
+	for p: AudioStreamPlayer in _stems.values():
+		_fade_out(p, fade)
+
+func _tick_stems(delta: float) -> void:
+	if not stems_playing():
+		return
+	var bar_len := beat_length() * 4.0
+	var pos := _stem_position()
+	var bar := int(pos / bar_len)
+	if bar != _last_bar:
+		_last_bar = bar
+		for layer: String in _stem_target:
+			_stem_live[layer] = _stem_target[layer]
+	var master: AudioStreamPlayer = _stems[_stem_master]
+	var master_len: float = master.stream.get_length() if master.stream else 0.0
+	# Drift checks at most once a second (web playback positions are coarse).
+	_resync_clock -= delta
+	var check_sync := _resync_clock <= 0.0
+	if check_sync:
+		_resync_clock = 1.0
+	for layer: String in _stem_live:
+		var p: AudioStreamPlayer = _stems[layer]
+		var level: float = move_toward(float(_stem_level.get(layer, 0.0)), float(_stem_live[layer]), delta / maxf(beat_length(), 0.1))
+		_stem_level[layer] = level
+		p.volume_db = linear_to_db(maxf(level * float(LAYER_GAIN.get(layer, 1.0)), 0.0001))
+		# Keep every stem locked to the master after pauses and hitches.
+		if check_sync and layer != _stem_master and p.playing and p.stream and master_len > 0.0:
+			var expected := fmod(master.get_playback_position() / maxf(master.pitch_scale, 0.01) * p.pitch_scale, p.stream.get_length())
+			if absf(p.get_playback_position() - expected) > 0.08 and absf(p.get_playback_position() - expected) < p.stream.get_length() - 0.08:
+				p.seek(expected)
 
 func stop_music(fade: float = 1.0) -> void:
 	_track = ""
 	_layered = false
 	_fade_out(_music_a, fade)
 	_fade_out(_music_b, fade)
+	stop_stems(fade)
 
 func _fade_out(p: AudioStreamPlayer, fade: float) -> void:
 	if not p.playing:
@@ -369,14 +521,7 @@ func _fade_out(p: AudioStreamPlayer, fade: float) -> void:
 
 func _process(delta: float) -> void:
 	_tick_duck(delta)
-	if not _layered or not _music_a.playing:
-		return
-	_intensity = move_toward(_intensity, _intensity_target, delta * (0.8 if _intensity_target > _intensity else 0.25))
-	_music_a.volume_db = linear_to_db(maxf(1.0 - _intensity * 0.75, 0.001))
-	_music_b.volume_db = linear_to_db(maxf(_intensity, 0.001))
-	# Keep the layers locked together after pauses and hitches.
-	if absf(_music_a.get_playback_position() - _music_b.get_playback_position()) > 0.08:
-		_music_b.seek(_music_a.get_playback_position())
+	_tick_stems(delta)
 
 ## Quitting mid-sound would otherwise leave live playbacks behind at exit.
 func _exit_tree() -> void:
@@ -391,10 +536,12 @@ func silence() -> void:
 		if is_instance_valid(_loops[id]):
 			_loops[id].stop()
 			_loops[id].stream = null
-	for p in [_music_a, _music_b]:
+	for p in [_music_a, _music_b] + _stems.values():
 		if is_instance_valid(p):
 			p.stop()
 			p.stream = null
+	_stem_key = ""
+	_stem_master = ""
 
 # ------------------------------------------------------------- UI hooks -----
 ## Every button in the game ticks on hover and clicks on press.

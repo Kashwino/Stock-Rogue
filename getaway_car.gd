@@ -140,6 +140,11 @@ func _process(delta: float) -> void:
 			_running = true
 			_progress = 0.0
 			extraction_started.emit()
+		# The police helicopter's light on you: the driver won't pull out.
+		if scene is HeistFloor and scene.spotlit():
+			_label.text = "SPOTLIGHT — wait for the dark"
+			_label.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+			return
 		_progress += delta
 		_update_label()
 		if _progress >= escape_duration:

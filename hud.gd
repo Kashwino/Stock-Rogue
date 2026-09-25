@@ -211,6 +211,9 @@ func set_heat(value: float, dispatch: float, fire_limit: float, timer: float) ->
 	heat.fire_limit = fire_limit
 	heat.timer = timer
 
+func set_wanted(stars: int) -> void:
+	heat.set_stars(stars)
+
 ## A heat source ("CAMERA SPOTTED YOU +8") for the meter's log.
 func log_heat(text: String) -> void:
 	heat.push_source(text)

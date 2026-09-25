@@ -74,6 +74,8 @@ var kills: KillFeedback
 var gore: Gore
 ## THE RALLY: the combo (combo.gd).
 var combo: Combo
+## WANTED stars, sirens, cruisers and the helicopter (wanted.gd).
+var wanted: Wanted
 var security_disabled := 0
 var last_heat_source := "No reports. Stay out of sight."
 var quiet_seconds := 0.0
@@ -253,6 +255,10 @@ func _build_floor() -> void:
 	crosshair = Crosshair.new()
 	crosshair.player = player
 	add_child(crosshair)
+	wanted = Wanted.new()
+	add_child(wanted)
+	wanted.setup(self)
+	wanted.star_gained.connect(_on_star_gained)
 	gore = Gore.new()
 	add_child(gore)
 	gore.setup(self)
@@ -279,7 +285,7 @@ func _build_floor() -> void:
 	hooks.heist_start.emit()
 	if RunState.has_relic(&"insider_wire"):
 		_show_vision_cones()
-	Audio.music_layers("heist_stealth", "heist_combat")
+	Audio.play_stage_music(_stage)
 	RunEconomy.on_room_start()
 	_heist_start = Time.get_ticks_msec() / 1000.0
 	_heat_timer = reinforcement_interval
@@ -659,6 +665,10 @@ func _on_room_cleared(room) -> void:
 
 func _become_marked() -> void:
 	marked = true
+	# Marked: at least three stars.
+	heat = maxf(heat, Wanted.THRESHOLDS[2])
+	if wanted:
+		wanted.force(3)
 	add_heat(16.0, "The Board wants answers" if boss_heist else "Lieutenant down")
 	_close_timer = exit_close_interval
 	# Big payoff: gold (a stage boss pays through his cash burst instead) and
@@ -706,10 +716,12 @@ func _process(delta: float) -> void:
 		return
 
 	active_elapsed += delta
-	# No passive escalation: lose sight, interrupt calls, disable alarms to cool off.
+	# Laying low: 20 s with nobody hunting you and the heat drifts down —
+	# never below the floor of the WANTED stars you've earned.
 	quiet_seconds += delta
-	if quiet_seconds >= 4.0:
-		heat = maxf(0.0, heat - delta)
+	wanted.tick(delta)
+	if wanted.laying_low():
+		heat = maxf(wanted.floor_heat(), heat - Wanted.LAY_LOW_RATE * delta)
 	_heat_timer = maxf(0.0, _heat_timer - delta)
 	if heat >= dispatch_threshold() and _heat_timer <= 0.0:
 		_spawn_reinforcements()
@@ -836,7 +848,7 @@ func _check_extraction() -> void:
 		return
 
 	var at_exit := _fire_exit_in_reach()
-	var hot := heat >= fire_exit_heat_limit
+	var hot := heat >= fire_exit_limit()
 
 	if at_exit.is_empty() or hot:
 		if _fire_hold > 0.0:
@@ -1159,6 +1171,8 @@ func add_heat(amount: float, source: String) -> void:
 	var gained := amount * (0.75 if RunState.has_perk(&"cool_head") else 1.0)
 	heat = minf(100.0, heat + gained)
 	quiet_seconds = 0.0
+	if wanted:
+		wanted.on_heat(heat)
 	last_heat_source = source
 	if hud and hud.has_method("log_heat"):
 		hud.log_heat("%s  +%d" % [source.to_upper(), roundi(gained)])
@@ -1178,7 +1192,7 @@ func security_alert(room: Node, source: String, amount: float) -> void:
 
 func on_security_disabled(_device: SecurityDevice) -> void:
 	security_disabled += 1
-	heat = maxf(0.0, heat - 4.0)
+	heat = maxf(wanted.floor_heat() if wanted else 0.0, heat - 4.0)
 	last_heat_source = "Security disabled · heat -4"
 	if live:
 		live.report_sabotage()
@@ -1340,6 +1354,15 @@ func nearest_way_out(pos: Vector2) -> Vector2:
 			best_d = pos.distance_to(out)
 			best = out
 	return best
+
+func _on_star_gained(stars: int) -> void:
+	if hud and hud.has_method("set_wanted"):
+		hud.set_wanted(stars)
+	fx.chip(player.global_position, "WANTED LEVEL %d" % stars, Palette.POLICE_RED)
+
+## The helicopter's light on you outside: the car won't go.
+func spotlit() -> bool:
+	return wanted != null and is_instance_valid(player) and wanted.spotlit(player.global_position)
 
 ## A stealth takedown or a stagger execution landed (player.gd).
 func on_takedown(mode: StringName) -> void:
@@ -1784,8 +1807,7 @@ func on_boss_down(b: Boss) -> void:
 		_become_marked()
 	_open_arena()
 	_boss_music = false
-	Audio.music_layers("heist_stealth", "heist_combat")
-	Audio.set_intensity(1.0)
+	Audio.play_stage_music(_stage)
 	if not RunFlow.practice:
 		Meta.record_boss(b.boss_id, false)
 	_pump_and_dump()
@@ -1943,14 +1965,17 @@ func _update_audio() -> void:
 	if _extracting or not is_instance_valid(player):
 		return
 	var hunting := 0
+	var looking := 0
 	for e in director.enemies:
-		if is_instance_valid(e) and not e.sleeping and e._alert == Enemy.Alert.HUNTING:
-			hunting += 1
-	var intensity := clampf(heat / maxf(dispatch_threshold(), 1.0), 0.0, 1.0)
-	if hunting > 0:
-		intensity = maxf(intensity, clampf(0.65 + hunting * 0.07, 0.0, 1.0))
+		if is_instance_valid(e) and not e.sleeping:
+			if e._alert == Enemy.Alert.HUNTING:
+				hunting += 1
+			elif e._alert == Enemy.Alert.INVESTIGATING:
+				looking += 1
+	# Adaptive stems: explore / tension (someone looking) / combat (someone
+	# hunting) / WANTED layers / the combo's riff and lead.
 	if not _boss_music:
-		Audio.set_intensity(intensity)
+		Audio.set_music_state(looking > 0, hunting > 0, wanted.stars if wanted else 0, combo.tier if combo and combo.live else 0)
 	var responding := heat >= dispatch_threshold()
 	if responding != _siren_on:
 		_siren_on = responding
@@ -1968,7 +1993,8 @@ func start_boss_music() -> void:
 		return
 	_boss_music = true
 	Audio.play("boss_intro")
-	Audio.music("boss", 0.6)
+	Audio.duck(-6.0, 2.5)
+	Audio.play_boss_music(boss_id if boss_id != &"" else &"auditor")
 
 func _exit_tree() -> void:
 	Audio.loop("alarm", false)

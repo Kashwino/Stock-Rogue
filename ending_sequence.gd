@@ -40,7 +40,7 @@ func _ready() -> void:
 			layer_node.visible = false
 	Audio.loop("alarm", false)
 	Audio.loop("heartbeat", false)
-	Audio.music("ending", 1.5)
+	Audio.music("end_rule" if ending == &"new_chairman" else "end_retire", 1.5)
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP

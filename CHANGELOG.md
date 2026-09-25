@@ -589,6 +589,36 @@
   now simulates the combo (gold, the market multiplier and cash-out moves)
   and checks the cap.
 
+## Brief 2 · Phase 6 — Wanted & adaptive music
+
+- **WANTED stars** (`wanted.gd`): heat now reads as 0–5 stars beside the heat
+  bar — 1★ at 4, 2★ 8, 3★ 12 (the moment the fire exits seal), 4★ 20, 5★ 30.
+  A marked boss forces at least 3★. Every star gets a sting, a siren blip and
+  a "WANTED LEVEL n" chip; at 5★ the stars flash police red and blue (steady
+  with Reduce flashing).
+- **Laying low** replaces the old steady heat decay: after 20 s with nobody
+  hunting you, heat drifts down 0.2/s — but never below the floor of the
+  stars you've earned. Disabling security obeys the same floor.
+- **The street reacts**: 3★ distant sirens; 4★ two police cruisers park up
+  and down the street from the getaway car, light bars going, sirens close;
+  5★ a helicopter searchlight laps the outside of the building. Standing in
+  it stops the getaway car's clock ("SPOTLIGHT — wait for the dark") and
+  shows you to every guard outside within 900 px.
+- **Adaptive music** (`tools/gen_music.py`, `audio.gd`): every stage has its
+  own explore / tension / combat stems in its own key and tempo (Town 96 BPM,
+  City 104, World 112, Doomsday 124) over shared drum, Wanted (3★/4★/5★) and
+  combo (BULL RUN+, FRENZY+) layers. Layers fade in and out on bar
+  boundaries so nothing ever restarts; tier and star stingers land on the
+  next beat; the music ducks under boss intros and big moments.
+- **Boss themes**: each boss has a theme and a phase-two layer that comes in
+  with his second phase; the stage music returns once he's down. New themes
+  for the verdict, the map and all five ending families (rule, escape,
+  collapse, retire, busted); the old heist, boss and ending tracks are gone.
+- **Dynamic music** setting (on by default): off keeps a single calm mix
+  (explore + brushed drums) in every heist.
+- Settings panel: Gore and Blood choices sit under the frame-rate and touch
+  choices; Tutorial tips and Dynamic music joined the toggles.
+
 ## Decisions
 
 - **Branch.** The session's git configuration requires all work to be committed
@@ -730,3 +760,20 @@
   winners' final index, and 840 keeps it at about a quarter of wins.
 - **(Brief 2) Explosive props sit on layer 1 (WALLS)** as the brief asks; they
   are Props, so the wall art never paints them as walls.
+- **(Brief 2) Stage stems share one tempo on disk.** The shared layers
+  (drums, Wanted, combo) are written once at 96 BPM and pitch-scaled to each
+  stage's tempo; each stage's own stems are written at the same frequency
+  ratio, so every layer stays in tune and the audio budget stays ~29 MB.
+- **(Brief 2) Stem sync without AudioStreamSynchronized**: the stems are
+  separate players started on the same frame and nudged back into step when
+  they drift (at most once a second). The synchronized stream was avoided for
+  the Web build's sake.
+- **(Brief 2) Boss and ending themes are four-bar loops** with a denser
+  phase-two layer, again to keep the download small.
+- **(Brief 2) Stars never drop during a heist**; laying low only cools heat
+  down to the current star's floor. Fire exits therefore stay sealed once
+  3★ is reached.
+- **(Brief 2) No star glyph in text**: the stars are drawn shapes; chips say
+  "WANTED LEVEL 3" because the shipped fonts have no ★.
+- **(Brief 2) Cruisers park along the street** (up and down from the getaway
+  car), never across it, so they can't land inside the building.

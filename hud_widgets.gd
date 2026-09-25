@@ -64,6 +64,9 @@ class HeatMeter extends Control:
 	var timer := 0.0
 	var log_lines: Array = []       # [text, age]
 	var hot := false
+	## WANTED stars (0-5), drawn under the bar's right end.
+	var stars := 0
+	var _star_flash := 0.0
 	const MAX_HEAT := 40.0
 	var _t := 0.0
 
@@ -75,13 +78,32 @@ class HeatMeter extends Control:
 		while log_lines.size() > 3:
 			log_lines.pop_back()
 
+	func set_stars(n: int) -> void:
+		if n > stars:
+			_star_flash = 1.0
+		stars = n
+
 	func _process(delta: float) -> void:
 		_t += delta
+		_star_flash = maxf(0.0, _star_flash - delta * 1.5)
 		for line: Array in log_lines:
 			line[1] += delta
 		while not log_lines.is_empty() and log_lines.back()[1] > 7.0:
 			log_lines.pop_back()
 		queue_redraw()
+
+	func _draw_stars(at: Vector2) -> void:
+		var calm: bool = Settings.values.get("reduce_flashing", false)
+		for i in 5:
+			var c := at + Vector2(i * 22.0, 0)
+			var earned := i < stars
+			var col := Color(1, 1, 1, 0.16)
+			if earned:
+				col = Palette.POLICE_RED if calm or fmod(_t * 2.0 + i * 0.25, 1.0) < 0.5 else Palette.POLICE_BLUE
+			var size_k := 1.0 + (0.5 * _star_flash if earned and i == stars - 1 and not calm else 0.0)
+			var pts := HudWidgets.star_points(c, 9.0 * size_k, 4.0 * size_k)
+			draw_colored_polygon(pts, col)
+			draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0, 0, 0, 0.6), 1.0)
 
 	func _draw() -> void:
 		var f := VisualTheme.font("heading")
@@ -105,6 +127,7 @@ class HeatMeter extends Control:
 		draw_rect(bar, Palette.GOLD_DIM, false, 1.0)
 		draw_string(mono, Vector2(fx - 20, bar.end.y + 17), "EXITS", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Palette.NEON_GREEN)
 		draw_string(mono, Vector2(px + 4, bar.end.y + 17), "POLICE", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Palette.POLICE_RED)
+		_draw_stars(Vector2(bar.end.x - 104, bar.end.y + 14))
 		var status := "VAN IN %ds" % ceili(timer) if hot else "%d" % roundi(heat)
 		draw_string(mono, Vector2(bar.end.x + 10, 25), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Palette.DANGER if hot else Palette.PAPER)
 		var y := 56.0
@@ -113,6 +136,15 @@ class HeatMeter extends Control:
 			draw_string(mono, Vector2(0, y), line[0], HORIZONTAL_ALIGNMENT_LEFT, size.x, 15, Palette.with_alpha(Palette.GOLD_PALE, a))
 			y += 18.0
 
+
+## Five stars under the heat bar: earned ones shimmer red/blue like a light
+## bar (steady with Reduce flashing), a new one pops.
+static func star_points(center: Vector2, outer: float, inner: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in 10:
+		var r := outer if i % 2 == 0 else inner
+		pts.append(center + Vector2.from_angle(-PI * 0.5 + i * PI / 5.0) * r)
+	return pts
 
 class WeaponIcon extends Control:
 	## Side-view gun silhouette matching SpriteKit.Gun.

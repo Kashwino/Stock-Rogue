@@ -101,6 +101,10 @@ func _run() -> void:
 		scene.player._update_melee(0.2)
 		for i in 10:
 			await get_tree().process_frame
+	if args.has("heat") and scene is HeistFloor:
+		scene.add_heat(float(args["heat"]), "Test")
+		for i in 30:
+			await get_tree().process_frame
 	if args.has("hint"):
 		Meta.hints_seen.clear()
 		var hints := get_tree().root.find_children("*", "OnboardingHints", true, false)

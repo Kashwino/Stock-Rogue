@@ -29,10 +29,20 @@ The generator is seeded, so the files only change when the script does.
   `boss_death`, `stamp`, `paper`, `typewriter`, `explosion`, `laser_charge`,
   `deflect`, `dog_bark`, `drone`, `radio`, `shutter`, `dodge`, `chest_open`,
   `door_bang`.
-- `music/` — `menu`, `hideout`, `heist_stealth` + `heist_combat` (same tempo,
-  key and length: they play in lockstep and crossfade with the alert level),
-  `boss`, `ending`. Loops are rendered into circular buffers, so they are
-  seamless.
+- Kill layers (Brief 2): `flesh_1..4`, `bone_crunch`, `splatter`, `gib_burst`,
+  `fall_concrete` / `fall_carpet` / `fall_marble` / `fall_metal`, `clatter`,
+  `kill_tick`, `crit_ding`, `burn_sizzle`, `takedown_knife`,
+  `takedown_crack`, `multi_2..4`; combo `combo_up` / `combo_cash` /
+  `combo_crash`; WANTED `star_up`, `siren_blip`, `sirens_far` (loop),
+  `sirens_near` (loop), `heli` (loop).
+- `music/` — `menu`, `hideout` (tools/gen_sfx.py) and the adaptive music from
+  tools/gen_music.py: shared 96 BPM stems (`drums_brush`, `drums_combat`,
+  `wanted3..5`, `combo_a`, `combo_b`) that every stage pitch-scales to its
+  tempo; per-stage `<stage>_explore` / `_tension` / `_combat` (town 96, city
+  104, world 112, doomsday 124); `boss_<id>` + `boss_<id>_hi`; `verdict`;
+  `map`; and the ending families `end_rule`, `end_escape`, `end_collapse`,
+  `end_retire`, `end_busted`. Loops are rendered into circular buffers, so
+  they are seamless; stems of one stage share length and tempo.
 
 ## Swapping in real audio
 

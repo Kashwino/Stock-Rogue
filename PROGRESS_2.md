@@ -49,11 +49,11 @@ loop), `python3 tools/balance_sim.py`, and the Web build + `node tests/browser.m
 - [x] Combo gold cap, verified in balance_sim
 
 ## Phase 6 — Wanted & adaptive music
-- [ ] Wanted stars 0–5 on the HUD; thresholds; marked ≥ 3★; laying low
-- [ ] 3★ sirens, 4★ cruisers, 5★ helicopter spotlight (pauses extraction, reveals)
-- [ ] tools/gen_music.py: per-stage stems, boss themes, verdict, hideout, map, menu, 5 ending themes
-- [ ] Adaptive music layers on bar boundaries; stingers on beats; ducking
-- [ ] Dynamic music setting
+- [x] Wanted stars 0–5 on the HUD; thresholds; marked ≥ 3★; laying low
+- [x] 3★ sirens, 4★ cruisers, 5★ helicopter spotlight (pauses extraction, reveals)
+- [x] tools/gen_music.py: per-stage stems, boss themes, verdict, hideout, map, menu, 5 ending themes
+- [x] Adaptive music layers on bar boundaries; stingers on beats; ducking
+- [x] Dynamic music setting
 
 ## Phase 7 — Boss verdicts
 - [ ] Bosses kneel; arena stays sealed; guards stand down; VERDICT card

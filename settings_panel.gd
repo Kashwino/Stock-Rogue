@@ -33,6 +33,7 @@ func _ready() -> void:
 	_toggle(right, "Reduce flashing", "reduce_flashing")
 	_toggle(right, "Damage numbers", "damage_numbers")
 	_toggle(right, "Tutorial tips", "tips")
+	_toggle(right, "Dynamic music", "dynamic_music")
 	var full := CheckButton.new()
 	full.text = "Fullscreen (tap to apply)"
 	full.button_pressed = Settings.values["fullscreen"]

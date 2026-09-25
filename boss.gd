@@ -128,7 +128,8 @@ func _begin_transition() -> void:
 	_transition = 1.3
 	attack = &"idle"
 	telegraph_clear()
-	Audio.play("boss_phase", global_position)
+	Audio.sting("boss_phase")
+	Audio.set_boss_intensity(phase >= 2)
 	var host := heist()
 	var line: String = phase_lines[phase - 2] if phase - 2 < phase_lines.size() else ""
 	if host:

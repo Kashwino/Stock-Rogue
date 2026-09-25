@@ -7,7 +7,7 @@ const WEB_KEY := "stock-rogue-settings-v1"
 const DEFAULTS := {"master": 0.8, "music": 0.7, "sfx": 0.8, "ui": 0.8, "fullscreen": false,
 	"low_effects": false, "frame_cap": 60, "touch_mode": 0, "shake": 1.0, "dynamic_shadows": false,
 	"post_fx": true, "reduce_flashing": false, "damage_numbers": true, "tips": true,
-	"gore": 2, "blood_style": 0}
+	"gore": 2, "blood_style": 0, "dynamic_music": true}
 ## Gore: 0 off (sparks and dust, bodies fade), 1 low (particles and short-lived
 ## marks), 2 full (decals that stay, pools, gibs, footprints).
 ## Blood style: 0 red, 1 noir (ink-black with a red rim).
@@ -16,7 +16,7 @@ const GORE_LOW := 1
 const GORE_FULL := 2
 const AUDIO_KEYS := {"master": "Master", "music": "Music", "sfx": "SFX", "ui": "UI"}
 const FLOAT_KEYS := ["master", "music", "sfx", "ui", "shake"]
-const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers", "tips"]
+const BOOL_KEYS := ["fullscreen", "low_effects", "dynamic_shadows", "post_fx", "reduce_flashing", "damage_numbers", "tips", "dynamic_music"]
 var values: Dictionary = DEFAULTS.duplicate()
 var last_save_error: int = OK
 

@@ -161,7 +161,7 @@ func add_points(amount: int) -> void:
 
 func _on_tier_up() -> void:
 	tier_up.emit(tier)
-	Audio.play("combo_up", null, 0.0, 1.0 + tier * 0.06)
+	Audio.sting("combo_up")
 	if RunState.has_relic(&"blood_money") and host and is_instance_valid(host.player):
 		host.drop_loot(host.player.global_position + Vector2(randf_range(-30, 30), randf_range(-30, 30)), 10 + 6 * tier)
 

@@ -6,7 +6,8 @@ the same seed always produces the same files.
 
     python3 tools/gen_sfx.py            # writes any missing sfx + music files
     python3 tools/gen_sfx.py sfx        # regenerates every sound effect
-    python3 tools/gen_sfx.py music      # regenerates every music loop
+    python3 tools/gen_sfx.py music      # regenerates the menu and hideout loops
+                                        # (heist/boss/ending stems: gen_music.py)
 
 Output: 22.05 kHz, 16-bit mono WAV. Music loops are rendered into circular
 buffers so every note tail wraps around and the loop point is seamless.
@@ -437,6 +438,47 @@ def kill_bank():
     fall = mul(tone(note_hz(64), n, "saw", sweep_to=note_hz(40)), env(n, 0.002, 0.5, release=0.2))
     s["combo_crash"] = drive(mix((lowpass(fall, 1600), 0.7),
                                  (mul(lowpass(noise(n, "brown"), 500), env(n, 0.001, 0.25, release=0.1)), 0.8)), 1.8)
+    s.update(wanted_bank())
+    return s
+
+
+def siren(seconds, low, high, rate, shape_mix=0.3):
+    """A two-tone wail: frequency glides between low and high `rate` times a second."""
+    n = secs(seconds)
+    out, ph = [], 0.0
+    for i in range(n):
+        f = low + (high - low) * (0.5 + 0.5 * math.sin(TAU * rate * i / SR))
+        ph += f / SR
+        out.append(math.sin(TAU * ph) * (1.0 - shape_mix) + (2 * (ph % 1) - 1) * shape_mix)
+    return out
+
+
+def wanted_bank():
+    s = {}
+    # A star: a short brass-and-bell hit.
+    n = secs(0.7)
+    hit = mix((mul(lowpass(tone(note_hz(62), n, "saw"), 2400), env(n, 0.003, 0.25, release=0.1)), 0.35),
+              (mul(lowpass(tone(note_hz(69), n, "saw"), 2400), env(n, 0.003, 0.25, release=0.1)), 0.3),
+              (mul(tone(1760, n), env(n, 0.001, 0.2, release=0.08)), 0.25))
+    s["star_up"] = echo(drive(hit, 1.3), 0.1, 0.25)
+    # One whoop of a siren.
+    n = secs(0.45)
+    s["siren_blip"] = mul(tone(700, n, "saw", sweep_to=1300), env(n, 0.01, 0.2, release=0.1))
+    # Sirens far off (muffled, washed) and close (bright, two cars out of step).
+    far = lowpass(siren(8.0, 620, 900, 0.25, 0.2), 900)
+    s["sirens_far"] = echo(far, 0.3, 0.35, tail=0.0)
+    near_a = siren(8.0, 650, 1250, 0.5, 0.35)
+    near_b = siren(8.0, 600, 1150, 0.5 * 1.1, 0.35)
+    s["sirens_near"] = mix((near_a, 0.6), (near_b, 0.45))
+    # Helicopter: a rotor chop over a turbine whine.
+    n = secs(4.0)
+    chop = []
+    for i in range(n):
+        t = i / SR
+        chop.append(max(0.0, math.sin(TAU * 11.0 * t)) ** 3)
+    rotor = mul(lowpass(noise(n, "brown"), 400), chop)
+    whine = tone(1900, n, "sine", vibrato=0.004, vib_rate=3.0)
+    s["heli"] = mix((rotor, 1.0), (whine, 0.05))
     return s
 
 
@@ -595,77 +637,6 @@ def song_hideout():
     return s.buf
 
 
-def song_heist(layer):
-    s = Song(100, 16)
-    for bar in range(s.bars):
-        chord = (bar // 2) % 4
-        root = ROOTS[chord]
-        if layer == "stealth":
-            for e in range(8):
-                s.put(s.at(bar, e * 0.5), bass(note_hz(root), s.beat * 0.4), 0.4 if e % 2 == 0 else 0.25)
-            for q in range(16):
-                s.put(s.at(bar, q * 0.25), hat(), 0.05 if q % 4 else 0.09)
-            if bar % 4 == 0:
-                s.put(s.at(bar, 0), pad([note_hz(m) for m in PROG[chord]], s.beat * 8, 700), 0.05)
-            if bar % 2 == 1:
-                s.put(s.at(bar, 3.5), piano(note_hz(PROG[chord][2] + 24), s.beat * 0.6, 0.6), 0.08)
-        else:
-            for b in range(4):
-                s.put(s.at(bar, b), kick(), 0.5 if b % 2 == 0 else 0.3)
-            s.put(s.at(bar, 1), snare(), 0.3)
-            s.put(s.at(bar, 3), snare(), 0.3)
-            for q in range(8):
-                s.put(s.at(bar, q * 0.5), hat(q % 2 == 1), 0.07)
-            for e in range(8):
-                step = [0, 0, 12, 0, 10, 0, 7, 3][e]
-                s.put(s.at(bar, e * 0.5), bass(note_hz(root + step), s.beat * 0.45, 2.2), 0.35)
-            if bar % 2 == 0:
-                for k, m in enumerate(PROG[chord][:3]):
-                    s.put(s.at(bar, 0), brass(note_hz(m + 12), s.beat * 0.9), 0.07)
-            s.put(s.at(bar, 2.5), brass(note_hz(PROG[chord][0] + 24), s.beat * 0.4), 0.06)
-    return s.buf
-
-
-def song_boss():
-    s = Song(132, 16)
-    riff = [0, 0, 3, 0, 5, 0, 6, 5]
-    for bar in range(s.bars):
-        chord = [0, 0, 2, 3][(bar // 4) % 4]
-        root = ROOTS[chord]
-        for b in range(4):
-            s.put(s.at(bar, b), kick(), 0.55)
-            s.put(s.at(bar, b + 0.5), kick(), 0.2 if b % 2 else 0.0)
-        s.put(s.at(bar, 1), snare(), 0.35)
-        s.put(s.at(bar, 3), snare(), 0.35)
-        for q in range(8):
-            s.put(s.at(bar, q * 0.5), hat(), 0.06)
-            s.put(s.at(bar, q * 0.5), bass(note_hz(root + riff[q]), s.beat * 0.45, 3.0), 0.38)
-        if bar % 4 == 0:
-            s.put(s.at(bar, 0), pad([note_hz(m) for m in PROG[chord]], s.beat * 16, 900), 0.06)
-            s.put(s.at(bar, 0), brass(note_hz(PROG[chord][0] + 12), s.beat * 1.5), 0.12)
-        if bar % 2 == 1:
-            s.put(s.at(bar, 2), brass(note_hz(PROG[chord][2] + 12), s.beat * 0.5), 0.1)
-            s.put(s.at(bar, 3), brass(note_hz(PROG[chord][1] + 12), s.beat * 0.5), 0.1)
-    return s.buf
-
-
-def song_ending():
-    s = Song(70, 12)
-    for bar in range(s.bars):
-        chord = (bar // 2) % 4
-        root = ROOTS[chord]
-        s.put(s.at(bar, 0), bass(note_hz(root), s.beat * 3.8), 0.4)
-        s.put(s.at(bar, 0), pad([note_hz(m) for m in PROG[chord]], s.beat * 4, 900), 0.05)
-        for k, m in enumerate(PROG[chord]):
-            s.put(s.at(bar, k * 0.5), piano(note_hz(m + 12), s.beat * 2.5), 0.09)
-    melody = [(0, 0, 74, 2), (0, 2, 72, 2), (1, 0, 70, 3), (2, 0, 69, 2), (2, 2, 70, 2), (3, 0, 73, 3),
-              (4, 0, 74, 2), (4, 2, 77, 2), (5, 0, 76, 2), (5, 2, 74, 2), (6, 0, 72, 4), (8, 0, 74, 4), (10, 0, 62, 6)]
-    for bar, beat, m, d in melody:
-        s.put(s.at(bar, beat), brass(note_hz(m), s.beat * d), 0.09)
-    vinyl(s, 0.03)
-    return s.buf
-
-
 def main():
     os.makedirs(SFX_DIR, exist_ok=True)
     os.makedirs(MUSIC_DIR, exist_ok=True)
@@ -679,11 +650,8 @@ def main():
             write(path, buf)
         print("sfx written")
     if only in ("all", "music"):
-        tracks = {
-            "menu": song_menu, "hideout": song_hideout,
-            "heist_stealth": lambda: song_heist("stealth"), "heist_combat": lambda: song_heist("combat"),
-            "boss": song_boss, "ending": song_ending,
-        }
+        # Heist, boss and ending music are adaptive stems: tools/gen_music.py.
+        tracks = {"menu": song_menu, "hideout": song_hideout}
         for name, fn in tracks.items():
             if only == "all" and os.path.exists(os.path.join(MUSIC_DIR, name + ".wav")):
                 continue

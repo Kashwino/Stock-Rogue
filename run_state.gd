@@ -141,6 +141,11 @@ func _equip_starting_weapon(profile: CharacterProfile) -> void:
 			loadout.equip(pool[randi() % pool.size()])
 
 ## Specialist traits, with the Operator's numbers as the fallback.
+## The most WANTED stars a heist can reach (a flipped Ambassador's
+## Diplomatic Cover caps it at 4).
+func wanted_cap() -> int:
+	return 5
+
 func profile_value(key: String, fallback: Variant) -> Variant:
 	if character_profile and key in character_profile:
 		return character_profile.get(key)

@@ -80,6 +80,8 @@ func _run() -> void:
 	await _test_gore()
 	await _test_takedowns()
 	await _test_combo()
+	await _test_wanted()
+	_test_music()
 	# Reload cancellation must never refill a replacement gun.
 	RunState.loadout.consume_round()
 	RunState.loadout.reload()
@@ -351,6 +353,7 @@ func _test_security() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		enemy.radio_carrier = false
 	floor_scene.heat = 0.0
+	floor_scene.wanted.stars = 0          # the test clears the stars with the heat
 	await get_tree().create_timer(0.7).timeout
 	check(floor_scene.heat == 0.0, "no passive heat after security is disabled")
 	var guard: Enemy = load("res://enemy.tscn").instantiate()
@@ -1246,6 +1249,71 @@ func _test_combo() -> void:
 	player._invulnerable = was_invulnerable
 	combo.settle()
 	TimeController.clear()
+
+func _test_wanted() -> void:
+	var w := floor_scene.wanted
+	check(Wanted.stars_for(3.9) == 0 and Wanted.stars_for(4) == 1 and Wanted.stars_for(12) == 3 and Wanted.stars_for(30) == 5, "stars at heat 4 / 8 / 12 / 20 / 30")
+	check(Wanted.THRESHOLDS[2] == floor_scene.fire_exit_limit(), "three stars is exactly when the fire exits seal")
+	var heat_before := floor_scene.heat
+	floor_scene.heat = 0.0
+	w.stars = 0
+	floor_scene.add_heat(9.0, "Test")
+	check(w.stars == 2 and floor_scene.hud.heat.stars == 2, "heat earns stars and the HUD shows them")
+	# Laying low: 20 s with nobody hunting, heat drifts to the star floor.
+	w.lay_low = Wanted.LAY_LOW_AFTER + 1.0
+	w.hunters = 0
+	w._scan = 99.0
+	for i in 100:
+		floor_scene.heat = maxf(w.floor_heat(), floor_scene.heat - Wanted.LAY_LOW_RATE * 1.0)
+	check(floor_scene.heat == Wanted.THRESHOLDS[1] and w.stars == 2, "laying low never drops below the stars you've earned")
+	# A marked building is at least three stars.
+	w.force(3)
+	check(w.stars == 3, "a boss marked forces three stars")
+	floor_scene.add_heat(12.0, "Test")
+	check(w.stars == 4 and w._cruisers.size() == 2, "four stars: cruisers park outside")
+	floor_scene.add_heat(20.0, "Test")
+	check(w.stars == 5 and w._heli != null, "five stars: the helicopter")
+	# The spotlight: outside the building it stops the car and shows you.
+	await get_tree().process_frame
+	var player := floor_scene.player
+	var saved := player.global_position
+	player.global_position = w._heli.spot
+	if floor_scene.building_bounds.has_point(player.global_position):
+		player.global_position = floor_scene.building_bounds.position - Vector2(120, 120)
+		w._heli.spot = player.global_position
+	check(floor_scene.spotlit(), "standing in the searchlight")
+	player.global_position = floor_scene.building_bounds.get_center()
+	check(not floor_scene.spotlit(), "the searchlight can't reach inside")
+	player.global_position = saved
+	floor_scene.heat = heat_before
+
+func _test_music() -> void:
+	for f in ["drums_brush", "drums_combat", "wanted3", "wanted4", "wanted5", "combo_a", "combo_b", "verdict", "map",
+			"town_explore", "city_tension", "world_combat", "doomsday_explore", "boss_landlord", "boss_chairman_hi",
+			"end_rule", "end_escape", "end_collapse", "end_retire", "end_busted"]:
+		check(ResourceLoader.exists("res://assets/audio/music/%s.wav" % f), "music generated: " + f)
+	Audio.play_stage_music(1)
+	check(Audio.stems_playing() and is_equal_approx(Audio._stems["wanted3"].pitch_scale, 104.0 / 96.0) and Audio._stems["explore"].pitch_scale == 1.0,
+		"City stems: shared layers pitch-scaled to 104 BPM, the city's own at 1.0")
+	check(Audio._stem_target["explore"] == 1.0 and Audio._stem_target["combat"] == 0.0, "the heist opens on EXPLORE")
+	Audio.set_music_state(false, true, 4, 4)
+	check(Audio._stem_target["combat"] == 1.0 and Audio._stem_target["wanted4"] == 1.0 and Audio._stem_target["wanted5"] == 0.0 \
+		and Audio._stem_target["combo_b"] == 1.0 and Audio._stem_live["combat"] == 0.0, "layer changes wait for the bar line")
+	Audio._last_bar = -1
+	Audio._tick_stems(0.05)
+	check(Audio._stem_live["combat"] == 1.0 and Audio._stem_live["drums_brush"] == 0.0, "on the bar the combat and WANTED layers come in")
+	Audio.set_music_state(true, false, 1, 0)
+	check(Audio._stem_target["tension"] == 1.0 and Audio._stem_target["combat"] == 0.0, "someone investigating: TENSION")
+	Settings.values["dynamic_music"] = false
+	Audio.set_music_state(false, true, 5, 5)
+	check(Audio._stem_target["combat"] == 0.0 and Audio._stem_target["explore"] == 1.0, "dynamic music off: one flat track")
+	Settings.values["dynamic_music"] = true
+	Audio.play_boss_music(&"ambassador")
+	check(Audio._stem_key == "boss:ambassador" and Audio._stem_target["boss_hi"] == 0.0, "a boss theme with its intensity layer waiting")
+	Audio.set_boss_intensity(true)
+	check(Audio._stem_target["boss_hi"] == 1.0, "phase two brings in the intensity layer")
+	Audio.stop_music(0.1)
+	check(not Audio.stems_playing() or Audio._stem_key == "", "the stems stop")
 
 func _test_debug_menu() -> void:
 	var debug := get_node("/root/Debug")
